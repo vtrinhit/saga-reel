@@ -28,6 +28,7 @@ from sagareel.core.resolver import SCHEMA_PATH, Resolver, load_schema
 from sagareel.core.events import EventBus
 from sagareel.db.session import Database
 from sagareel.services.worker import Worker
+from sagareel.services.providers import ProviderService
 
 __all__ = ["APP_NAME", "create_app"]
 
@@ -91,6 +92,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         bus=EventBus(),
     )
     services.worker = Worker(services, lane_limit=services.lane_limit)
+    # Kết nối provider: lane `conn:<id>` dùng concurrency của kết nối, `ffmpeg` dùng jobs.ffmpeg_concurrency.
+    # Dựng chỉ import adapter (registry.discover), không gọi provider nào.
+    services.providers = ProviderService(services)
+    services.worker.lane_limit = services.providers.lane_limit
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

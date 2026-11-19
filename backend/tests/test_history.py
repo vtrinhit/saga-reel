@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from sagareel.container import Services
 from sagareel.core import ops
@@ -607,3 +607,33 @@ def test_uow_lock_timeout_is_db_busy(settings, tmp_path, monkeypatch):
         create_template(ctx, body="sau khi nhả khoá")  # khoá nhả → ghi bình thường
     finally:
         db.dispose()
+
+
+# --- Cột sổ sách (info={"bookkeeping": True}) -----------------------------------------------------------------------
+
+
+def test_bookkeeping_only_write_creates_no_change_set(ctx):
+    cid = create_connection(ctx, api_key="")
+    with ctx.services.db.session() as s:
+        before = s.scalar(select(func.count()).select_from(ChangeSet))
+    u = ctx.uow("Chỉ đổi sức khoẻ", op_name="test.health")
+    with u as s:
+        s.get(ProviderConnection, cid).health = {"status": "alive", "checked_at": "x"}
+    assert u.change_set_id is None
+    with ctx.services.db.session() as s:
+        assert s.scalar(select(func.count()).select_from(ChangeSet)) == before
+        assert s.get(ProviderConnection, cid).health["status"] == "alive"  # vẫn được ghi
+
+
+def test_undo_redo_ignore_and_never_write_bookkeeping_columns(ctx):
+    cid = create_connection(ctx, api_key="", name="bk")
+    with ctx.uow(op_name="test.update") as s:
+        s.get(ProviderConnection, cid).default_model = "m2"
+    cs = history.undo(ctx, None)
+    with ctx.services.db.session() as s:  # trạng thái chạy ghi ngoài lịch sử, sau lần hoàn tác
+        s.get(ProviderConnection, cid).health = {"status": "dead"}
+    history.redo(ctx, cs.id)  # không xung đột vì health
+    history.undo(ctx, None)
+    with ctx.services.db.session() as s:
+        row = s.get(ProviderConnection, cid)
+        assert row.default_model == "" and row.health == {"status": "dead"}  # hoàn tác không ghi đè health

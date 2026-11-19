@@ -38,11 +38,26 @@ from sagareel.db.session import Database
 EntityKey = tuple[str, int]  # (entity_type = tên bảng, entity_id)
 CommitHook = Callable[[Session, ChangeSet | None], None]
 # Cột chỉ để sổ sách: không tính là "thay đổi" khi so before/after (vẫn được lưu trong snapshot).
+# Ngoài `updated_at`, model khai báo thêm cột trạng thái chạy (vd. `provider_connection.health`) bằng
+# `info={"bookkeeping": True}` — xem `bookkeeping_columns(mapper)`.
 BOOKKEEPING_COLUMNS = frozenset({"updated_at"})
+BOOKKEEPING_INFO = "bookkeeping"
 
 
 def entity_type_of(mapper: Mapper) -> str:
     return mapper.local_table.name
+
+
+def bookkeeping_columns(mapper: Mapper | None) -> frozenset[str]:
+    """Khoá thuộc tính sổ sách của model: `updated_at` + mọi cột có `info={"bookkeeping": True}`.
+
+    Các cột này không tính là thay đổi có nghĩa (không sinh revision/change set), bị bỏ qua khi lịch sử so trạng thái
+    để phát hiện xung đột, và hoàn tác/làm lại/khôi phục không bao giờ ghi chúng.
+    """
+    if mapper is None:
+        return BOOKKEEPING_COLUMNS
+    extra = {a.key for a in mapper.column_attrs if secrets.column_of(a).info.get(BOOKKEEPING_INFO)}
+    return BOOKKEEPING_COLUMNS | extra
 
 
 def read_snapshot(conn: Connection, mapper: Mapper, entity_id: int) -> dict[str, Any] | None:
@@ -53,14 +68,15 @@ def read_snapshot(conn: Connection, mapper: Mapper, entity_id: int) -> dict[str,
     return secrets.snapshot_with(mapper, lambda attr: row[secrets.column_of(attr)])
 
 
-def meaningful(snap: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Phần snapshot có nghĩa khi so sánh: bỏ cột dấu thời gian sổ sách (`BOOKKEEPING_COLUMNS`).
+def meaningful(snap: dict[str, Any] | None, mapper: Mapper | None = None) -> dict[str, Any] | None:
+    """Phần snapshot có nghĩa khi so sánh: bỏ cột sổ sách (`bookkeeping_columns(mapper)`).
 
-    Lần lưu chỉ làm đổi `updated_at` (vd. ghi lại cùng giá trị) không sinh revision/change set.
+    Lần lưu chỉ làm đổi `updated_at` hay cột trạng thái chạy (vd. `health`) không sinh revision/change set.
     """
     if snap is None:
         return None
-    return {k: v for k, v in snap.items() if k not in BOOKKEEPING_COLUMNS}
+    skip = bookkeeping_columns(mapper)
+    return {k: v for k, v in snap.items() if k not in skip}
 
 
 def db_busy() -> AppError:
@@ -218,7 +234,7 @@ class UnitOfWork(AbstractContextManager):
         diffs: list[tuple[EntityKey, dict | None, dict | None]] = []
         for key, rec in self._records.items():
             after = read_snapshot(conn, rec.mapper, rec.entity_id)
-            if meaningful(after) != meaningful(rec.before):
+            if meaningful(after, rec.mapper) != meaningful(rec.before, rec.mapper):
                 diffs.append((key, rec.before, after))
         cs: ChangeSet | None = None
         if diffs:
