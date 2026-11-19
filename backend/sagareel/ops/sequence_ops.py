@@ -132,3 +132,51 @@ def sequence_cost_summary(ctx: OpContext, p: SequenceCostParams) -> dict:
     params=SequenceShotlistParams, viewer=False)
 def sequence_export_shotlist(ctx: OpContext, p: SequenceShotlistParams) -> dict:
     return sequences.export_shotlist(ctx, p.id, p.format)
+
+
+class SequenceEstimateParams(BaseModel):
+    id: int
+    variant: Literal["draft", "animatic", "final"] = Field(default="final", description="Biến thể dựng để ước tính")
+    platform: str | None = Field(default=None, description="Preset nền tảng (ảnh hưởng mã hoá bản cuối)")
+    lang: str | None = Field(default=None, description="Ngôn ngữ thoại/phụ đề; trống = ngôn ngữ chính")
+    generation: bool = Field(default=True, description="Kèm ước tính tạo ảnh/video/âm thanh cho clip còn thiếu")
+    overrides: dict[str, Any] | None = Field(
+        default=None, description="Như clip.regenerate.overrides (connection, video_connection…) cho phần tạo")
+
+
+@op("sequence.estimate", summary="Ước tính cả tập trước khi chạy: tạo ảnh/video/TTS còn thiếu (dry_run) + dựng "
+    "(khối, thời gian, dung lượng) — không tốn tiền, không ghi gì", params=SequenceEstimateParams, read_only=True,
+    idempotent=True, mcp="tool")
+async def sequence_estimate(ctx: OpContext, p: SequenceEstimateParams) -> dict:
+    import anyio
+    from sqlalchemy import select
+
+    from sagareel.core.errors import AppError, payload
+    from sagareel.db.models import Clip
+    from sagareel.render import pipeline
+    from sagareel.services import takes
+
+    await anyio.to_thread.run_sync(sequences.get, ctx, p.id)  # 404 nếu không có tập
+    render = await anyio.to_thread.run_sync(
+        lambda: pipeline.estimate(ctx.services, p.id, p.variant, p.platform, p.lang))
+    out: dict[str, Any] = {"sequence_id": p.id, "render": render, "generation": None}
+    if not p.generation:
+        return out
+
+    def missing() -> list[int]:
+        with ctx.services.db.session() as s:
+            return list(s.scalars(select(Clip.id).where(
+                Clip.sequence_id == p.id, Clip.deleted_at.is_(None),
+                (Clip.video_take_id.is_(None)) | (Clip.image_take_id.is_(None) & (Clip.link != "continue")))))
+
+    ids = await anyio.to_thread.run_sync(missing)
+    if ids:
+        try:
+            gen = await takes.regenerate(ctx, ids=ids, part="all", overrides=p.overrides, dry_run=True)
+            out["generation"] = {"clip_ids": ids, "estimate": gen["estimate"], "skipped": gen["skipped"],
+                                 "warnings": gen["warnings"]}
+        except AppError as e:  # vd. chưa cấu hình kết nối ảnh/video: ước tính dựng vẫn trả về
+            out["generation"] = {"clip_ids": ids, "error": payload(e)}
+    else:
+        out["generation"] = {"clip_ids": [], "estimate": {"jobs": 0, "takes": 0, "parts": {}}}
+    return out

@@ -101,7 +101,7 @@ async def _take_guard(run, part: str) -> AsyncIterator[None]:
         code = getattr(e, "code", None) or type(e).__name__
         with contextlib.suppress(Exception):
             await anyio.to_thread.run_sync(functools.partial(
-                _set_take, run.services, take_id, status="failed", inputs_update={"error_code": code}))
+                _set_take, run.services, take_id, status="failed", error_code=str(code)))
             await anyio.to_thread.run_sync(_mark_failed_clip, run.services, p["clip_id"], part, code)
             await anyio.to_thread.run_sync(_cancel_chain, run.services, p.get("then") or [],
                                            f"Job cha #{run.job_id} thất bại ({code}).")
@@ -131,6 +131,16 @@ def _clip_ctx(services, clip_id: int) -> dict[str, Any]:
                 "motion_preset": c.motion_preset, "image_take_id": c.image_take_id, "input_media_id": c.input_media_id,
                 "prev_video_take_id": prev.video_take_id if prev is not None else None,
                 "project_id": p.id, "aspect": p.aspect, "resolution": p.resolution, "fps": p.fps}
+
+
+async def _prepare(run) -> None:
+    """Việc ngoài compile (Task A): trích khung cuối video clip trước khi `link=continue` để compiler gắn làm ref."""
+    from sagareel.compile import compiler
+
+    try:
+        await compiler.prepare_clip(run.services, run.params["clip_id"])
+    except AppError as e:
+        raise JobFailed(e.code, e.detail or str(e)) from None
 
 
 def _compile(services, clip_id: int, part: str, connection: str | None, assets: list | None) -> dict[str, Any]:
@@ -175,7 +185,7 @@ def _take_media(services, take_id: int) -> tuple[str, int, dict]:
 
 async def _last_frame(run, video_take_id: int) -> int:
     """Media ảnh = khung cuối của take video (cache ở `take.inputs.last_frame_media_id`)."""
-    part, media_id, inputs = await anyio.to_thread.run_sync(_take_media, run.services, video_take_id)
+    _part, media_id, inputs = await anyio.to_thread.run_sync(_take_media, run.services, video_take_id)
     if inputs.get("last_frame_media_id"):
         return int(inputs["last_frame_media_id"])
     src = await anyio.to_thread.run_sync(_media_file, run.services, media_id, "video")
@@ -285,6 +295,7 @@ async def generate_image(run) -> dict:
         started = time.monotonic()
         adapter = await pj._adapter(run, "image")
         ov = dict(p.get("overrides") or {})
+        await _prepare(run)
         compiled = await anyio.to_thread.run_sync(
             _compile, run.services, p["clip_id"], "image", adapter.conn.name, ov.get("assets"))
         prompt = ov["prompt"] if ov.get("prompt") is not None else compiled["text"]
@@ -332,6 +343,7 @@ async def generate_video(run) -> dict:
         if ov.get("prompt") is not None:
             compiled = {"text": ov["prompt"], "refs": [], "warnings": []}
         else:
+            await _prepare(run)
             compiled = await anyio.to_thread.run_sync(_compile, run.services, p["clip_id"], "video", None,
                                                       ov.get("assets"))
         prompt = compiled["text"]
@@ -390,7 +402,8 @@ async def generate_still_motion(run) -> dict:
         preset = clip["motion_preset"] or "slow_zoom_in"
         profile = _profile(clip)
         run.progress(0.0, stage="Đang dựng chuyển động từ ảnh")
-        out = still_motion.make_segment(image, preset, clip["duration_ms"], profile)
+        out = still_motion.make_segment(image, preset, clip["duration_ms"], profile,
+                                        cache_dir=run.services.settings.cache_dir, cancel=run.cancelled)
         if inspect.isawaitable(out):
             out = await out
         path = Path(out)

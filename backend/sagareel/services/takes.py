@@ -12,6 +12,7 @@ video của clip trước nếu clip đó cũng đang được tạo lại — j
 
 from __future__ import annotations
 
+import functools
 import hashlib
 from typing import Any
 
@@ -103,8 +104,11 @@ def compare(ctx: OpContext, take_ids: list[int]) -> dict[str, Any]:
     with ctx.services.db.session() as s:
         rows = [get_take(s, i) for i in ids]
         items = _with_media(s, rows)
-    keys = sorted({k for t in rows for k in (t.inputs or {})})
-    diff = [k for k in keys if len({repr((t.inputs or {}).get(k)) for t in rows}) > 1]
+    def flat(t: Take) -> dict[str, Any]:
+        return {**(t.inputs or {}), "seed": t.seed}  # seed là cột riêng (migration 0005)
+
+    keys = sorted({k for t in rows for k in flat(t)})
+    diff = [k for k in keys if len({repr(flat(t).get(k)) for t in rows}) > 1]
     return {"items": items, "diff_keys": diff}
 
 
@@ -144,26 +148,21 @@ def _norm_reason(reason: str | None) -> str:
 
 
 def verdict(ctx: OpContext, take_id: int, value: str, reason: str | None = None) -> dict[str, Any]:
-    """Đặt phán quyết; lý do lưu ở `take.inputs.verdict_reason`. Sau ≥ 2 take cùng chủ + phần bị `regenerate` với cùng
+    """Đặt phán quyết; lý do lưu ở cột `take.verdict_reason`. Sau ≥ 2 take cùng chủ + phần bị `regenerate` với cùng
     lý do → kèm `suggest_change` (gợi ý đổi cách thay vì tạo lại tiếp, spec §23.9)."""
     if value not in VERDICTS:
         raise ValidationFailed(f"Phán quyết phải là một trong: {', '.join(VERDICTS)}.")
 
     def fn(s, t):
         t.verdict = value
-        inputs = dict(t.inputs or {})
-        if reason is not None:
-            inputs["verdict_reason"] = reason
-        else:
-            inputs.pop("verdict_reason", None)
-        t.inputs = inputs
+        t.verdict_reason = reason or ""
         if value != "regenerate" or not _norm_reason(reason):
             return {"suggest_change": None}
         s.flush()
         same = [x for x in s.scalars(select(Take).where(
             Take.owner_type == t.owner_type, Take.owner_id == t.owner_id, Take.part == t.part,
             Take.verdict == "regenerate"))
-            if _norm_reason((x.inputs or {}).get("verdict_reason")) == _norm_reason(reason)]
+            if _norm_reason(x.verdict_reason) == _norm_reason(reason)]
         if len(same) >= SUGGEST_AFTER:
             return {"suggest_change": {
                 "reason": reason, "count": len(same), "take_ids": sorted(x.id for x in same),
@@ -296,9 +295,6 @@ def _plan(s: Session, rows: list[Clip], part: str, n: int) -> tuple[list[dict], 
                     after = img_idx[i] if img_idx else parent_video
                     steps.append({"clip": c, "part": "video", "type": typ, "variant": i, "after": after})
                     video_steps.setdefault(c.id, []).append(len(steps) - 1)
-        if part in ("audio", "subtitle"):
-            skipped.append({"clip_id": c.id, "part": part, "code": "not_implemented",
-                            "message": "Tạo lại âm thanh/phụ đề thuộc mô-đun âm thanh (audio.generate)."})
     return steps, skipped
 
 
@@ -321,7 +317,9 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
                      parent_take_id: int | None = None) -> dict[str, Any]:
     """Tạo take mới cho các clip (không bao giờ ghi đè take cũ). Trả `{job_ids, take_ids, estimate, skipped}`;
     `dry_run` chỉ trả ước tính."""
-    from sagareel.ops import provider_ops as po  # import muộn: tránh vòng import ops ↔ services
+    from sagareel.ops import (
+        provider_ops as po,  # import muộn: tránh vòng import ops ↔ services
+    )
     from sagareel.providers.base import ImageRequest, VideoRequest
     from sagareel.services.providers import ProviderService
 
@@ -423,10 +421,19 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
 
     await anyio.to_thread.run_sync(check_budget, dry_run)
     warnings = sorted({w for _, w in durations.values() if w})
+    audio_job_ids: list[int] = []
+    if part in ("audio", "subtitle", "all"):
+        # Âm thanh/phụ đề thuộc Task D: đọc lại TTS lời thoại (cache theo giọng); phụ đề dựng lúc render từ lời thoại
+        # + mốc từ của take âm thanh nên `subtitle` = bảo đảm âm thanh thoại mới nhất.
+        audio = await _regenerate_audio(ctx, list(info), part, ov, dry_run, skipped)
+        if audio is not None:
+            estimate["parts"]["audio"] = audio["estimate"]
+            audio_job_ids = list(audio.get("job_ids") or [])
     if dry_run:
         return {"job_ids": [], "take_ids": [], "estimate": estimate, "skipped": skipped, "warnings": warnings}
     if not steps:
-        return {"job_ids": [], "take_ids": [], "estimate": estimate, "skipped": skipped, "warnings": warnings}
+        return {"job_ids": audio_job_ids, "take_ids": [], "estimate": estimate, "skipped": skipped,
+                "warnings": warnings}
 
     common = {k: ov[k] for k in ("prompt", "feedback", "assets", "refs", "model") if ov.get(k) is not None}
     select_new = bool(ov.get("select", True))
@@ -436,13 +443,13 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
             take_rows: list[Take] = []
             for st in steps:
                 ci = info[st["clip_id"]]
-                inputs = {"seed": ci["seed"] + st["variant"], "overrides": common, "requested_part": part,
+                inputs = {"overrides": common, "requested_part": part,
                           "engine": "still_motion" if st["type"] == GEN_STILL else "ai_video" if st["part"] == "video"
                           else ""}
                 if st["type"] == GEN_VIDEO:
                     inputs["duration_s"] = durations[st["clip_id"]][0]
                 t = Take(owner_type="clip", owner_id=st["clip_id"], part=st["part"], status="queued", inputs=inputs,
-                         parent_take_id=parent_take_id)
+                         parent_take_id=parent_take_id, seed=ci["seed"] + st["variant"])
                 s.add(t)
                 take_rows.append(t)
             s.flush()
@@ -485,8 +492,25 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
     res = await anyio.to_thread.run_sync(submit)
     for d in res["jobs"]:
         jobs.notify(ctx.services, d)
-    return {"job_ids": [d["id"] for d in res["jobs"]], "take_ids": res["take_ids"], "estimate": estimate,
-            "skipped": skipped, "warnings": warnings}
+    return {"job_ids": [d["id"] for d in res["jobs"]] + audio_job_ids, "take_ids": res["take_ids"],
+            "estimate": estimate, "skipped": skipped, "warnings": warnings}
+
+
+async def _regenerate_audio(ctx: OpContext, clip_ids: list[int], part: str, ov: dict[str, Any], dry_run: bool,
+                            skipped: list[dict]) -> dict[str, Any] | None:
+    """`audio.generate` (Task D) cho các clip. Với `part=all` lỗi âm thanh (vd. chưa cấu hình TTS) chỉ thành mục
+    `skipped`, không chặn tạo ảnh/video; `part=audio|subtitle` thì lỗi đi thẳng ra ngoài."""
+    from sagareel.services.audio import dialogue
+
+    try:
+        return await anyio.to_thread.run_sync(functools.partial(
+            dialogue.generate, ctx, clip_ids=clip_ids, lang=ov.get("lang"), dry_run=dry_run,
+            force=bool(ov.get("force_audio", part == "audio"))))
+    except AppError as e:
+        if part != "all":
+            raise
+        skipped.extend({"clip_id": cid, "part": "audio", "code": e.code, "message": e.detail} for cid in clip_ids)
+        return None
 
 
 async def regenerate_like(ctx: OpContext, take_id: int, changes: dict[str, Any] | None,

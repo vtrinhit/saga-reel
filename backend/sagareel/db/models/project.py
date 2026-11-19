@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import ForeignKey, Index, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sagareel.db.base import Base, JSONDict, JSONList, Tracked
@@ -16,8 +16,9 @@ def _default_languages() -> list[str]:
 
 class Project(Tracked, Base):
     __tablename__ = "project"
+    __table_args__ = (Index("ux_project_key", "key", unique=True, sqlite_where=text("deleted_at IS NULL")),)
 
-    key: Mapped[str] = mapped_column(unique=True)
+    key: Mapped[str]
     name: Mapped[str]
     description: Mapped[str] = mapped_column(Text, default="")
     genre_key: Mapped[str] = mapped_column(default="series")
@@ -40,7 +41,7 @@ class GroupNode(Tracked, Base):
 
     __tablename__ = "group_node"
     __table_args__ = (
-        UniqueConstraint("project_id", "key"),
+        Index("ux_group_node_key", "project_id", "key", unique=True, sqlite_where=text("deleted_at IS NULL")),
         Index("ix_group_node_project_rank", "project_id", "rank"),
     )
 

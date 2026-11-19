@@ -1,6 +1,7 @@
 """Seed dữ liệu mặc định và kết nối provider từ `.env.local` (lần chạy đầu).
 
-- `seed_defaults(db)` — chạy mỗi lần khởi động, idempotent: chèn `llm_task` / `template` còn thiếu theo `key` (kể cả
+- `seed_defaults(db)` — chạy mỗi lần khởi động, idempotent: chèn `llm_task` / `template` (LLM `*.md` + compiler
+  `*.j2`: `image.synced`, `motion.synced`, `sheet.*`) còn thiếu theo `key` (kể cả
   key thuộc dòng đã xoá mềm thì coi là "đã có" — không hồi sinh, không vướng unique). Template **chưa sửa**
   (`sha256(body) == builtin_hash`) được nâng lên bản cài sẵn mới; template người dùng đã sửa giữ nguyên `body`, chỉ cập
   nhật `builtin_hash` (nên vẫn hiện "đã sửa" so với bản cài sẵn hiện tại). Công việc LLM đã có không bị đổi.
@@ -130,19 +131,19 @@ def _connection_specs(env: dict[str, str]) -> list[dict[str, Any]]:
 
     if need("maivideo", "MAIVIDEO_API_KEY"):
         model = env.get("MAIVIDEO_MODEL", "")
-        specs.append(dict(name="maivideo", kind="image", adapter="maivideo", base_url=env.get("MAIVIDEO_BASE_URL", ""),
-                          api_key=env["MAIVIDEO_API_KEY"], default_model=model, options={"timeout_s": 1800},
-                          concurrency=2))
+        specs.append({"name": "maivideo", "kind": "image", "adapter": "maivideo", "base_url": env.get("MAIVIDEO_BASE_URL", ""),
+                          "api_key": env["MAIVIDEO_API_KEY"], "default_model": model, "options": {"timeout_s": 1800},
+                          "concurrency": 2})
     if need("groktele", "MULTIKIT_URL"):
-        specs.append(dict(name="groktele", kind="video", adapter="multikit", base_url=env["MULTIKIT_URL"],
-                          api_key=env.get("MULTIKIT_API_KEY", ""), default_model="", options={}, concurrency=4))
+        specs.append({"name": "groktele", "kind": "video", "adapter": "multikit", "base_url": env["MULTIKIT_URL"],
+                          "api_key": env.get("MULTIKIT_API_KEY", ""), "default_model": "", "options": {}, "concurrency": 4})
     if need(LLM_CONNECTION, "LLM_BASE_URL", "LLM_MODEL"):
-        specs.append(dict(name=LLM_CONNECTION, kind="llm", adapter="openai_compat", base_url=env["LLM_BASE_URL"],
-                          api_key=env.get("LLM_API_KEY", ""), default_model=env["LLM_MODEL"],
-                          options={"vision": True}, concurrency=4))
+        specs.append({"name": LLM_CONNECTION, "kind": "llm", "adapter": "openai_compat", "base_url": env["LLM_BASE_URL"],
+                          "api_key": env.get("LLM_API_KEY", ""), "default_model": env["LLM_MODEL"],
+                          "options": {"vision": True}, "concurrency": 4})
     # Adapter `edge_tts` không cần khoá/địa chỉ.
-    specs.append(dict(name="edge-tts", kind="tts", adapter="edge_tts", base_url="", api_key="", default_model="",
-                      options={}, concurrency=2))
+    specs.append({"name": "edge-tts", "kind": "tts", "adapter": "edge_tts", "base_url": "", "api_key": "", "default_model": "",
+                      "options": {}, "concurrency": 2})
     return specs
 
 
@@ -263,12 +264,20 @@ def seed_from_env(db: Database, env_file: Path, *, force: bool = False, resolver
 # --- Dữ liệu mặc định -------------------------------------------------------------------------------------------------
 
 
-def _builtin_templates() -> dict[str, str]:
-    out: dict[str, str] = {}
+def _builtin_templates() -> dict[str, tuple[str, str]]:
+    """key → (kind, body): template LLM (`defaults/templates/*.md`, kind `llm`) + template của prompt compiler
+    (`image.synced`, `motion.synced`, `sheet.<kind>` từ `*.j2`, kind `image`/`motion`/`sheet`)."""
+    from sagareel.compile import compiler
+
+    out: dict[str, tuple[str, str]] = {}
     for path in sorted(Path(llm.TEMPLATES_DIR).glob("*.md")):
         body = llm.builtin_template(path.stem)
         if body is not None:
-            out[path.stem] = body
+            out[path.stem] = (llm.TEMPLATE_KIND, body)
+    for key, kind in compiler.TEMPLATE_KINDS.items():
+        body = compiler.builtin_body(key)
+        if body is not None:
+            out[key] = (kind, body)
     return out
 
 
@@ -286,11 +295,11 @@ def seed_defaults(db: Database) -> None:
                 s.add(LlmTask(**t))
 
         rows = {r.key: r for r in s.scalars(select(Template)).all()}
-        for key, body in templates.items():
+        for key, (kind, body) in templates.items():
             new_hash = llm.body_hash(body)
             row = rows.get(key)
             if row is None:
-                s.add(Template(key=key, kind=llm.TEMPLATE_KIND, body=body, locked=False, builtin_hash=new_hash))
+                s.add(Template(key=key, kind=kind, body=body, locked=False, builtin_hash=new_hash))
                 continue
             if row.deleted_at is not None or row.builtin_hash == new_hash:
                 continue

@@ -394,7 +394,9 @@ def test_task_create(client, app_services):
 
 
 def test_template_list_get_update_reset(client, app_services):
-    items = {t["key"]: t for t in ok(client, "template.list")["items"]}
+    all_items = {t["key"]: t for t in ok(client, "template.list")["items"]}
+    assert all_items["image.synced"]["has_builtin"] and all_items["image.synced"]["modified"] is False
+    items = {t["key"]: t for t in ok(client, "template.list", {"kind": "llm"})["items"]}
     assert len(items) == len(llm.default_tasks()) and items["caption"]["modified"] is False and items["caption"]["has_builtin"]
     got = ok(client, "template.get", {"key": "caption"})
     assert "{{ input }}" in got["body"] and got["variables"] == ["input"]

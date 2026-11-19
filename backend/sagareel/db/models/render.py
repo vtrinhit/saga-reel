@@ -27,7 +27,10 @@ class Render(Plain, Base):
 
 class RenderChunk(Plain, Base):
     __tablename__ = "render_chunk"
-    __table_args__ = (Index("ix_render_chunk_seq_variant_index", "sequence_id", "variant", "index"),)
+    __table_args__ = (
+        Index("ix_render_chunk_seq_variant_index", "sequence_id", "variant", "index"),
+        Index("ux_render_chunk_fingerprint", "sequence_id", "variant", "fingerprint", unique=True),
+    )
 
     sequence_id: Mapped[int] = mapped_column(ForeignKey("sequence.id"), index=True)
     variant: Mapped[str]
@@ -35,6 +38,7 @@ class RenderChunk(Plain, Base):
     fingerprint: Mapped[str] = mapped_column(index=True)
     media_id: Mapped[int]
     duration_ms: Mapped[int]
+    meta: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)  # start_ms, số clip/thoại… của khối
 
 
 class ExportPackage(Plain, Base):

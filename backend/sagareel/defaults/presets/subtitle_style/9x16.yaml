@@ -5,7 +5,7 @@ play_res: [1080, 1920]
 font: "Be Vietnam Pro"            # family trong file TTF đóng gói (defaults/fonts), ass=…:fontsdir=…
 font_file: BeVietnamPro-Bold.ttf  # file dùng để đo độ rộng (Bold -1)
 bold: true
-fontsize: 68
+fontsize: 104                     # libass: Fontsize = winAscent+winDescent → em ≈ 0,655·104 ≈ 68 px (nghiên cứu: 68 px)
 outline: 6
 shadow: 2
 border_style: 1                   # 1 = viền + bóng, 3 = hộp (vẽ bằng OutlineColour)

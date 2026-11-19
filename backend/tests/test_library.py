@@ -7,12 +7,11 @@ from datetime import timedelta
 import anyio
 import pytest
 from PIL import Image
-from sqlalchemy import select
-
 from sagareel.core.errors import AppError
 from sagareel.core.ops import REGISTRY
 from sagareel.db.models import Asset, AssetVariant, Clip, Sequence
 from sagareel.services import library, media
+from sqlalchemy import select
 
 
 @pytest.fixture
@@ -221,6 +220,7 @@ def test_clip_preview_prompt_op(client, project):
     assert r.json()["text"] == "chuyển động"
     r = client.post("/api/ops/library.templates", json={})
     keys = {i["key"]: i for i in r.json()["items"]}
-    assert keys["image.synced"]["source"] == "builtin" and not keys["image.synced"]["modified"]
+    # seed khởi động chép bản cài sẵn vào bảng template (giữ sửa của người dùng) → nguồn "db", chưa sửa
+    assert keys["image.synced"]["source"] == "db" and not keys["image.synced"]["modified"]
     with services.db.session() as s:
         assert s.scalars(select(Clip).where(Clip.id == cid)).one().image_prompt == "  nguyên văn  "

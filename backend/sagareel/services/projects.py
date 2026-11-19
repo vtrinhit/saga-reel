@@ -13,7 +13,17 @@ from sqlalchemy.orm import Session
 
 from sagareel.core.context import OpContext
 from sagareel.core.errors import Conflict, ValidationFailed
-from sagareel.db.models import Asset, AssetKind, AssetVariant, Clip, Preset, Project, Sequence, Sound, VoiceProfile
+from sagareel.db.models import (
+    Asset,
+    AssetKind,
+    AssetVariant,
+    Clip,
+    Preset,
+    Project,
+    Sequence,
+    Sound,
+    VoiceProfile,
+)
 from sagareel.services import entities
 
 KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
@@ -29,9 +39,13 @@ def slugify(text: str, fallback: str = "project") -> str:
     return text[:48].strip("-") or fallback
 
 
-def _key_taken(s: Session, key: str) -> bool:
-    # Tính cả project đã xoá mềm (ràng buộc uq trên cả bảng).
-    return s.scalar(select(func.count()).select_from(Project).where(Project.key == key)) > 0
+def _key_taken(s: Session, key: str, *, alive_only: bool = False) -> bool:
+    """Mã tự sinh tránh cả project đã xoá mềm (hoàn tác xoá không đụng mã); mã người dùng đặt chỉ cần khác các project
+    chưa xoá (unique một phần, migration 0005)."""
+    q = select(func.count()).select_from(Project).where(Project.key == key)
+    if alive_only:
+        q = q.where(Project.deleted_at.is_(None))
+    return s.scalar(q) > 0
 
 
 def _free_key(s: Session, base: str) -> str:
@@ -144,7 +158,7 @@ def create(
     u = entities.uow(ctx, f"Tạo dự án {name}", "project.create")
     try:
         with u as s:
-            if key is not None and _key_taken(s, key):
+            if key is not None and _key_taken(s, key, alive_only=True):
                 raise _taken(key)
             p = Project(key=key or _free_key(s, slugify(name)), **values)
             s.add(p)
@@ -202,7 +216,7 @@ def duplicate(ctx: OpContext, project_id: int, name: str, key: str | None = None
     try:
         with u as s:
             src = entities.get(s, "project", project_id)
-            if key is not None and _key_taken(s, key):
+            if key is not None and _key_taken(s, key, alive_only=True):
                 raise _taken(key)
             new = _clone(src, key=key or _free_key(s, slugify(name)), name=name)
             s.add(new)

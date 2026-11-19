@@ -16,7 +16,6 @@ import hashlib
 import json
 import os
 import shutil
-import time
 from pathlib import Path
 from typing import Any
 
@@ -50,8 +49,7 @@ def stem_path(cache_dir: Path, fp: str) -> Path:
 
 def touch(path: Path) -> None:
     with contextlib.suppress(OSError):
-        now = time.time()
-        os.utime(path, (now, now))
+        os.utime(path)  # giờ hiện tại do hệ điều hành đặt (độ phân giải ns, không lùi so với lúc tạo file)
 
 
 def hit(path: Path) -> bool:

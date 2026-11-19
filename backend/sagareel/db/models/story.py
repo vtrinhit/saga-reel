@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import ForeignKey, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sagareel.db.base import Base, JSONDict, Plain, Tracked
@@ -19,7 +19,7 @@ BIBLE_FTS_TABLE = "bible_fts"
 
 class BibleItem(Tracked, Base):
     __tablename__ = "bible_item"
-    __table_args__ = (UniqueConstraint("project_id", "type", "key"),)
+    __table_args__ = (Index("ux_bible_item_key", "project_id", "type", "key", unique=True, sqlite_where=text("deleted_at IS NULL")),)
 
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), index=True)
     type: Mapped[str]  # character/location/relationship/event/storyline/fact/open_question

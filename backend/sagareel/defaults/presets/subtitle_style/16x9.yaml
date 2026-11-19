@@ -2,7 +2,7 @@
 name: "Ngang 16:9 — chữ viền"
 inherit: 9x16
 play_res: [1920, 1080]
-fontsize: 54
+fontsize: 82                      # em ≈ 0,655·82 ≈ 54 px (nghiên cứu: 54 px)
 outline: 4
 shadow: 1
 border_style: 1

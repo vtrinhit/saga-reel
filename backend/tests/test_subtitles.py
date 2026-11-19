@@ -44,14 +44,14 @@ def test_bundled_fonts_are_valid_ttf_with_ofl():
 def test_presets_match_research_defaults():
     assert sub.builtin_keys() == ["16x9", "9x16", "9x16_box"]
     v = sub.load_style("9x16")
-    assert v.play_res == (1080, 1920) and v["fontsize"] == 68 and v["outline"] == 6 and v["shadow"] == 2
+    assert v.play_res == (1080, 1920) and v["fontsize"] == 104 and v["outline"] == 6 and v["shadow"] == 2
     assert (v["margin_l"], v["margin_r"], v["margin_v"], v["border_style"]) == (140, 140, 700, 1)
     assert v["max_words_per_chunk"] == 6 and v["max_lines"] == 2 and v["max_chars_per_second"] == 17
     box = sub.load_style("9x16_box")
     assert (box["border_style"], box["outline"], box["shadow"]) == (3, 14, 0)
     assert box["colours"]["outline"] == "&H66000000" and box["colours"]["primary"] == "&H0000FFFF"
     h = sub.load_style("16x9")
-    assert h.play_res == (1920, 1080) and h["fontsize"] == 54 and (h["margin_l"], h["margin_v"]) == (192, 70)
+    assert h.play_res == (1920, 1080) and h["fontsize"] == 82 and (h["margin_l"], h["margin_v"]) == (192, 70)
     assert sub.load_style("9x16", mode="karaoke_fill").karaoke
     assert sub.load_style("9x16", mode="word_pop").per_word_events
     with pytest.raises(ValueError):
@@ -74,10 +74,12 @@ def test_task_e_call_shape():
 
 def test_measure_follows_libass_scaling():
     st = sub.load_style("9x16")
-    pillow = ImageFont.truetype(str(st.font_path), 68).getlength(TEST_TEXT)
+    pillow = ImageFont.truetype(str(st.font_path), st["fontsize"]).getlength(TEST_TEXT)
     w = sub.text_width(TEST_TEXT, st)
     # libass: Fontsize = winAscent+winDescent (1526/1000 em với Be Vietnam Pro) → hẹp hơn Pillow ~0,655×.
     assert 0.62 * pillow < w < 0.69 * pillow
+    # Fontsize 104 ≈ chữ 68 px (em) của nghiên cứu.
+    assert w == pytest.approx(ImageFont.truetype(str(st.font_path), 68).getlength(TEST_TEXT), rel=0.03)
     nfd = unicodedata.normalize("NFD", TEST_TEXT)
     assert sub.text_width(nfd, st) == pytest.approx(w)
 
@@ -110,7 +112,7 @@ def test_chunks_at_most_six_words_and_two_lines():
 
 def test_wraps_by_real_width_two_lines():
     st = sub.load_style("9x16", overrides={"max_words_per_chunk": 6})
-    words = ["Thương", "thương", "nghiêng", "nghiêng", "chuyện", "chuyện"]
+    words = ["Thương", "thương", "nghiêng", "chuyện"]  # chữ 68 px: rộng hơn một dòng, vừa hai dòng
     lines = sub.split_lines(words, st, sub.max_text_width(st))
     assert lines is not None and len(lines) == 2
     short = sub.split_lines(["Chào", "bà"], st, sub.max_text_width(st))
@@ -120,7 +122,7 @@ def test_wraps_by_real_width_two_lines():
 def test_break_prefers_punctuation_and_keeps_number_with_unit():
     st = sub.load_style("9x16")
     words = ["Chờ", "thêm", "15", "phút,", "rồi", "mình", "đi"]
-    lines = sub.split_lines(words, st, 420)
+    lines = sub.split_lines(words, st, sub.max_text_width(st))
     assert lines is not None
     flat = [[words[i] for i in ln] for ln in lines]
     for ln in flat[:-1]:
@@ -133,8 +135,9 @@ def test_min_duration_and_reading_speed():
     st = sub.load_style("9x16")
     cues = sub.build_cues([line("Đi", start=1000, dur=200)], st)
     assert cues[0].end_ms - cues[0].start_ms >= 1000
-    text = "Nghiêng nghiêng chuyện chuyện thương thương"
+    text = "Thương thương nghiêng chuyện"
     cues = sub.build_cues([line(text, start=0, dur=900)], st)
+    assert len(cues) == 1
     for c in cues:
         chars = len(c.text.replace("\n", " "))
         assert chars / ((c.end_ms - c.start_ms) / 1000) <= 17 + 1e-6
@@ -165,7 +168,7 @@ def test_ass_header_and_style_line():
         assert needle in ass
     style = next(x for x in ass.splitlines() if x.startswith("Style: "))
     f = style.split(",")
-    assert f[1] == "Be Vietnam Pro" and f[2] == "68" and f[7] == "-1"
+    assert f[1] == "Be Vietnam Pro" and f[2] == "104" and f[7] == "-1"
     assert f[3] == "&H00FFFFFF"  # outline: chữ trắng (không phải vàng karaoke)
     assert f[15:22] == ["1", "6", "2", "2", "140", "140", "700"]
     k = sub.to_ass([], sub.load_style("9x16", mode="karaoke_fill")).splitlines()
@@ -274,8 +277,9 @@ def _bands(rows: list[int]) -> list[tuple[int, int]]:
 @needs_ffmpeg
 def test_burn_vietnamese_diacritics_with_bundled_font(tmp_path):
     st = sub.load_style("9x16", overrides={"max_words_per_chunk": 8})
-    cues = sub.build_cues([line(TEST_TEXT, start=0, dur=900)], st)
-    assert len(cues) == 1
+    text = "ẶNG ỖI Ấ ỮA Hằng"  # một dòng ở cỡ chữ preset
+    cues = sub.build_cues([line(text, start=0, dur=900)], st)
+    assert len(cues) == 1 and len(cues[0].lines) == 1
     img, log = _burn(tmp_path, sub.to_ass(cues, st))
     assert re.search(r"fontselect: \(Be Vietnam Pro, 700, 0\) -> BeVietnamPro-Bold", log), log[-2000:]
     rows = _ink_rows(img, 0, 1920)
@@ -285,7 +289,7 @@ def test_burn_vietnamese_diacritics_with_bundled_font(tmp_path):
     xs = [x for y in rows for x in range(img.width) if px[x, y] > 200]
     assert min(xs) >= 140 - 8 and max(xs) <= 940 + 8
     # Độ rộng mực đo được khớp phép đo (sai số viền/bearing)
-    measured = sub.text_width(TEST_TEXT, st)
+    measured = sub.text_width(text, st)
     assert abs((max(xs) - min(xs)) - measured) < 0.06 * measured
     # Dấu chồng trên chữ hoa (Ặ, Ỗ, Ấ, Ữ) không bị cắt: mực bắt đầu cao hơn đỉnh chữ hoa thường (≈ 0,7 cỡ chữ)
     band = _bands(rows)
@@ -296,7 +300,7 @@ def test_burn_vietnamese_diacritics_with_bundled_font(tmp_path):
 @needs_ffmpeg
 def test_burn_two_lines_inside_safe_area(tmp_path):
     st = sub.load_style("9x16")
-    text = "Thương thương nghiêng nghiêng chuyện chuyện"
+    text = "Thương thương nghiêng chuyện"
     cues = sub.build_cues([line(text, start=0, dur=900)], st)
     assert len(cues) == 1 and len(cues[0].lines) == 2
     img, _ = _burn(tmp_path, sub.to_ass(cues, st))
@@ -325,3 +329,30 @@ def test_subtitle_preview_op(owner_ctx):
     assert len(out["cues"]) >= 2 and r"\k" in out["ass"] and out["srt"].startswith("1\n")
     assert out["safe_zone_violations"][0]["edge"] == "bottom"
     assert ",750,," in out["ass"]  # lề cụm đã nâng theo vùng an toàn
+
+
+def test_burned_text_matches_research_size(tmp_path):
+    """Dựng một khung bằng libass thật: chữ hoa "HHHH" ở preset 9x16 cao/rộng ≈ Pillow ở 68 px (±6 %), và độ rộng
+    đo bằng `text_width` khớp độ rộng libass vẽ."""
+    import subprocess
+
+    from PIL import Image
+
+    st = sub.load_style("9x16", overrides={"outline": 0, "shadow": 0, "alignment": 5})
+    cues = sub.build_cues([{"text": "HHHH", "start_ms": 0, "duration_ms": 2000}], st)
+    ass = tmp_path / "t.ass"
+    ass.write_text(sub.to_ass(cues, st), encoding="utf-8")
+    out = tmp_path / "f.png"
+    subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                    "color=c=black:s=1080x1920:d=2", "-ss", "1", "-vf", sub.ass_filter(ass, sub.fonts_dir()),
+                    "-frames:v", "1", str(out)], check=True, capture_output=True, stdin=subprocess.DEVNULL)
+    box = Image.open(out).convert("L").point(lambda v: 255 if v > 128 else 0).getbbox()
+    assert box is not None
+    h, w = box[3] - box[1], box[2] - box[0]
+    ref = Image.new("L", (1200, 300))
+    from PIL import ImageDraw
+
+    ImageDraw.Draw(ref).text((10, 10), "HHHH", font=ImageFont.truetype(str(st.font_path), 68), fill=255)
+    rb = ref.getbbox()
+    assert h == pytest.approx(rb[3] - rb[1], rel=0.06) and w == pytest.approx(rb[2] - rb[0], rel=0.06)
+    assert w == pytest.approx(sub.text_width("HHHH", st), rel=0.06)
