@@ -1004,7 +1004,8 @@ async def test_job_retry_never_wipes_submitting_marker(svc, op_ctx):
     # đường duy nhất: clear_attention(resubmit) — kể cả job đã dừng còn mang dấu
     cancelled = insert_job(svc, "test.sleep", status="cancelled", external_state=marker, attempt=2)
     out = await ops.invoke("job.clear_attention", {"id": cancelled, "action": "resubmit"}, op_ctx)
-    assert out["status"] == "queued" and out["external_state"] == {"gen": 1} and out["attempt"] == 0
+    # chỉ mang dấu: giữ thế hệ (gen 0 = {}) → cùng clientRef, provider tự chống trùng nếu đã tạo job
+    assert out["status"] == "queued" and out["external_state"] == {} and out["attempt"] == 0
     # job đã dừng không mang dấu thì clear_attention vẫn từ chối
     plain = insert_job(svc, "test.sleep", status="failed")
     with pytest.raises(AppError):
@@ -1075,23 +1076,32 @@ async def test_clear_attention_of_job_held_by_state_detaches_spend(svc, op_ctx, 
 
 
 async def test_generation_is_monotonic_across_resets(svc, op_ctx):
-    """`gen` chỉ tăng (force_new, clear_attention resubmit) và không bao giờ mất khi đặt lại."""
+    """`gen` chỉ tăng và không bao giờ mất khi đặt lại: `force_new` luôn tăng; `clear_attention(resubmit)` chỉ tăng
+    khi provider giữ job — job chỉ mang dấu `submitting` giữ nguyên `gen` (cùng clientRef → provider tự chống trùng nếu
+    thật ra đã tạo job)."""
     a = insert_job(svc, "test.sleep", status="failed", external_id="p-1", external_state={"state": "submitted"})
     for expected in (1, 2):
         out = (await ops.invoke("job.retry", {"ids": [a], "force_new": True}, op_ctx))["items"][0]
         assert out["external_state"] == {"gen": expected}
         with svc.db.session() as s:
             s.get(Job, a).status = "failed"
-    with svc.db.session() as s:
-        j = s.get(Job, a)
-        j.status, j.external_state = "needs_attention", {"gen": 2, "state": "submitting"}
-    out = await ops.invoke("job.clear_attention", {"id": a, "action": "resubmit"}, op_ctx)
+    out = (await ops.invoke("job.retry", {"ids": [a], "force_new": True}, op_ctx))["items"][0]  # không giữ job
     assert out["external_state"] == {"gen": 3}
     with svc.db.session() as s:
         j = s.get(Job, a)
         j.status, j.external_state = "needs_attention", {"gen": 3, "state": "submitting"}
+    out = await ops.invoke("job.clear_attention", {"id": a, "action": "resubmit"}, op_ctx)
+    assert out["external_state"] == {"gen": 3}  # chỉ mang dấu: giữ thế hệ
+    with svc.db.session() as s:
+        j = s.get(Job, a)
+        j.status, j.external_id, j.external_state = "needs_attention", "p-7", {"gen": 3, "state": "submitted"}
+    out = await ops.invoke("job.clear_attention", {"id": a, "action": "resubmit"}, op_ctx)
+    assert out["external_state"] == {"gen": 4}  # provider giữ job (vd. remote_cancelled): thế hệ mới
+    with svc.db.session() as s:
+        j = s.get(Job, a)
+        j.status, j.external_id, j.external_state = "needs_attention", "p-8", {"gen": 4, "state": "submitted"}
     out = await ops.invoke("job.clear_attention", {"id": a, "action": "fail"}, op_ctx)
-    assert out["external_state"] == {"gen": 3}
+    assert out["external_state"] == {"gen": 4}
 
 
 async def test_job_retry_params_patch_on_accepted_job_requires_force_new(svc, op_ctx):
@@ -1162,8 +1172,8 @@ async def test_job_clear_attention(svc, op_ctx):
     await ops.invoke("job.clear_attention", {"id": a, "action": "resubmit"}, op_ctx)
     await ops.invoke("job.clear_attention", {"id": b, "action": "fail"}, op_ctx)
     ja, jb = load(svc, a), load(svc, b)
-    # resubmit: lần gửi mới → thế hệ mới (clientRef mới, provider không gộp về job cũ)
-    assert ja.status == "queued" and ja.external_state == {"gen": 1} and ja.external_id is None and ja.error_code is None
+    # resubmit job chỉ mang dấu: giữ thế hệ (cùng clientRef → provider tự chống trùng)
+    assert ja.status == "queued" and ja.external_state == {} and ja.external_id is None and ja.error_code is None
     assert jb.status == "failed" and jb.external_state == {} and jb.finished_at is not None
     with pytest.raises(AppError) as ei:
         await ops.invoke("job.clear_attention", {"id": a, "action": "fail"}, op_ctx)

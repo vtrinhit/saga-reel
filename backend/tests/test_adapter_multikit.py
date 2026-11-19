@@ -390,6 +390,8 @@ async def test_202_without_job_id_is_job_unknown(adapter, run_ctx, req):
         await adapter.generate(req, run_ctx)
     assert ei.value.code == "multikit_job_unknown"
     assert run_ctx.external["state"] == "submitting"
+    # Gợi ý đúng thực tế: resubmit job chỉ mang dấu giữ thế hệ → cùng clientRef, GrokTele không tạo trùng
+    assert "job.clear_attention" in ei.value.hint and "resubmit" in ei.value.hint and "clientRef" in ei.value.hint
 
 
 # --- Nối lại ------------------------------------------------------------------------------------------------------

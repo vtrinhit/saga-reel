@@ -355,7 +355,9 @@ class MultiKitVideoAdapter(VideoAdapter):
             if not job_id:
                 raise JobUnknown(
                     "GrokTele nhận yêu cầu nhưng không trả jobId — không rõ job đã được tạo chưa.",
-                    hint="Mở GrokTele xem danh sách job; gửi lại sẽ dùng cùng clientRef nên không tạo trùng.",
+                    hint="Mở GrokTele xem danh sách job rồi dùng job.clear_attention: action=resubmit gửi lại với "
+                         "cùng clientRef (nếu GrokTele đã tạo job thì chỉ nhận lại job đó, không tạo trùng), "
+                         "action=fail để bỏ.",
                     code=JOB_UNKNOWN_CODE,
                 )
             deduped = bool(data.get("deduplicated"))

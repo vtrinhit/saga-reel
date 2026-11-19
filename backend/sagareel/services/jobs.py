@@ -494,9 +494,12 @@ def clear_attention(
     if not (marker_only and action == "resubmit"):
         _budget().detach(session, job.id)
     gen = generation(job.external_state)
+    # resubmit job provider đang giữ (vd. bị huỷ phía provider) = lần gửi mới → thế hệ mới (clientRef mới, provider không
+    # gộp về job cũ). Job chỉ mang dấu `submitting`: giữ thế hệ → cùng clientRef, nếu provider thật ra đã tạo job thì nó
+    # tự chống trùng. `fail` giữ thế hệ.
+    bump = action == "resubmit" and provider_holds_job(job)
     job.external_id = None
-    # resubmit = lần gửi mới → thế hệ mới (adapter dựng clientRef mới, provider không gộp về job cũ); fail giữ thế hệ.
-    job.external_state = _gen_state(gen + 1 if action == "resubmit" else gen)
+    job.external_state = _gen_state(gen + 1 if bump else gen)
     if action == "resubmit":
         _reset_for_run(job)
         job.attempt = 0
