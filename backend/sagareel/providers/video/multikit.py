@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import re
 import shutil
 import time
@@ -47,7 +48,7 @@ from sagareel.providers.base import (
     VideoResult,
 )
 from sagareel.providers.registry import register_adapter
-from sagareel.services.jobs import TransientError
+from sagareel.services.jobs import NeedsAttention, TransientError
 
 if TYPE_CHECKING:
     from sagareel.services.worker import JobRun
@@ -80,6 +81,7 @@ _ERROR_HINTS = {
 }
 
 _PHONE_RE = re.compile(r"\+?\d[\d .\-]{5,}\d")
+_USERNAME_RE = re.compile(r"@[A-Za-z0-9_]{3,}")
 
 
 def _short(text: Any, limit: int = 300) -> str:
@@ -87,9 +89,10 @@ def _short(text: Any, limit: int = 300) -> str:
     return s if len(s) <= limit else s[: limit - 1] + "…"
 
 
-def _scrub(text: Any) -> str:
-    """Che chuỗi giống số điện thoại (tên/lý do tài khoản do người dùng đặt có thể chứa số)."""
-    return _PHONE_RE.sub("•••", _short(text, 120))
+def _scrub(text: Any, limit: int = 120) -> str:
+    """Che chuỗi giống số điện thoại và @username Telegram (tên/lý do tài khoản, thông báo lỗi của GrokTele có thể
+    chứa chúng) — dùng cho mọi chữ từ GrokTele đi vào health, lỗi job, meta."""
+    return _USERNAME_RE.sub("@•••", _PHONE_RE.sub("•••", _short(text, limit)))
 
 
 def _kind(raw: Any, default: str) -> str:
@@ -205,10 +208,13 @@ class MultiKitVideoAdapter(VideoAdapter):
 
     # --- Tạo video --------------------------------------------------------------------------------------------------
 
-    def _check_request(self, req: VideoRequest) -> None:
+    def _check_configured(self) -> None:
         if not self.conn.base_url:
             raise ProviderUnavailable("Chưa nhập địa chỉ GrokTele/MultiKit.",
                                       hint="Nhập địa chỉ trong Cài đặt → Provider.")
+
+    def _check_request(self, req: VideoRequest) -> None:
+        """Kiểm tra trước mỗi lần gửi (không cần khi chỉ poll job đã được nhận — ảnh đầu vào có thể đã bị xoá)."""
         caps = self.capabilities()
         if req.duration_s not in caps["durations"]:
             raise CapabilityError(f"Thời lượng {req.duration_s} s không được hỗ trợ.",
@@ -250,52 +256,55 @@ class MultiKitVideoAdapter(VideoAdapter):
         }
 
     async def generate(self, req: VideoRequest, run: JobRun | None = None) -> VideoResult:
-        self._check_request(req)
+        self._check_configured()
         out = Path(req.out_path).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
 
-        resumed = run is not None and bool(run.external_id)
+        external = dict(run.external) if run is not None else {}
+        fresh = not external  # chưa có trạng thái provider nào: lần gửi đầu (hoặc sau job.retry / clear_attention)
+        ref = str(external.get("client_ref") or self._base_ref(run))
+        # Chỉ poll thẳng khi job đã được nhận (`external_id`) và lần gửi gần nhất không dang dở/bị từ chối. Dấu
+        # `submitting` còn đó (vd. POST với ref mới hết giờ) hoặc dấu đã xoá (`state` = None: GrokTele chắc chắn không
+        # nhận lần gửi gần nhất) → `external_id` có thể là job CŨ: gửi lại bằng `client_ref` đã lưu (GrokTele chống
+        # trùng theo clientRef) rồi lưu jobId mới.
+        pending = "state" in external and external["state"] in ("submitting", None)
+        resumed = run is not None and bool(run.external_id) and not pending
         if resumed:
             job_id = str(run.external_id)
-            ref = str(run.external.get("client_ref") or self._base_ref(run))
             deduped = False
             _log(run, "info", f"GrokTele: nối lại job {job_id}.")
         else:
-            ref = str((run.external.get("client_ref") if run is not None else None) or self._base_ref(run))
             job_id, deduped = await self._submit(req, ref, run)
 
-        # Mỗi trường hợp gửi lại tối đa một lần (đều ghi dấu bền trước khi POST như lần đầu):
-        # - nối lại mà job cũ đã bị huỷ phía GrokTele khi app vắng mặt (tắt app gửi DELETE, hoặc GrokTele tự huỷ job
-        #   5 phút không ai hỏi) → gửi lại cùng clientRef: GrokTele bỏ qua job đã huỷ khi chống trùng → job mới;
-        # - clientRef trả lại job cũ đã xong mà file không còn (vd. chạy lại job sau khi file đã vào kho media) →
-        #   gửi lại bằng ref mới.
-        resent_cancelled = resent_missing = False
         async with self.client() as c:
-            while True:
-                try:
-                    job = await self._wait(c, job_id, run)
-                except _RemoteCancelled:
-                    if not resumed or resent_cancelled:
-                        raise
-                    resent_cancelled = True
-                    _log(run, "warning", f"GrokTele: job {job_id} đã bị huỷ khi ứng dụng vắng mặt — gửi lại.")
-                    job_id, deduped = await self._submit(req, ref, run)
-                    continue
+            try:
+                job = await self._wait(c, job_id, run)
+            except _RemoteCancelled as e:
+                if not resumed:
+                    raise
+                # Bị huỷ phía GrokTele khi SagaReel không chạy → người dùng quyết định, không tự gửi lại (tốn lượt).
+                raise NeedsAttention(
+                    "remote_cancelled",
+                    f"Job GrokTele {job_id} đã bị huỷ phía GrokTele trong lúc SagaReel không chạy ({e.msg}).",
+                    hint="Job bị huỷ phía GrokTele; dùng job.clear_attention (gửi lại) để tạo job mới, "
+                         "hoặc cho thất bại.",
+                ) from None
+            produced = Path(str((job.get("result") or {}).get("filePath") or out))
+            if not produced.exists() and deduped and fresh:
+                # Lần gửi đầu mà clientRef trả lại một job cũ đã xong nhưng file không còn (vd. chạy lại job sau khi
+                # file đã vào kho media) → gửi lại MỘT lần bằng ref mới (ghi bền trước khi POST như lần đầu).
+                _log(run, "warning", f"GrokTele: job cũ {job_id} báo xong nhưng file không còn — gửi job mới.")
+                ref = f"{self._base_ref(run)}:{uuid.uuid4().hex[:8]}"
+                job_id, deduped = await self._submit(req, ref, run)
+                job = await self._wait(c, job_id, run)
                 produced = Path(str((job.get("result") or {}).get("filePath") or out))
-                if _valid_video(produced):
-                    if produced.resolve() != out:
-                        # File nằm ngoài chỗ ta yêu cầu (vd. job cũ trùng clientRef): chép về `out_path` — người gọi
-                        # sẽ chuyển file vào kho media, không được chuyển file của nơi khác đi.
-                        await anyio.to_thread.run_sync(shutil.copyfile, produced, out)
-                        produced = out
-                    return await self._result(produced, job, job_id=job_id, ref=ref, deduped=deduped, req=req)
-                if deduped and not resent_missing:
-                    resent_missing = True
-                    _log(run, "warning", f"GrokTele: job cũ {job_id} báo xong nhưng file không còn — gửi job mới.")
-                    ref = f"{self._base_ref(run)}:{uuid.uuid4().hex[:8]}"
-                    job_id, deduped = await self._submit(req, ref, run)
-                    continue
-                break
+            if _valid_video(produced):
+                if not (out.exists() and os.path.samefile(produced, out)):
+                    # File nằm ngoài chỗ ta yêu cầu (vd. job cũ trùng clientRef): chép về `out_path` — người gọi
+                    # sẽ chuyển file vào kho media, không được chuyển file của nơi khác đi.
+                    await anyio.to_thread.run_sync(shutil.copyfile, produced, out)
+                    produced = out
+                return await self._result(produced, job, job_id=job_id, ref=ref, deduped=deduped, req=req)
         raise ProviderJobError(
             "missing_file",
             f"GrokTele báo xong job {job_id} nhưng không có file video hợp lệ (cần tồn tại và > 5 KB) tại {produced}.",
@@ -314,6 +323,7 @@ class MultiKitVideoAdapter(VideoAdapter):
 
     async def _submit(self, req: VideoRequest, ref: str, run: JobRun | None) -> tuple[str, bool]:
         """POST /grok/jobs với dấu `submitting` bền trước khi gửi; trả (jobId, deduplicated)."""
+        self._check_request(req)
         payload = self._payload(req, ref)
         if run is not None:
             await run.save_external(None, state="submitting", client_ref=ref)
@@ -358,7 +368,7 @@ class MultiKitVideoAdapter(VideoAdapter):
         err = _error_body(resp)
         details = err.get("details") if isinstance(err.get("details"), dict) else {}
         reason = str(details.get("reason") or err.get("code") or "")
-        message = _short(err.get("message"))
+        message = _scrub(err.get("message"), 300)
         if status in (401, 403):
             raise ProviderUnavailable(f"GrokTele/MultiKit từ chối khoá API (HTTP {status}).", hint=KEY_HINT)
         if status == 409 and reason == "no_account_available":
@@ -445,7 +455,7 @@ class MultiKitVideoAdapter(VideoAdapter):
         err = job.get("error") if isinstance(job.get("error"), dict) else {}
         status = str(job.get("status") or "failed")
         kind = _kind(err.get("kind") or err.get("code"), "cancelled" if status.startswith("cancel") else "failed")
-        message = _short(err.get("message")) or f"trạng thái {status}"
+        message = _scrub(err.get("message"), 300) or f"trạng thái {status}"
         cls = _RemoteCancelled if status.startswith("cancel") else ProviderJobError
         return cls(
             kind, f"Job GrokTele {job_id} thất bại [{kind}]: {message}",
@@ -459,12 +469,16 @@ class MultiKitVideoAdapter(VideoAdapter):
         except FFmpegError as e:
             raise ProviderJobError("invalid_file", f"File video GrokTele trả về không đọc được: {path.name}.",
                                    hint="Chạy lại job để tạo lại video.") from e
+        try:
+            aspect_sent = self._aspect_sent(req.aspect)
+        except CapabilityError:  # chỉ để ghi meta; job đã xong
+            aspect_sent = None
         return VideoResult(path=path, meta={
             "adapter": self.adapter_id,
             "job_id": job_id,
             "client_ref": ref,
             "deduplicated": deduped,
-            "account": job.get("accountLabel"),
+            "account": _scrub(job["accountLabel"]) if job.get("accountLabel") else None,
             "duration_ms": info.duration_ms,
             "duration_s": round(info.duration_ms / 1000, 3),
             "size": info.size,
@@ -474,7 +488,7 @@ class MultiKitVideoAdapter(VideoAdapter):
             "vcodec": info.vcodec,
             "acodec": info.acodec,
             "has_audio": info.has_audio,
-            "aspect_sent": self._aspect_sent(req.aspect),
+            "aspect_sent": aspect_sent,
             "requested": {"duration_s": req.duration_s, "resolution": req.resolution, "aspect": req.aspect},
         })
 

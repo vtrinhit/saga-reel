@@ -21,7 +21,7 @@ from sagareel.providers.base import (
     ProviderUnavailable,
     VideoRequest,
 )
-from sagareel.services.jobs import TransientError
+from sagareel.services.jobs import NeedsAttention, TransientError
 
 BASE = "http://gt.test"
 KEY = "gt-secret-key-9876"
@@ -74,7 +74,8 @@ def sample_mp4(tmp_path_factory) -> Path:
         ["-f", "lavfi", "-i", "color=red:size=64x64", "-frames:v", "1", str(cover)],
         ["-f", "lavfi", "-i", "testsrc=size=320x240:rate=24",
          "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-i", str(cover),
-         "-map", "0:v", "-map", "1:a", "-map", "2:v", "-t", "1", "-c:v:0", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-c:v:1", "mjpeg",
+         "-map", "0:v", "-map", "1:a", "-map", "2:v", "-t", "1", "-c:v:0", "libx264", "-preset", "ultrafast",
+         "-pix_fmt", "yuv420p", "-c:a", "aac", "-c:v:1", "mjpeg",
          "-disposition:v:1", "attached_pic", str(out)],
     ):
         subprocess.run([ff, "-v", "error", "-y", *args], check=True, stdin=subprocess.DEVNULL, capture_output=True)
@@ -424,20 +425,20 @@ async def test_resume_with_external_id_polls_without_post(adapter, run_ctx, req,
 
 
 @respx.mock
-async def test_resume_finds_job_cancelled_while_away_resubmits_same_ref(adapter, run_ctx, req, sample_mp4):
-    """Tắt app (handler bị huỷ → DELETE) hoặc vắng > 5 phút (GrokTele tự huỷ job không ai hỏi): khi nối lại thấy
-    `cancelled` mà người dùng không huỷ → gửi lại một lần cùng clientRef (GrokTele bỏ qua job đã huỷ khi chống
-    trùng)."""
+async def test_resume_finds_job_cancelled_while_away_needs_attention(adapter, run_ctx, req):
+    """Job bị huỷ phía GrokTele khi SagaReel không chạy (tắt app gửi DELETE, hoặc GrokTele tự huỷ job 5 phút không ai
+    hỏi): không tự gửi lại (tốn lượt) → needs_attention `remote_cancelled`, người dùng quyết định."""
     run_ctx.external_id = "job_9"
     run_ctx.external = {"state": "submitted", "client_ref": "proj7:scene03"}
     respx.get(f"{BASE}/grok/jobs/job_9").mock(return_value=httpx.Response(200, json={
         "jobId": "job_9", "status": "cancelled", "error": {"kind": "cancelled", "message": "Đã huỷ"}}))
     post = respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted("job_10"))
-    respx.get(f"{BASE}/grok/jobs/job_10").mock(side_effect=succeeded_copying(sample_mp4, post, "job_10"))
-    result = await adapter.generate(req, run_ctx)
-    assert body_of(post.calls.last)["clientRef"] == "proj7:scene03"
-    assert run_ctx.external_id == "job_10"
-    assert result.path.is_file()
+    with pytest.raises(NeedsAttention) as ei:
+        await adapter.generate(req, run_ctx)
+    assert ei.value.code == "remote_cancelled"
+    assert "job.clear_attention" in ei.value.hint
+    assert not post.called
+    assert run_ctx.external_id == "job_9"
 
 
 @respx.mock
@@ -620,3 +621,132 @@ async def test_generate_without_run(adapter, req, sample_mp4):
     result = await adapter.generate(req, None)
     assert body_of(post.calls.last)["clientRef"].startswith("sagareel:")
     assert result.meta["has_audio"] is True
+
+
+# --- Fix round 1 --------------------------------------------------------------------------------------------------
+
+
+def old_job_done_without_file(req, job_id: str = "job_old") -> httpx.Response:
+    return httpx.Response(200, json={"jobId": job_id, "status": "succeeded", "progress": 1,
+                                     "result": {"filePath": str(req.out_path.resolve())}})
+
+
+@respx.mock
+async def test_new_ref_post_timeout_then_next_attempt_reposts_stored_new_ref(adapter, run_ctx, req, sample_mp4):
+    """POST với ref mới hết giờ: `external_id` vẫn là job CŨ nhưng dấu `submitting` còn → lần sau POST lại đúng ref
+    mới (GrokTele chống trùng) và poll job mới, không poll job cũ."""
+    post = respx.post(f"{BASE}/grok/jobs")
+    post.side_effect = [accepted("job_old", dedup=True), httpx.ReadTimeout("mất kết nối"),
+                        accepted("job_new", dedup=True)]
+    old = respx.get(f"{BASE}/grok/jobs/job_old").mock(return_value=old_job_done_without_file(req))
+    respx.get(f"{BASE}/grok/jobs/job_new").mock(side_effect=succeeded_copying(sample_mp4, post, "job_new"))
+    with pytest.raises(TransientError):
+        await adapter.generate(req, run_ctx)
+    new_ref = run_ctx.external["client_ref"]
+    assert new_ref.startswith("proj7:scene03:") and run_ctx.external["state"] == "submitting"
+    assert run_ctx.external_id == "job_old"
+
+    result = await adapter.generate(req, run_ctx)
+    refs = [body_of(c)["clientRef"] for c in post.calls]
+    assert refs == ["proj7:scene03", new_ref, new_ref]
+    assert old.call_count == 1
+    assert run_ctx.external_id == "job_new" and result.path.is_file()
+
+
+@respx.mock
+async def test_new_ref_post_rejected_then_next_attempt_resubmits_stored_ref(adapter, run_ctx, req, sample_mp4):
+    """POST ref mới bị cổng trả 502 (dấu đã xoá, `external_id` vẫn là job cũ) → lần sau gửi lại ref đã lưu."""
+    post = respx.post(f"{BASE}/grok/jobs")
+    post.side_effect = [accepted("job_old", dedup=True), httpx.Response(502), accepted("job_new")]
+    old = respx.get(f"{BASE}/grok/jobs/job_old").mock(return_value=old_job_done_without_file(req))
+    respx.get(f"{BASE}/grok/jobs/job_new").mock(side_effect=succeeded_copying(sample_mp4, post, "job_new"))
+    with pytest.raises(TransientError):
+        await adapter.generate(req, run_ctx)
+    assert run_ctx.external["state"] is None and run_ctx.external_id == "job_old"
+    new_ref = run_ctx.external["client_ref"]
+
+    await adapter.generate(req, run_ctx)
+    assert body_of(post.calls.last)["clientRef"] == new_ref
+    assert old.call_count == 1 and run_ctx.external_id == "job_new"
+
+
+@respx.mock
+async def test_dedup_to_own_job_after_timeout_without_file_is_missing_file(adapter, run_ctx, req):
+    """Dedup về chính job của lần chạy này (POST trước hết giờ) mà không có file → missing_file, không POST ref mới."""
+    post = respx.post(f"{BASE}/grok/jobs")
+    post.side_effect = [httpx.ReadTimeout("mất kết nối"), accepted("job_1", dedup=True)]
+    respx.get(f"{BASE}/grok/jobs/job_1").mock(return_value=old_job_done_without_file(req, "job_1"))
+    with pytest.raises(TransientError):
+        await adapter.generate(req, run_ctx)
+    with pytest.raises(ProviderJobError) as ei:
+        await adapter.generate(req, run_ctx)
+    assert ei.value.code == "provider_missing_file"
+    assert post.call_count == 2
+
+
+@respx.mock
+async def test_fresh_dedup_with_tiny_existing_file_is_missing_file(adapter, run_ctx, req):
+    """File có mà < 5 KB không phải "file đã bị chuyển đi" → không tự gửi lần POST tốn lượt thứ hai."""
+    req.out_path.parent.mkdir(parents=True)
+    req.out_path.write_bytes(b"\x00" * 100)
+    post = respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted("job_old", dedup=True))
+    respx.get(f"{BASE}/grok/jobs/job_old").mock(return_value=old_job_done_without_file(req))
+    with pytest.raises(ProviderJobError) as ei:
+        await adapter.generate(req, run_ctx)
+    assert ei.value.code == "provider_missing_file"
+    assert post.call_count == 1
+
+
+@respx.mock
+async def test_error_message_and_account_are_masked(adapter, run_ctx, req, sample_mp4):
+    respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted())
+    respx.get(f"{BASE}/grok/jobs/job_1").mock(return_value=httpx.Response(200, json={
+        "jobId": "job_1", "status": "failed",
+        "error": {"kind": "auth_required", "message": f"Tài khoản @{TG_USER} ({PHONE}) cần đăng nhập lại"}}))
+    with pytest.raises(ProviderJobError) as ei:
+        await adapter.generate(req, run_ctx)
+    for secret in (TG_USER, PHONE, "901234567"):
+        assert secret not in ei.value.msg
+
+    run2 = FakeRun(job_id=43)
+    post = respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted("job_2"))
+
+    def done(request):
+        out = Path(body_of(post.calls.last)["outputPath"])
+        shutil.copyfile(sample_mp4, out)
+        return httpx.Response(200, json={"jobId": "job_2", "status": "succeeded", "progress": 1,
+                                         "accountLabel": PHONE, "result": {"filePath": str(out)}})
+
+    respx.get(f"{BASE}/grok/jobs/job_2").mock(side_effect=done)
+    result = await adapter.generate(req, run2)
+    assert PHONE not in str(result.meta["account"]) and "901234567" not in str(result.meta["account"])
+
+
+@respx.mock
+async def test_same_file_in_other_spelling_is_not_copied(adapter, run_ctx, req, sample_mp4):
+    """filePath trỏ đúng file out_path nhưng viết khác (hoa/thường, `..`) → không copy lên chính nó."""
+    post = respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted())
+
+    def done(request):
+        out = Path(body_of(post.calls.last)["outputPath"])
+        shutil.copyfile(sample_mp4, out)
+        other = str(out.parent / ".." / out.parent.name / out.name.upper())
+        return httpx.Response(200, json={"jobId": "job_1", "status": "succeeded", "progress": 1,
+                                         "result": {"filePath": other}})
+
+    respx.get(f"{BASE}/grok/jobs/job_1").mock(side_effect=done)
+    result = await adapter.generate(req, run_ctx)
+    assert result.path.is_file()
+
+
+@respx.mock
+async def test_resume_does_not_need_input_image(adapter, run_ctx, req, sample_mp4):
+    run_ctx.external_id = "job_9"
+    run_ctx.external = {"state": "submitted", "client_ref": "proj7:scene03"}
+    req.image.unlink()
+    req.out_path.parent.mkdir(parents=True)
+    shutil.copyfile(sample_mp4, req.out_path)
+    respx.get(f"{BASE}/grok/jobs/job_9").mock(return_value=httpx.Response(200, json={
+        "jobId": "job_9", "status": "succeeded", "progress": 1, "result": {"filePath": str(req.out_path)}}))
+    result = await adapter.generate(req, run_ctx)
+    assert result.path.is_file()
