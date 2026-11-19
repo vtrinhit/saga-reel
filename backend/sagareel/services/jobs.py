@@ -87,6 +87,7 @@ def drop_submit_marker(external_state: dict | None) -> dict:
 
 
 GEN_KEY = "gen"  # thế hệ gửi của job: chỉ tăng (force_new, clear_attention resubmit), giữ qua mọi lần đặt lại
+CLIENT_REF_KEY = "client_ref"  # ref chống trùng adapter đã gửi (MultiKit); giữ khi resubmit job chỉ mang dấu
 
 
 def provider_holds_job(job: Job) -> bool:
@@ -498,8 +499,13 @@ def clear_attention(
     # gộp về job cũ). Job chỉ mang dấu `submitting`: giữ thế hệ → cùng clientRef, nếu provider thật ra đã tạo job thì nó
     # tự chống trùng. `fail` giữ thế hệ.
     bump = action == "resubmit" and provider_holds_job(job)
+    new_state = _gen_state(gen + 1 if bump else gen)
+    stored_ref = (job.external_state or {}).get(CLIENT_REF_KEY)
+    if marker_only and action == "resubmit" and stored_ref:
+        # Gửi lại ĐÚNG ref của lần POST mập mờ (kể cả ref một-lần `:uuid` adapter tự đổi): provider chống trùng theo ref.
+        new_state[CLIENT_REF_KEY] = stored_ref
     job.external_id = None
-    job.external_state = _gen_state(gen + 1 if bump else gen)
+    job.external_state = new_state
     if action == "resubmit":
         _reset_for_run(job)
         job.attempt = 0

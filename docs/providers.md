@@ -82,7 +82,9 @@ Thư mục `<kind>/` mới cần một `__init__.py` (có thể rỗng) để `d
   đã tạo xong để lần nối lại dùng file đó, không POST lại.
 - **Thế hệ gửi** `external_state.gen`: chỉ tăng, giữ qua mọi lần đặt lại. `force_new` luôn tăng;
   `clear_attention(resubmit)` chỉ tăng khi provider giữ job (`provider_holds_job`) — job chỉ mang dấu `submitting`
-  giữ nguyên `gen` để cùng clientRef: nếu provider thật ra đã tạo job thì nó tự chống trùng.
+  giữ nguyên `gen` **và** `external_state.client_ref` đã lưu (kể cả ref một-lần `:uuid` của MultiKit) để gửi lại đúng
+  ref của lần POST mập mờ: nếu provider thật ra đã tạo job thì nó tự chống trùng. Adapter dùng `client_ref` đã lưu
+  nếu có.
   Adapter chống trùng theo clientRef phải đưa `gen` vào ref (MultiKit: `sagareel:job:<id>` khi `gen` = 0,
   `sagareel:job:<id>:g<gen>` khi > 0) để lần gửi mới không bị provider gộp về job cũ.
 - **Chạy lại** (`job.retry`): provider giữ job → mặc định nối lại đúng job cũ (không gửi lại, không tốn thêm); job đó

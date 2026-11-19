@@ -727,6 +727,42 @@ async def test_new_ref_post_rejected_then_next_attempt_resubmits_stored_ref(adap
 
 
 @respx.mock
+async def test_one_off_ref_timeout_then_clear_attention_resubmit_reuses_same_ref(adapter, run_ctx, req, sample_mp4,
+                                                                                 services):
+    """POST với ref một-lần (`:uuid`) hết giờ → job_unknown → clear_attention(resubmit): lần gửi lại mang ĐÚNG ref đó
+    (GrokTele chống trùng nếu lần POST hết giờ thật ra đã tạo job), không quay về ref gốc."""
+    from sagareel.db.models import Job
+    from sagareel.services import jobs
+
+    post = respx.post(f"{BASE}/grok/jobs")
+    post.side_effect = [accepted("job_old", dedup=True), httpx.ReadTimeout("mất kết nối"),
+                        accepted("job_new", dedup=True)]
+    respx.get(f"{BASE}/grok/jobs/job_old").mock(return_value=old_job_done_without_file(req))
+    respx.get(f"{BASE}/grok/jobs/job_new").mock(side_effect=succeeded_copying(sample_mp4, post, "job_new"))
+    with pytest.raises(TransientError):
+        await adapter.generate(req, run_ctx)
+    one_off = run_ctx.external["client_ref"]
+    assert one_off.startswith("proj7:scene03:") and run_ctx.external["state"] == "submitting"
+
+    # Worker: dấu submitting + lỗi → needs_attention (external_id là job cũ đã bị thay — mô phỏng job chỉ mang dấu)
+    with services.db.session() as s:
+        job = Job(type="provider.try_video", status="needs_attention", lane="L", params={},
+                  client_ref="proj7:scene03", external_state=dict(run_ctx.external))
+        s.add(job)
+        s.flush()
+        job_id = job.id
+    with services.db.session(immediate=True) as s:
+        out = jobs.job_dict(jobs.clear_attention(s, job_id, "resubmit"))
+    assert out["status"] == "queued" and out["external_state"] == {"client_ref": one_off}
+
+    run2 = FakeRun(job_id=job_id)
+    run2.external = dict(out["external_state"])
+    result = await adapter.generate(req, run2)
+    assert body_of(post.calls.last)["clientRef"] == one_off and post.call_count == 3
+    assert run2.external_id == "job_new" and result.path.is_file()
+
+
+@respx.mock
 async def test_dedup_to_own_job_after_timeout_without_file_is_missing_file(adapter, run_ctx, req):
     """Dedup về chính job của lần chạy này (POST trước hết giờ) mà không có file → missing_file, không POST ref mới."""
     post = respx.post(f"{BASE}/grok/jobs")

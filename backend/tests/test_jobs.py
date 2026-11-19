@@ -1094,6 +1094,12 @@ async def test_generation_is_monotonic_across_resets(svc, op_ctx):
     assert out["external_state"] == {"gen": 3}  # chỉ mang dấu: giữ thế hệ
     with svc.db.session() as s:
         j = s.get(Job, a)
+        j.status, j.external_state = "needs_attention", {"gen": 3, "state": "submitting", "client_ref": "r:g3:ab12",
+                                                         "fingerprint": "f"}
+    out = await ops.invoke("job.clear_attention", {"id": a, "action": "resubmit"}, op_ctx)
+    assert out["external_state"] == {"gen": 3, "client_ref": "r:g3:ab12"}  # gửi lại đúng ref của lần POST mập mờ
+    with svc.db.session() as s:
+        j = s.get(Job, a)
         j.status, j.external_id, j.external_state = "needs_attention", "p-7", {"gen": 3, "state": "submitted"}
     out = await ops.invoke("job.clear_attention", {"id": a, "action": "resubmit"}, op_ctx)
     assert out["external_state"] == {"gen": 4}  # provider giữ job (vd. remote_cancelled): thế hệ mới
