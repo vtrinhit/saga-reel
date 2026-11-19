@@ -350,7 +350,15 @@ class Worker:
             run.cancelled.set()
             run.task.cancel()
         await asyncio.wait([run.supervisor])
-        return run.cancel_requested
+        if run.cancel_requested:
+            return True
+        # Handler vừa xong trước khi kịp huỷ: lần ghi cuối có thể đưa job về queued (retry) / needs_attention →
+        # vẫn huỷ được bằng compare-and-set như job chưa chạy.
+        data = await anyio.to_thread.run_sync(self._cancel_idle, job_id)
+        if data is None:
+            return False
+        self._publish(data)
+        return True
 
     def _cancel_idle(self, job_id: int) -> dict | None:
         with self.services.db.session() as s:
@@ -462,8 +470,13 @@ class Worker:
         try:
             try:
                 outcome: tuple = ("ok", await run.task)
-            except asyncio.CancelledError:
-                outcome = ("cancelled",) if run.cancel_requested else ("shutdown",)
+            except asyncio.CancelledError as e:
+                if run.cancel_requested:
+                    outcome = ("cancelled",)
+                elif self._stopping:
+                    outcome = ("shutdown",)
+                else:  # handler tự ném CancelledError: là lỗi, không phải tắt app (tránh vòng lặp queued nóng)
+                    outcome = ("error", e)
             except BaseException as e:  # noqa: BLE001 — mọi lỗi handler đều thành trạng thái job
                 outcome = ("error", e)
             finally:

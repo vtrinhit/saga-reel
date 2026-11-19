@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from datetime import datetime, timedelta, timezone
 
 import anyio
@@ -27,6 +28,8 @@ EXTRA_TYPES = (
     "test.gate",
     "test.logs",
     "test.cancel_cleanup",
+    "test.self_cancel",
+    "test.gate_transient",
 )
 
 
@@ -95,6 +98,17 @@ def extra_handlers(test_job_handlers):
             probe.errors[run.job_id] = run.cancelled.is_set()
             raise
         return {}
+
+    @jobs.job_handler("test.self_cancel", resumable=True)
+    async def self_cancel(run):
+        probe.order.append(run.job_id)
+        raise asyncio.CancelledError()  # handler tự ném, không phải do huỷ/tắt app
+
+    @jobs.job_handler("test.gate_transient")
+    async def gate_transient(run):
+        probe.runs[run.job_id] = run
+        await probe.gate(run.job_id).wait()
+        raise jobs.TransientError("tạm lỗi", retry_after=60)
 
     try:
         yield probe
@@ -381,13 +395,18 @@ async def test_jobs_claimed_while_stopping_go_back_to_queue(svc):
     w = svc.worker
     orig_claim = w._claim
 
+    claimed = threading.Event()
+
     def claim_then_stop(counts):
         out = orig_claim(counts)
         w._stopping = True  # stop() được gọi trong lúc thread đang giành job
+        if out:
+            claimed.set()
         return out
 
     w._claim = claim_then_stop
     await w.start()
+    assert await anyio.to_thread.run_sync(claimed.wait, 5)
     await w.stop()
     assert status(svc, a) == "queued" and a not in svc.worker_probe.runs and w.running_count() == 0
 
@@ -480,6 +499,42 @@ async def test_cancel_twice_concurrently(svc):
     finally:
         await svc.worker.stop()
     assert status(svc, a) == "cancelled"
+
+
+async def test_cancel_while_final_write_requeues_still_cancels(svc):
+    probe = svc.worker_probe
+    a = enqueue_job(svc, "test.gate_transient", {})
+    w = svc.worker
+    release = threading.Event()
+    orig_write = w._write_final
+
+    def slow_write(*args):
+        release.wait(5)
+        return orig_write(*args)
+
+    w._write_final = slow_write
+    await w.start()
+    try:
+        await wait_until(lambda: a in probe.runs)
+        run = probe.runs[a]
+        probe.gate(a).set()
+        while not run.task.done():  # handler đã ném TransientError, giám sát đang ghi "queued"
+            await asyncio.sleep(0.01)
+        pending = asyncio.create_task(w.cancel(a))
+        await asyncio.sleep(0.05)
+        release.set()
+        assert await pending is True
+    finally:
+        release.set()
+        await w.stop()
+    assert status(svc, a) == "cancelled"
+
+
+async def test_handler_raising_cancelled_error_itself_fails_instead_of_requeue(svc):
+    a = enqueue_job(svc, "test.self_cancel", {})
+    await run_until_idle(svc)
+    assert status(svc, a) == "failed" and error_code(svc, a) == "internal_error"
+    assert svc.worker_probe.order == [a]  # chạy đúng một lần, không vòng lặp queued
 
 
 # --- Sự kiện, tiến độ, log ------------------------------------------------------------------------------------------
@@ -608,10 +663,11 @@ async def test_pause_all_blocks_dispatch_and_persists(svc, op_ctx):
     try:
         await asyncio.sleep(0.2)
         assert status(svc, a) == "queued"
-        # Khởi động lại: trạng thái tạm dừng được nạp lại
-        svc.worker.paused = False
-        await anyio.to_thread.run_sync(svc.worker.recover)
-        assert svc.worker.paused is True
+        # Khởi động lại: worker mới (chưa chạy) nạp lại trạng thái tạm dừng
+        fresh = worker_mod.Worker(svc, lane_limit=svc.lane_limit)
+        assert fresh.paused is False
+        await anyio.to_thread.run_sync(fresh.recover)
+        assert fresh.paused is True
         await ops.invoke("job.resume_all", {}, op_ctx)
         await wait_until(lambda: status(svc, a) == "succeeded")
     finally:
