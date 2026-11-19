@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import DateTime, MetaData, Text
+from sqlalchemy.ext.mutable import MutableDict, MutableList
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
@@ -66,12 +67,26 @@ class _JSONText(TypeDecorator):
         return json.loads(value)
 
 
-class JSONDict(_JSONText):
-    """Cột JSON dạng object (dict)."""
+class JSONDictType(_JSONText):
+    """Cột JSON dạng object (dict); dùng qua `JSONDict` (bản theo dõi thay đổi).
+
+    Theo dõi thay đổi tại chỗ chỉ ở mức nông (`MutableDict`): `obj.options["x"] = 1` được lưu,
+    nhưng sửa lồng (`obj.options["a"]["b"] = 1`) thì phải gán lại cả giá trị hoặc gọi
+    `sqlalchemy.orm.attributes.flag_modified(obj, "options")`.
+    """
 
 
-class JSONList(_JSONText):
-    """Cột JSON dạng mảng (list)."""
+class JSONListType(_JSONText):
+    """Cột JSON dạng mảng (list); dùng qua `JSONList` (bản theo dõi thay đổi).
+
+    Theo dõi thay đổi tại chỗ chỉ ở mức nông (`MutableList`): `append`, `obj.items[0] = …` được lưu,
+    nhưng sửa phần tử lồng (`obj.items[0]["k"] = 1`) thì phải gán lại hoặc gọi `flag_modified`.
+    """
+
+
+# Kiểu dùng trong model: thay đổi tại chỗ ở mức nông tự đánh dấu dirty.
+JSONDict = MutableDict.as_mutable(JSONDictType())
+JSONList = MutableList.as_mutable(JSONListType())
 
 
 class Base(DeclarativeBase):
