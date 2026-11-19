@@ -18,7 +18,8 @@ Cập nhật sau mỗi mốc và sau mỗi lần gọi provider thật.
 | MaiVideo (ảnh) | Key hợp lệ (`GET /api/v1/image-generation/models`, header `X-API-Key`). Quota tháng 30/30 đã hết, gói trọn đời còn 1236 lượt. 7 model, tối đa 9 ảnh ref. |
 | GrokTele (video) | Server chạy (`/health` ok) nhưng **0 tài khoản dùng được**: 1 tài khoản `dead` (session bị đăng xuất, gói hết hạn 09/11/2026). Cần người dùng đăng nhập lại + gia hạn. Trong lúc chờ: dùng clip giả. |
 | LLM proxy | Sống, 33 model, mặc định `gpt-6-luna`. |
-| TTS | Chưa cài (edge-tts, VieNeu-TTS) — làm ở M0/M3. |
+| TTS | edge-tts 7.3.1 chạy được, có word-boundary; giọng vi-VN **chập chờn** `NoAudioReceived` (lỗi phía Microsoft, issue rany2/edge-tts#512) → adapter phải retry + cache. Proxy LLM có `/v1/audio/speech` nhưng "No credentials for provider: openai" → adapter openai_tts hiện "chưa cấu hình". Không dùng TTS local (chỉ đạo 2026-11-19). |
+| STT | Không có provider API → adapter openai_stt để TODO. Không dùng faster-whisper. |
 
 ## Việc còn nợ vì provider chưa sẵn sàng
 
@@ -31,7 +32,7 @@ Cập nhật sau mỗi mốc và sau mỗi lần gọi provider thật.
 | Mốc | Trạng thái | Commit | Ghi chú |
 |---|---|---|---|
 | Nghiên cứu OSS | đang làm (dừng giữa chừng vì hết hạn mức) | | Đã có: `docs/research/raw/assembly-editor-clone.md`. Còn chờ 4 báo cáo agent (nền tảng phim ngắn; skill/planner; TTS; thông số nền tảng) + agent design system (ghi `DESIGN.md`, `docs/design/preview.html`). Báo cáo nào chưa lưu thành file thì chạy lại agent đó. Sau đó: viết `oss-study.md`, `platform-specs.md`, spec. |
-| Spec | chưa | | |
+| Spec | xong bản 1 + rà soát người xây | | `docs/superpowers/specs/2026-11-19-sagareel-studio-design.md`; còn bổ sung preset nền tảng + prompt mặc định khi có nghiên cứu |
 | M0 | chưa | | |
 | M1 | chưa | | |
 | M2 | chưa | | |
