@@ -3,7 +3,7 @@ import { ChevronDown, CircleUser, Layers, LogOut, Menu as MenuIcon, Plus } from 
 import { useEffect, useMemo } from 'react';
 import { Navigate, NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router';
 import { isLocal, logout, useAuthStatus, type AuthStatus } from '../api/auth';
-import { api, loginUrl } from '../api/client';
+import { api, loginUrl, setAppReady } from '../api/client';
 import { BatchProgressBar } from '../components/ui/BatchProgressBar';
 import { IconButton } from '../components/ui/IconButton';
 import { Menu, type MenuItem } from '../components/ui/Menu';
@@ -15,6 +15,7 @@ import { formatCount } from '../lib/format';
 import { useConnection } from '../stores/connection';
 import { countActive, summarize, useJobs } from '../stores/jobs';
 import { GLOBAL_NAV, PHONE_MORE, PHONE_NAV, PROJECT_NAV, type NavItem } from './nav';
+import { SessionExpiredModal } from './SessionExpiredModal';
 import { useLiveEvents } from './useLiveEvents';
 
 /* ------------------------------------------------------------------ */
@@ -383,6 +384,15 @@ export function AppShell() {
 
   useLiveEvents(projectId != null && /^\d+$/.test(projectId) ? Number(projectId) : undefined);
 
+  // Đã biết là vào được (hoặc máy chủ chưa bật đăng nhập): từ giờ 401 mở modal "Phiên đã hết hạn" thay vì chuyển
+  // trang, để không mất việc đang làm. Trước đó (lần tải đầu) 401 vẫn chuyển thẳng tới /login.
+  const ready = auth.isSuccess && (auth.data === null || auth.data.authenticated);
+  useEffect(() => {
+    if (!ready) return;
+    setAppReady(true);
+    return () => setAppReady(false);
+  }, [ready]);
+
   // Chưa đăng nhập → màn đăng nhập, quay lại đúng trang sau khi vào.
   if (auth.data && !auth.data.authenticated) {
     return <Navigate to={loginUrl(location)} replace />;
@@ -417,6 +427,7 @@ export function AppShell() {
       {projectId ? <PhoneBottomNav base={base} /> : null}
       <FloatingBatchBar />
       <ToastViewport />
+      <SessionExpiredModal />
     </div>
   );
 }

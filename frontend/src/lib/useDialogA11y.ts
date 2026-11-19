@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -9,15 +9,45 @@ function focusables(root: HTMLElement): HTMLElement[] {
   );
 }
 
+/** Độ sâu lồng của dialog (Modal mở từ trong Drawer có depth lớn hơn). Modal/Drawer cấp giá trị cho con. */
+export const DialogDepthContext = createContext(0);
+
+interface Entry {
+  id: symbol;
+  depth: number;
+  seq: number;
+}
+
+/**
+ * Các dialog đang mở. Dialog "trên cùng" = sâu nhất, nếu bằng nhau thì mở sau cùng. (Không dựa vào thứ tự effect:
+ * React chạy effect của con trước cha, nên dialog lồng mở cùng lúc sẽ đăng ký ngược thứ tự.)
+ */
+const stack: Entry[] = [];
+let seqCounter = 0;
+/** overflow của body trước khi dialog đầu tiên mở. */
+let savedOverflow = '';
+
+export function topDialog(): symbol | undefined {
+  let top: Entry | undefined;
+  for (const e of stack) {
+    if (!top || e.depth > top.depth || (e.depth === top.depth && e.seq > top.seq)) top = e;
+  }
+  return top?.id;
+}
+
 /**
  * Hành vi chung của Modal/Drawer: giữ focus bên trong, Esc đóng (nếu cho phép), khoá cuộn trang,
  * trả focus về phần tử đã mở khi đóng.
+ *
+ * Esc xử lý ở pha **bubble** trên `document`: popup bên trong (Select, Menu, SourceBadge…) xử lý Esc trước và gọi
+ * `preventDefault()` để báo "đã xử lý" → dialog bỏ qua. Dialog lồng nhau: chỉ dialog trên cùng ngăn xếp đóng.
  */
 export function useDialogA11y(
   open: boolean,
   panelRef: RefObject<HTMLElement | null>,
   onClose: (() => void) | undefined,
-): void {
+): number {
+  const depth = useContext(DialogDepthContext) + 1;
   const closeRef = useRef(onClose);
   useLayoutEffect(() => {
     closeRef.current = onClose;
@@ -25,17 +55,24 @@ export function useDialogA11y(
 
   useEffect(() => {
     if (!open) return;
+    const id = Symbol('dialog');
+    stack.push({ id, depth, seq: ++seqCounter });
     const panel = panelRef.current;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const prevOverflow = document.body.style.overflow;
+    if (stack.length === 1) savedOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    const first = panel ? (panel.querySelector<HTMLElement>('[data-autofocus]') ?? focusables(panel)[0]) : null;
-    (first ?? panel)?.focus({ preventScroll: true });
+    // Chỉ dialog trên cùng lấy focus (dialog cha mở cùng lúc với con không giật focus của con).
+    if (topDialog() === id) {
+      const first = panel ? (panel.querySelector<HTMLElement>('[data-autofocus]') ?? focusables(panel)[0]) : null;
+      (first ?? panel)?.focus({ preventScroll: true });
+    }
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && closeRef.current) {
-        e.stopPropagation();
+      if (topDialog() !== id || e.defaultPrevented) return;
+      if (e.key === 'Escape') {
+        if (!closeRef.current) return;
+        e.preventDefault();
         closeRef.current();
         return;
       }
@@ -57,12 +94,15 @@ export function useDialogA11y(
         firstEl.focus();
       }
     };
-    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('keydown', onKey);
 
     return () => {
-      document.removeEventListener('keydown', onKey, true);
-      document.body.style.overflow = prevOverflow;
+      document.removeEventListener('keydown', onKey);
+      const i = stack.findIndex((e) => e.id === id);
+      if (i >= 0) stack.splice(i, 1);
+      if (stack.length === 0) document.body.style.overflow = savedOverflow;
       if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
     };
-  }, [open, panelRef]);
+  }, [open, panelRef, depth]);
+  return depth;
 }

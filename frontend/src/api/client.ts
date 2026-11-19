@@ -4,7 +4,8 @@
  * Backend trả lỗi dạng `{"ok": false, "error_code", "detail", "hint", "status", "extra"}`. UI chỉ hiển thị
  * `detail`/`hint` (tiếng Việt); không bao giờ hiển thị `extra.errors[].msg` (tiếng Anh của Pydantic).
  */
-import axios, { AxiosError, AxiosHeaders, type AxiosInstance } from 'axios';
+import axios, { AxiosError, AxiosHeaders, type AxiosInstance, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
+import { useSession } from './session';
 
 export const CSRF_COOKIE = 'sr_csrf';
 export const CSRF_HEADER = 'X-SR-CSRF';
@@ -137,8 +138,14 @@ export function toApiError(err: unknown): ApiError {
       retryAfter,
     });
   }
-  const message = err instanceof Error ? err.message : String(err);
-  return new ApiError({ code: 'client_error', detail: `Lỗi phía trình duyệt: ${message}`, status: 0 });
+  // Thông điệp gốc (tiếng Anh, kỹ thuật) chỉ vào console, không hiện cho người dùng.
+  console.error('[api] lỗi phía trình duyệt', err);
+  return new ApiError({
+    code: 'client_error',
+    detail: 'Trình duyệt không gửi được yêu cầu.',
+    hint: 'Tải lại trang rồi thử lại.',
+    status: 0,
+  });
 }
 
 export const api: AxiosInstance = axios.create({
@@ -153,12 +160,68 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/* ------------------------------------------------------------------ */
+/* Phiên hết hạn                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * App đã hiện một trang có dữ liệu (shell gọi `setAppReady(true)` khi biết đã đăng nhập). Trước đó (lần tải đầu),
+ * 401 chuyển thẳng tới `/login?next=…`; sau đó, 401 mở modal "Phiên đã hết hạn" và giữ nguyên màn đang làm.
+ */
+let appReady = false;
+export function setAppReady(ready: boolean): void {
+  appReady = ready;
+}
+
+interface Pending {
+  config: InternalAxiosRequestConfig;
+  resolve: (res: AxiosResponse) => void;
+  reject: (err: unknown) => void;
+}
+let pending: Pending[] = [];
+
+const isAuthPath = (url: string | undefined) => !!url && /^\/api\/auth(\/|$)/.test(url.replace(/^https?:\/\/[^/]+/, ''));
+
+/**
+ * Cần đăng nhập lại. Lần tải đầu → trang đăng nhập; đang làm dở → modal "Phiên đã hết hạn".
+ * Đang ở /login thì không làm gì (trang đó tự xử lý).
+ */
+export function requireLogin(): void {
+  if (window.location.pathname === LOGIN_PATH) return;
+  if (!appReady) {
+    nav.toLogin(loginUrl());
+    return;
+  }
+  useSession.getState().set({ expired: true, waiting: pending.length });
+}
+
+/** Sau khi đăng nhập lại thành công: gửi lại mọi request đã chờ, trả kết quả cho đúng lời gọi ban đầu. */
+export function resumeSession(): void {
+  const queue = pending;
+  pending = [];
+  const s = useSession.getState();
+  s.set({ expired: false, waiting: 0, resumedCount: s.resumedCount + 1 });
+  for (const p of queue) {
+    api.request(p.config).then(p.resolve, p.reject);
+  }
+}
+
 api.interceptors.response.use(
   (res) => res,
   (err: unknown) => {
     const e = toApiError(err);
     if (e.status === 401 && e.code === 'auth_required' && window.location.pathname !== LOGIN_PATH) {
-      nav.toLogin(loginUrl());
+      const config = err instanceof AxiosError ? err.config : undefined;
+      // 401 của chính /api/auth/* (form đăng nhập, modal phiên hết hạn) do nơi gọi tự hiện lỗi.
+      if (config && isAuthPath(config.url)) return Promise.reject(e);
+      if (appReady && config) {
+        // Giữ lời gọi lại; modal đăng nhập xong sẽ gửi lại và trả kết quả cho người gọi.
+        return new Promise<AxiosResponse>((resolve, reject) => {
+          pending.push({ config, resolve, reject });
+          requireLogin();
+        });
+      }
+      requireLogin();
     }
     return Promise.reject(e);
   },

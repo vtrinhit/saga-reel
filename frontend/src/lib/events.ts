@@ -38,7 +38,14 @@ export interface ConnectEventsOptions {
   EventSourceImpl?: typeof EventSource;
 }
 
-export type EventsConnection = (() => void) & { reconnectNow: () => void };
+export type EventsConnection = (() => void) & {
+  reconnectNow: () => void;
+  /**
+   * Đổi project đang theo dõi trên cùng kết nối: giữ `boot_id` (vẫn phát hiện server khởi động lại), mở lại
+   * EventSource và coi như có khoảng trống (tải lại query + `resync`).
+   */
+  setProject: (project?: number) => void;
+};
 
 /** Các loại sự kiện server phát (SSE `event:` có tên nên phải đăng ký từng loại). */
 export const EVENT_TYPES = [
@@ -76,7 +83,10 @@ function bootIdOf(data: unknown): string | null {
 export function connectEvents(opts: ConnectEventsOptions): EventsConnection {
   const ES = opts.EventSourceImpl ?? globalThis.EventSource;
   const base = opts.url ?? '/api/events';
-  const url = opts.project != null ? `${base}?project=${encodeURIComponent(String(opts.project))}` : base;
+  const urlFor = (project?: number) =>
+    project != null ? `${base}?project=${encodeURIComponent(String(project))}` : base;
+  let project = opts.project;
+  let url = urlFor(project);
   const offlineAfter = opts.offlineAfter ?? 3;
 
   let es: EventSource | null = null;
@@ -197,6 +207,15 @@ export function connectEvents(opts: ConnectEventsOptions): EventsConnection {
     reconnectNow: () => {
       if (stopped) return;
       clearTimer();
+      opts.onRetryIn?.(null);
+      open(true);
+    },
+    setProject: (next?: number) => {
+      if (stopped || next === project) return;
+      project = next;
+      url = urlFor(next);
+      clearTimer();
+      attempt = 0;
       opts.onRetryIn?.(null);
       open(true);
     },

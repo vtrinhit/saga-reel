@@ -40,6 +40,7 @@ function parentWithValue(level: SourceLevel, values: Partial<Record<SourceLevel,
 export function SourceBadge({ source, editing, values = {}, onClearOverride, className }: SourceBadgeProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
   const popId = useId();
   const here = source === editing;
   const idx = SOURCE_LEVELS.indexOf(source);
@@ -50,22 +51,27 @@ export function SourceBadge({ source, editing, values = {}, onClearOverride, cla
     const onDown = (e: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
     document.addEventListener('pointerdown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
+    return () => document.removeEventListener('pointerdown', onDown);
   }, [open]);
 
   const text = here ? 'đè ở đây' : `từ ${SOURCE_LABEL[source]}`;
 
   return (
-    <span ref={rootRef} className={cn('relative inline-flex', className)}>
+    <span
+      ref={rootRef}
+      className={cn('relative inline-flex', className)}
+      onKeyDown={(e) => {
+        // Esc đóng popover trước; preventDefault báo cho Modal/Drawer bên ngoài là đã xử lý.
+        if (e.key === 'Escape' && open) {
+          e.preventDefault();
+          setOpen(false);
+          btnRef.current?.focus();
+        }
+      }}
+    >
       <button
+        ref={btnRef}
         type="button"
         aria-expanded={open}
         aria-controls={popId}

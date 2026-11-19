@@ -106,4 +106,19 @@ describe('safeNext', () => {
     expect(safeNext('/login?next=%2F')).toBe('/projects');
     expect(safeNext(null)).toBe('/projects');
   });
+
+  it('chặn ký tự điều khiển (%09, %0A) và gạch ngược mà trình duyệt bỏ/đổi khi phân tích URL', () => {
+    const decoded = new URLSearchParams('next=%2F%09%2Fevil.com').get('next');
+    expect(decoded).toBe('/\t/evil.com');
+    expect(safeNext(decoded)).toBe('/projects');
+    expect(safeNext('/\n/evil.com')).toBe('/projects');
+    expect(safeNext('/a\\b')).toBe('/projects');
+    expect(safeNext('/\u007f')).toBe('/projects');
+  });
+
+  it('kiểm tra origin bằng URL và trả đường dẫn đã chuẩn hoá', () => {
+    expect(safeNext('/p/3/studio#take', 'http://127.0.0.1:8990')).toBe('/p/3/studio#take');
+    expect(safeNext('/./jobs', 'http://127.0.0.1:8990')).toBe('/jobs');
+    expect(safeNext('/../login', 'http://127.0.0.1:8990')).toBe('/projects');
+  });
 });

@@ -245,4 +245,24 @@ describe('connectEvents', () => {
     expect(events).toContainEqual({ type: 'job.log', id: '3', data: 'không phải json' });
     stop();
   });
+
+  it('đổi project: cùng kết nối, giữ boot_id, coi như khoảng trống (tải lại + resync)', () => {
+    const { events, invalidateQueries, stop } = setup({ project: 1 });
+    last().open();
+    last().emit('server.hello', { boot_id: 'a' }, '1');
+    stop.setProject(2);
+    expect(FakeEventSource.instances).toHaveLength(2);
+    expect(FakeEventSource.instances[0].readyState).toBe(FakeEventSource.CLOSED);
+    expect(last().url).toBe('/api/events?project=2');
+    last().open();
+    expect(invalidateQueries).toHaveBeenCalledTimes(1);
+    expect(events.filter((e) => e.type === 'resync')).toHaveLength(1);
+    last().emit('server.hello', { boot_id: 'a' }, '1');
+    expect(events.filter((e) => e.type === 'server.restarted')).toHaveLength(0);
+    last().emit('server.hello', { boot_id: 'b' }, '2');
+    expect(events.filter((e) => e.type === 'server.restarted')).toHaveLength(1);
+    stop.setProject(2); // không đổi → không mở lại
+    expect(FakeEventSource.instances).toHaveLength(2);
+    stop();
+  });
 });

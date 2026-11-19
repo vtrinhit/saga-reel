@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path, PurePosixPath
+import mimetypes
+import os
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -18,6 +20,19 @@ from starlette.convertors import Convertor, register_url_convertor
 _INDEX = "index.html"
 _NO_CACHE = {"Cache-Control": "no-cache"}
 _IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
+
+# Kiểu nội dung cố định, không phụ thuộc registry Windows (có máy map .js → text/plain làm trình duyệt chặn module).
+for _type, _ext in (
+    ("text/javascript", ".js"),
+    ("text/javascript", ".mjs"),
+    ("text/css", ".css"),
+    ("font/woff2", ".woff2"),
+    ("font/woff", ".woff"),
+    ("image/svg+xml", ".svg"),
+    ("application/json", ".json"),
+    ("application/manifest+json", ".webmanifest"),
+):
+    mimetypes.add_type(_type, _ext)
 
 
 class _SpaPathConvertor(Convertor[str]):
@@ -49,16 +64,34 @@ def _not_found() -> Response:
     )
 
 
+def _safe_parts(rel: str) -> tuple[str, ...] | None:
+    """Kiểm tra thuần chuỗi (không chạm hệ thống tệp): chặn dấu gạch ngược, `:`, ký tự điều khiển, `..`, đường dẫn tuyệt đối,
+    UNC (`//host/share`) và ổ đĩa (`C:`). Trả về các phần đường dẫn an toàn, hoặc None."""
+    if not rel or "\\" in rel or ":" in rel or any(ord(ch) < 32 or ord(ch) == 127 for ch in rel):
+        return None
+    win = PureWindowsPath(rel)
+    posix = PurePosixPath(rel)
+    if win.drive or win.root or posix.is_absolute():
+        return None
+    parts = tuple(part for part in rel.split("/") if part not in ("", "."))
+    if not parts or ".." in parts:
+        return None
+    return parts
+
+
 def _resolve_inside(dist: Path, rel: str) -> Path | None:
-    """Đường dẫn thật của `rel` nếu nằm trong dist và là file; chặn `..` và đường dẫn tuyệt đối."""
-    try:
-        root = dist.resolve()
-        target = (root / rel).resolve()
-    except (OSError, ValueError):
+    """File thật của `rel` trong dist. Chặn chứa-trong bằng chuỗi (normpath + commonpath) TRƯỚC khi hỏi hệ thống
+    tệp, để request lạ không bao giờ làm server mở đường dẫn ngoài dist (vd UNC → SMB ra máy khác)."""
+    parts = _safe_parts(rel)
+    if parts is None:
         return None
-    if not target.is_relative_to(root) or not target.is_file():
+    root = os.path.normpath(os.path.abspath(dist))
+    target = os.path.normpath(os.path.join(root, *parts))
+    if os.path.commonpath([root, target]) != root:
         return None
-    return target
+    if not os.path.isfile(target):
+        return None
+    return Path(target)
 
 
 def build_static_router(dist: Path) -> APIRouter:
@@ -70,6 +103,8 @@ def build_static_router(dist: Path) -> APIRouter:
         if not index.is_file():
             return _not_found()
         if path and path != _INDEX:
+            if _safe_parts(path) is None:  # UNC, ổ đĩa, `..`, `\`…: từ chối ngay, không chạm hệ thống tệp
+                return _not_found()
             found = _resolve_inside(dist, path)
             if found is not None:
                 headers = _IMMUTABLE if PurePosixPath(path).parts[:1] == ("assets",) else None

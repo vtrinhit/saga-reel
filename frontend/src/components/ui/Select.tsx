@@ -80,7 +80,7 @@ export function Select<V extends string = string>({
   }, [open]);
 
   useEffect(() => {
-    listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' });
+    listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView?.({ block: 'nearest' });
   }, [active, open]);
 
   const close = (refocus = true) => {
@@ -137,6 +137,11 @@ export function Select<V extends string = string>({
   };
 
   const onTriggerKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && open) {
+      e.preventDefault();
+      close();
+      return;
+    }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       setOpen(true);

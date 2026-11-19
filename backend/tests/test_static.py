@@ -82,6 +82,57 @@ def test_routes_included_after_static_still_receive_media(settings, dist):
         assert c.get("/media/5").json() == {"media_id": 5}
 
 
+def test_content_types_do_not_depend_on_registry(spa_client, dist):
+    (dist / "assets" / "app-123.css").write_text("body{}", encoding="utf-8")
+    (dist / "assets" / "f.woff2").write_bytes(b"wOF2")
+    assert spa_client.get("/assets/app-123.js").headers["content-type"].startswith("text/javascript")
+    assert spa_client.get("/assets/app-123.css").headers["content-type"].startswith("text/css")
+    assert spa_client.get("/assets/f.woff2").headers["content-type"] == "font/woff2"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/%2F%2Fattacker%2Fshare%2Fx",
+        "/%2F%2Fattacker%2Fshare%2Fx.js",
+        "/%5C%5Cattacker%5Cshare%5Cx.js",
+        "/%5C%5Cattacker%5Cshare%5Cx",
+        "/C%3A%2FWindows%2Fwin.ini",
+        "/C%3A",
+        "/assets%5C..%5C..%5Csecret.txt",
+        "/assets/..%2F..%2Fsecret.txt",
+    ],
+)
+def test_unsafe_paths_rejected_without_touching_filesystem(spa_client, monkeypatch, path):
+    """UNC/ổ đĩa/`..` bị chặn trước khi chạm hệ thống tệp (không mở SMB ra máy lạ)."""
+    import os
+    import pathlib
+
+    touched: list[str] = []
+    real_resolve = pathlib.Path.resolve
+    real_is_file = pathlib.Path.is_file
+    real_isfile = os.path.isfile
+    real_stat = os.stat
+
+    def spy(name, real):
+        def wrapper(p, *a, **kw):
+            touched.append(f"{name}:{p}")
+            return real(p, *a, **kw)
+
+        return wrapper
+
+    monkeypatch.setattr(pathlib.Path, "resolve", spy("resolve", real_resolve))
+    monkeypatch.setattr(pathlib.Path, "is_file", spy("is_file", real_is_file))
+    monkeypatch.setattr(os.path, "isfile", spy("isfile", real_isfile))
+    monkeypatch.setattr(os, "stat", spy("stat", real_stat))
+
+    r = spa_client.get(path)
+    assert r.status_code == 404, path
+    assert "không được lộ" not in r.text
+    bad = [t for t in touched if "attacker" in t or "Windows" in t or "secret" in t or "resolve:" in t]
+    assert bad == [], bad
+
+
 def test_path_traversal_is_blocked(spa_client):
     for path in ("/..%2Fsecret.txt", "/assets/..%2F..%2Fsecret.txt", "/%2e%2e/secret.txt"):
         r = spa_client.get(path)

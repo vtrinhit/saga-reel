@@ -1,6 +1,7 @@
 import { AxiosError, type AxiosAdapter, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, nav } from './client';
+import { api, ApiError, nav, resumeSession, setAppReady, toApiError } from './client';
+import { useSession } from './session';
 
 type Reply = { status: number; data?: unknown; headers?: Record<string, string> };
 
@@ -36,6 +37,8 @@ function clearCookies() {
 }
 
 beforeEach(() => {
+  setAppReady(false);
+  useSession.setState({ expired: false, waiting: 0, resumedCount: 0 });
   clearCookies();
   window.history.replaceState(null, '', '/');
 });
@@ -157,5 +160,74 @@ describe('api client', () => {
     expect(err.code).toBe('http_502');
     expect(err.status).toBe(502);
     expect(err.detail).toContain('502');
+  });
+
+  it('lỗi phía trình duyệt: câu tiếng Việt cố định, không lộ message tiếng Anh', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const err = toApiError(new TypeError("Cannot read properties of undefined (reading 'x')"));
+    expect(err.code).toBe('client_error');
+    expect(err.detail).not.toMatch(/Cannot read/);
+    expect(err.detail).toMatch(/Trình duyệt/);
+    expect(spy).toHaveBeenCalled();
+  });
+});
+
+describe('phiên hết hạn khi đang làm dở', () => {
+  const AUTH_401 = { ok: false, error_code: 'auth_required', detail: 'Cần đăng nhập.', status: 401 };
+
+  it('401 → bật modal (không chuyển trang), đăng nhập xong gửi lại request và trả kết quả cho người gọi', async () => {
+    const toLogin = vi.spyOn(nav, 'toLogin').mockImplementation(() => {});
+    setAppReady(true);
+    window.history.replaceState(null, '', '/settings/providers');
+    let calls = 0;
+    const { adapter, seen } = fakeAdapter(() => (++calls === 1 ? { status: 401, data: AUTH_401 } : { status: 200, data: { saved: true } }));
+    api.defaults.adapter = adapter;
+    document.cookie = 'sr_csrf=old; path=/';
+
+    let settled: unknown = 'pending';
+    const call = api.post('/api/ops/provider.update', { id: 3 }).then((r) => {
+      settled = r.data;
+      return r;
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(useSession.getState()).toMatchObject({ expired: true, waiting: 1 });
+    expect(toLogin).not.toHaveBeenCalled();
+    expect(settled).toBe('pending');
+
+    document.cookie = 'sr_csrf=new; path=/'; // đăng nhập lại cấp CSRF mới
+    resumeSession();
+    const res = await call;
+    expect(res.data).toEqual({ saved: true });
+    expect(seen).toHaveLength(2);
+    expect(seen[1].url).toBe('/api/ops/provider.update');
+    expect(JSON.parse(seen[1].data as string)).toEqual({ id: 3 });
+    expect(seen[1].headers.get('X-SR-CSRF')).toBe('new');
+    expect(useSession.getState()).toMatchObject({ expired: false, waiting: 0, resumedCount: 1 });
+  });
+
+  it('nhiều request cùng 401 → cùng chờ, cùng được gửi lại', async () => {
+    setAppReady(true);
+    window.history.replaceState(null, '', '/jobs');
+    let authed = false;
+    api.defaults.adapter = fakeAdapter((cfg) =>
+      authed ? { status: 200, data: { url: cfg.url } } : { status: 401, data: AUTH_401 },
+    ).adapter;
+    const a = api.get('/api/ops/a');
+    const b = api.post('/api/ops/b', {});
+    await new Promise((r) => setTimeout(r, 0));
+    expect(useSession.getState().waiting).toBe(2);
+    authed = true;
+    resumeSession();
+    expect((await a).data).toEqual({ url: '/api/ops/a' });
+    expect((await b).data).toEqual({ url: '/api/ops/b' });
+  });
+
+  it('401 của chính /api/auth/* không bị giữ lại (để form đăng nhập nhận lỗi)', async () => {
+    setAppReady(true);
+    window.history.replaceState(null, '', '/jobs');
+    api.defaults.adapter = fakeAdapter({ status: 401, data: AUTH_401 }).adapter;
+    const err = await api.post('/api/auth/login', {}).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(useSession.getState().expired).toBe(false);
   });
 });

@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 import { useId, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../lib/cn';
-import { useDialogA11y } from '../../lib/useDialogA11y';
+import { DialogDepthContext, useDialogA11y } from '../../lib/useDialogA11y';
 import { IconButton } from './IconButton';
 
 export interface DrawerProps {
@@ -25,7 +25,7 @@ export function Drawer({ open, onClose, title, children, footer, className }: Dr
   const titleId = useId();
   const drag = useRef<{ x: number; y: number } | null>(null);
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  useDialogA11y(open, panelRef, onClose);
+  const depth = useDialogA11y(open, panelRef, onClose);
   if (!open) return null;
 
   const isSheet = () => window.matchMedia('(max-width: 767px)').matches;
@@ -51,6 +51,7 @@ export function Drawer({ open, onClose, title, children, footer, className }: Dr
   const dragging = offset.x > 0 || offset.y > 0;
 
   return createPortal(
+    <DialogDepthContext.Provider value={depth}>
     <div className="fixed inset-0 z-drawer">
       <div className="sr-enter-fade absolute inset-0 bg-[var(--scrim)]" aria-hidden onClick={onClose} />
       <div
@@ -102,7 +103,8 @@ export function Drawer({ open, onClose, title, children, footer, className }: Dr
           <div className="sr-safe-bottom" />
         )}
       </div>
-    </div>,
+    </div>
+    </DialogDepthContext.Provider>,
     document.body,
   );
 }

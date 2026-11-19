@@ -2,7 +2,7 @@ import { X } from 'lucide-react';
 import { useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../lib/cn';
-import { useDialogA11y } from '../../lib/useDialogA11y';
+import { DialogDepthContext, useDialogA11y } from '../../lib/useDialogA11y';
 import { IconButton } from './IconButton';
 
 export interface ModalProps {
@@ -24,10 +24,11 @@ export interface ModalProps {
 export function Modal({ open, title, onClose, size = 'md', actions, children, role = 'dialog', className }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
-  useDialogA11y(open, panelRef, onClose);
+  const depth = useDialogA11y(open, panelRef, onClose);
   if (!open) return null;
 
   return createPortal(
+    <DialogDepthContext.Provider value={depth}>
     <div className="fixed inset-0 z-modal grid place-items-center overflow-y-auto p-4">
       <div
         className="sr-enter-fade fixed inset-0 bg-[var(--scrim)]"
@@ -55,7 +56,8 @@ export function Modal({ open, title, onClose, size = 'md', actions, children, ro
         {children != null ? <div className="min-w-0 text-sm text-fg-1">{children}</div> : null}
         {actions ? <div className="flex flex-wrap justify-end gap-2">{actions}</div> : null}
       </div>
-    </div>,
+    </div>
+    </DialogDepthContext.Provider>,
     document.body,
   );
 }

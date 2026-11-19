@@ -14,10 +14,21 @@ import { formatSeconds } from '../lib/format';
 const DEFAULT_NEXT = '/projects';
 
 /** Chỉ nhận đường dẫn tương đối cùng origin (chặn `//evil.com`, `/\evil`, URL tuyệt đối, vòng lặp về /login). */
-export function safeNext(raw: string | null): string {
+export function safeNext(raw: string | null, origin: string = window.location.origin): string {
   if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return DEFAULT_NEXT;
-  if (raw === LOGIN_PATH || raw.startsWith(`${LOGIN_PATH}?`) || raw.startsWith(`${LOGIN_PATH}/`)) return DEFAULT_NEXT;
-  return raw;
+  // Ký tự điều khiển (tab, xuống dòng…) bị trình duyệt bỏ khi phân tích URL → "/\t/evil" thành "//evil".
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f\\]/.test(raw)) return DEFAULT_NEXT;
+  let url: URL;
+  try {
+    url = new URL(raw, origin);
+  } catch {
+    return DEFAULT_NEXT;
+  }
+  if (url.origin !== origin) return DEFAULT_NEXT;
+  const path = `${url.pathname}${url.search}${url.hash}`;
+  if (url.pathname === LOGIN_PATH || url.pathname.startsWith(`${LOGIN_PATH}/`)) return DEFAULT_NEXT;
+  return path;
 }
 
 function useCountdown(until: number | null): number {
