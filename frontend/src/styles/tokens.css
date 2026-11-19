@@ -1,0 +1,77 @@
+/* Chép nguyên văn từ DESIGN.md §3.6 — không sửa tay ở đây; đổi token thì sửa DESIGN.md rồi chép lại. */
+:root {
+  color-scheme: dark;
+  /* bề mặt — kênh RGB, xám trung tính tuyệt đối */
+  --c-stage: 0 0 0;
+  --c-bg-0: 19 19 19;
+  --c-bg-1: 26 26 26;
+  --c-bg-2: 34 34 34;
+  --c-bg-3: 43 43 43;
+  --c-bg-4: 52 52 52;
+  --c-line-1: 47 47 47;
+  --c-line-2: 71 71 71;
+  --c-line-3: 118 118 118;
+  --c-fg-1: 237 237 235;
+  --c-fg-2: 181 181 178;
+  --c-fg-3: 154 154 151;
+  --c-fg-4: 107 107 105;
+  /* accent: vàng sáp */
+  --c-accent: 242 210 75;
+  --c-accent-hi: 247 223 120;
+  --c-accent-lo: 217 185 46;
+  --c-on-accent: 20 20 20;
+  /* trạng thái clip */
+  --c-queued: 154 154 151;
+  --c-running: 114 176 242;
+  --c-done: 181 181 178;
+  --c-failed: 242 122 114;
+  --c-stale: 179 169 222;
+  --c-drifted: 235 134 207;
+  --c-approved: 242 210 75;
+  --c-warn: 240 166 96;
+  --c-ok: 116 211 159;
+  /* track */
+  --c-track-video: 94 134 179;
+  --c-track-dialogue: 79 163 150;
+  --c-track-subtitle: 163 154 132;
+  --c-track-music: 146 119 189;
+  --c-track-sfx: 192 123 82;
+  --scrim: rgb(0 0 0 / 0.6);
+  /* chữ */
+  --font-ui: "Be Vietnam Pro", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --text-2xs: 11px; --lh-2xs: 16px;
+  --text-xs: 12px;  --lh-xs: 18px;
+  --text-sm: 13px;  --lh-sm: 20px;
+  --text-base: 14px; --lh-base: 22px;
+  --text-md: 16px;  --lh-md: 24px;
+  --text-lg: 18px;  --lh-lg: 26px;
+  --text-xl: 22px;  --lh-xl: 30px;
+  --text-2xl: 28px; --lh-2xl: 36px;
+  --text-3xl: 36px; --lh-3xl: 44px;
+  /* hình khối */
+  --r-xs: 2px; --r-sm: 4px; --r-md: 6px; --r-lg: 10px;
+  --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.45);
+  --shadow-modal: 0 16px 48px rgb(0 0 0 / 0.6);
+  --focus-w: 2px; --focus-offset: 2px; /* focus = outline accent, không dùng box-shadow */
+  /* kích thước */
+  --h-control: 32px; --h-touch: 44px; --h-row: 40px; --h-track: 48px;
+  --w-rail: 64px; --w-inspector: 360px; --h-topbar: 48px; --h-meta: 52px;
+  /* lớp */
+  --z-sticky: 10; --z-playhead: 20; --z-dropdown: 30; --z-drawer: 40; --z-batchbar: 45;
+  --z-modal: 50; --z-toast: 60; --z-palette: 70; --z-banner: 80; --z-tooltip: 90;
+  /* chuyển động */
+  --dur-instant: 0ms; --dur-fast: 120ms; --dur-base: 180ms; --dur-slow: 260ms; --dur-exit: 180ms; --dur-image: 320ms;
+  --ease-out: cubic-bezier(.2, .7, .2, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  --ease-inout: cubic-bezier(.45, 0, .2, 1);
+}
+@media (pointer: coarse) {
+  :root { --h-control: 44px; }
+}
+@media (min-width: 1920px) {
+  :root { --w-rail: 200px; --w-inspector: 400px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0ms; --dur-base: 0ms; --dur-slow: 0ms; --dur-exit: 0ms; --dur-image: 120ms; }
+}

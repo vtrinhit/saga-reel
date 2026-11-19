@@ -1,0 +1,7 @@
+/* DESIGN §3.8: xem ngoài trời / bật tương phản cao → nâng fg-2 → fg-1, line-2 → line-3. */
+@media (prefers-contrast: more) {
+  :root {
+    --c-fg-2: var(--c-fg-1);
+    --c-line-2: var(--c-line-3);
+  }
+}
