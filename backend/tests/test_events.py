@@ -153,6 +153,9 @@ def test_sse_endpoint_sends_hello(client):
         assert r.headers["content-type"].startswith("text/event-stream")
         first = next(l for l in r.iter_lines() if l.startswith("event:"))
         assert first == "event: server.hello"
+        assert client.app.state.services.bus.subscriber_count == 1
+    # client ngắt → generator bị huỷ, subscription được huỷ đăng ký (không rò subscriber chết)
+    assert client.app.state.services.bus.subscriber_count == 0
 
 
 def _read_events(r, n):
@@ -181,6 +184,7 @@ def test_sse_replays_after_last_event_id_with_project_filter(client):
     assert json.loads(evs[0]["data"]) == {"boot_id": services.boot_id}
     assert [(e["id"], e["event"]) for e in evs[1:]] == [("3", "c"), ("4", "d")]
     assert json.loads(evs[2]["data"]) == {"n": "d"}
+    assert bus.subscriber_count == 0
 
 
 def test_sse_bad_last_event_id_is_ignored(client):
