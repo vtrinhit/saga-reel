@@ -55,7 +55,7 @@ def ffmpeg_args(spec: dict[str, Any], fps: float | None = None) -> list[str]:
              "-b:a", f"{e['audio_bitrate_kbps']}k"]
     if e.get("faststart"):
         args += ["-movflags", "+faststart"]
-    return args + list(e.get("extra_args") or [])
+    return args
 
 
 def estimate_size_bytes(spec: dict[str, Any], duration_s: float) -> int:

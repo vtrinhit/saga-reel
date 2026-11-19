@@ -22,12 +22,25 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from sagareel.core.context import OpContext
-from sagareel.core.errors import Conflict, Forbidden, NotFound, ValidationFailed, clean_validation_errors
+from sagareel.core.errors import (
+    Conflict,
+    Forbidden,
+    NotFound,
+    ValidationFailed,
+    clean_validation_errors,
+)
 from sagareel.core.uow import UnitOfWork
 from sagareel.db.base import utcnow
 from sagareel.db.models import Preset, Project, Sequence
@@ -90,8 +103,8 @@ class _FrameRef(_Strict):
 class _Encode(_Strict):
     container: Literal["mp4"] = "mp4"
     video_codec: Literal["libx264", "libx265"] = "libx264"
-    profile: str = "high"
-    pix_fmt: str = "yuv420p"
+    profile: Literal["baseline", "main", "high"] = "high"
+    pix_fmt: Literal["yuv420p"] = "yuv420p"
     preset: Literal["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower"] = "slow"
     crf: float = Field(ge=0, le=51)
     maxrate_kbps: int | None = Field(default=None, ge=100)
@@ -103,9 +116,8 @@ class _Encode(_Strict):
     audio_bitrate_kbps: int = Field(ge=64, le=512)
     sample_rate: int = Field(default=48000)
     channels: int = Field(default=2, ge=1, le=2)
-    colorspace: str | None = "bt709"
+    colorspace: Literal["bt709"] | None = "bt709"
     faststart: bool = True
-    extra_args: list[str] = Field(default_factory=list)
 
 
 class _Loudness(_Strict):

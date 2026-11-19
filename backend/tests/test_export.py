@@ -445,3 +445,15 @@ def test_cover_frame_ranking_prefers_sharp_stable_frames():
 
 def test_ffprobe_available_for_tests():
     assert subprocess.run(["ffprobe", "-version"], capture_output=True).returncode == 0
+
+
+def test_package_folder_rejects_traversal(services):
+    import pytest as _pytest
+
+    from sagareel.core.errors import AppError
+    from sagareel.services.export import package
+
+    for bad in ["../x", "..", "a/b", "a\b", ""]:
+        with _pytest.raises(AppError):
+            package.package_folder(services, "demo", "ep1", "tiktok", bad or "/")
+    assert package.package_folder(services, "demo", "ep1", "tiktok", "vi").name == "tiktok-vi"

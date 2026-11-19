@@ -24,6 +24,7 @@ import io
 import json
 import logging
 import os
+import re
 import shutil
 import zipfile
 from collections.abc import Iterator, Mapping, Sequence
@@ -41,7 +42,12 @@ from sagareel.db.models import Clip, ExportPackage, Scene, Sound, TimelineItem
 from sagareel.media import ffmpeg, probe
 from sagareel.services import entities, media
 from sagareel.services.export import checks, covers, metadata, platforms
-from sagareel.services.jobs import JobFailed, JobStateLost, NeedsAttention, TransientError
+from sagareel.services.jobs import (
+    JobFailed,
+    JobStateLost,
+    NeedsAttention,
+    TransientError,
+)
 
 logger = logging.getLogger("sagareel.export")
 
@@ -67,8 +73,23 @@ def exports_root(services: Any, project_key: str) -> Path:
     return services.settings.outputs_dir / "exports" / project_key
 
 
+_SAFE_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
+
+
+def _safe_part(value: str, what: str) -> str:
+    if not _SAFE_PART.match(value) or ".." in value:
+        raise ValidationFailed(f"Giá trị {what} không hợp lệ cho tên thư mục: {value!r}.", code="invalid_path_part")
+    return value
+
+
 def package_folder(services: Any, project_key: str, seq_key: str, platform: str, lang: str) -> Path:
-    return exports_root(services, project_key) / seq_key / f"{platform}-{lang or 'und'}"
+    """Thư mục gói xuất; mọi phần tên được kiểm (chống thoát khỏi `outputs/exports`)."""
+    root = (services.settings.outputs_dir / "exports").resolve()
+    p = (root / _safe_part(project_key, "dự án") / _safe_part(seq_key, "tập")
+         / f"{_safe_part(platform, 'nền tảng')}-{_safe_part(lang or 'und', 'ngôn ngữ')}").resolve()
+    if not p.is_relative_to(root):
+        raise ValidationFailed("Đường dẫn xuất nằm ngoài thư mục outputs/exports.", code="invalid_path_part")
+    return p
 
 
 def rel_path(services: Any, p: Path) -> str:
@@ -550,7 +571,7 @@ async def run_batch(services: Any, run: Any, export_ids: Sequence[int], batch: s
             keep = "pending" if getattr(run, "shutting_down", False) else "cancelled"
             _set_row(services, eid, status=keep)
             raise
-        except Exception as e:  # noqa: BLE001 — một gói hỏng không chặn các gói còn lại
+        except Exception as e:
             msg = getattr(e, "detail", None) or getattr(e, "msg", None) or f"{type(e).__name__}: {e}"
             logger.exception("Gói xuất #%s lỗi", eid)
             run.log("error", f"Gói {info['seq_key']} {info['platform']}-{info['lang']} lỗi: {msg}")

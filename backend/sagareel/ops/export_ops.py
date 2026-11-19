@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 import anyio
 from pydantic import BaseModel, Field
@@ -138,7 +138,7 @@ class ExportCheckParams(BaseModel):
 class ExportCreateParams(BaseModel):
     sequence_ids: list[int] = Field(min_length=1)
     platforms: list[str] = Field(default_factory=list, description="Trống = nền tảng đích của tập/dự án")
-    langs: list[str] = Field(default_factory=list, description="Trống = ngôn ngữ của dự án")
+    langs: list[Annotated[str, Field(pattern=r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$")]] = Field(default_factory=list, description="Trống = ngôn ngữ của dự án")
     options: package.ExportOptions = Field(default_factory=package.ExportOptions)
     dry_run: bool = Field(default=False, description="Chỉ trả danh sách gói sẽ tạo + kiểm tra ước tính, không dựng/ghi gì")
 
