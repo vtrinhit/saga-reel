@@ -23,6 +23,8 @@ def _scoped(ctx: OpContext, p: _Scoped) -> OpContext:
 class HistoryListParams(_Scoped):
     entity_type: str | None = Field(None, description="Lọc theo loại thực thể (tên bảng), vd. 'template'")
     entity_id: int | None = Field(None, description="Lọc theo id thực thể")
+    actor: str | None = Field(None, max_length=200, description="Lọc theo người làm: đúng tên (vd. `agent:bot`) hoặc "
+                              "tiền tố khi kết thúc bằng `:` (vd. `agent:` = mọi agent)")
     cursor: int | None = Field(None, description="`next_cursor` của trang trước")
     limit: int = Field(50, ge=1, le=200)
 
@@ -51,7 +53,7 @@ class HistoryRestoreParams(_Scoped):
     mcp="tool",
 )
 def history_list(ctx: OpContext, p: HistoryListParams) -> HistoryPage:
-    return history.list(_scoped(ctx, p), p.entity_type, p.entity_id, p.cursor, p.limit)
+    return history.list(_scoped(ctx, p), p.entity_type, p.entity_id, p.cursor, p.limit, actor=p.actor)
 
 
 @op(

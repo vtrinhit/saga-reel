@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
-from sqlalchemy import DateTime, select
+from sqlalchemy import DateTime, func, select
 from sqlalchemy.orm import Mapper, Session
 from sqlalchemy.types import TypeDecorator
 
@@ -104,13 +104,21 @@ def list(
     entity_id: int | None = None,
     cursor: int | None = None,
     limit: int = 50,
+    actor: str | None = None,
 ) -> HistoryPage:
     """Change set mới nhất trước. Lọc theo thực thể nếu có, ngược lại theo `ctx.project_id` (None = toàn cục).
 
-    `cursor` = `next_cursor` của trang trước (lấy các change set có id nhỏ hơn).
+    `cursor` = `next_cursor` của trang trước (lấy các change set có id nhỏ hơn). `actor`: khớp đúng
+    (`agent:bot`), hoặc tiền tố khi kết thúc bằng `:` (`agent:` = mọi agent, `user:` = mọi người dùng).
     """
     limit = max(1, min(limit, 200))
     q = select(ChangeSet)
+    if actor:
+        if actor.endswith(":"):
+            # So tiền tố bằng substr (không dùng LIKE: tên token có `_` là ký tự đại diện của LIKE).
+            q = q.where(func.substr(ChangeSet.actor, 1, len(actor)) == actor)
+        else:
+            q = q.where(ChangeSet.actor == actor)
     if entity_type is not None or entity_id is not None:
         sub = select(Revision.change_set_id)
         if entity_type is not None:
