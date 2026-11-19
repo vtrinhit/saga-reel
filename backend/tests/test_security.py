@@ -1023,3 +1023,27 @@ def test_viewer_cannot_download_original_media(local_client, remote_client, view
     # Chủ (máy cục bộ đã đăng nhập) vẫn tải được.
     r = local_client.get(f"/media/{mid}", params={"download": 1})
     assert r.status_code == 200 and r.headers["content-disposition"].startswith("attachment")
+
+
+def test_token_suspend_resume_by_name(local_client, remote_client, owner_token):
+    """Task BF: token.suspend → 403 token_suspended (có hint); token API không tự bật lại được."""
+    h = {**REMOTE_H, "Authorization": f"Bearer {owner_token}"}
+    out = _op(local_client, "token.suspend", {"name": "agent1"}).json()
+    assert out[0]["suspended"] is True
+    r = _op(remote_client, "system.info", headers=h)
+    assert r.status_code == 403 and r.json()["error_code"] == "token_suspended" and "tạm dừng" in r.json()["detail"]
+    assert next(t for t in _op(local_client, "token.list").json() if t["name"] == "agent1")["suspended"] is True
+    assert _op(local_client, "token.resume", {"name": "agent1"}).status_code == 200
+    assert _op(remote_client, "system.info", headers=h).status_code == 200
+    _op(local_client, "token.suspend", {"name": "agent1"})
+    _op(local_client, "token.create", {"name": "agent2", "role": "owner"})
+    assert _op(local_client, "token.suspend", {"name": "khong-co"}).status_code == 404
+
+
+def test_token_cannot_resume_itself(local_client, remote_client, owner_token):
+    raw2 = _op(local_client, "token.create", {"name": "agent2", "role": "owner"}).json()["token"]
+    h2 = {**REMOTE_H, "Authorization": f"Bearer {raw2}"}
+    assert _op(remote_client, "token.suspend", {"name": "agent1"}, headers=h2).status_code == 200
+    r = _op(remote_client, "token.resume", {"name": "agent1"}, headers=h2)
+    assert r.status_code == 403
+    assert _op(remote_client, "agents.resume_all", headers=h2).status_code == 403

@@ -53,6 +53,8 @@ class TokenInfo(BaseModel):
     last_used_at: datetime | None
     revoked_at: datetime | None
     active: bool
+    suspended: bool = Field(False, description="Agent đang tạm dừng (request nhận 403 token_suspended)")
+    local_only: bool = Field(False, description="Token agent cục bộ của app (chỉ dùng trên máy này)")
 
 
 class TokenCreated(TokenInfo):
@@ -114,6 +116,65 @@ def token_list(ctx: OpContext, p: AuthNoParams) -> list[dict]:
 )
 def token_revoke(ctx: OpContext, p: AuthIdParams) -> dict:
     return auth.revoke_token(ctx, p.id)
+
+
+class TokenNameParams(BaseModel):
+    name: str = Field(min_length=1, max_length=64, description="Tên token (agent `agent:<tên>`), vd. local-agent")
+
+
+@op(
+    "token.suspend",
+    summary="Tạm dừng một agent: mọi token API tên này bị từ chối (403 token_suspended) tới khi bật lại",
+    params=TokenNameParams,
+    result=TokenList,
+    idempotent=True,
+    viewer=False,
+)
+def token_suspend(ctx: OpContext, p: TokenNameParams) -> list[dict]:
+    return auth.set_suspended(ctx, p.name, True)
+
+
+@op(
+    "token.resume",
+    summary="Bật lại agent đã tạm dừng (token API không tự bật lại được)",
+    params=TokenNameParams,
+    result=TokenList,
+    idempotent=True,
+    viewer=False,
+)
+def token_resume(ctx: OpContext, p: TokenNameParams) -> list[dict]:
+    return auth.set_suspended(ctx, p.name, False)
+
+
+class AgentsPauseOut(BaseModel):
+    suspended: bool
+    changed: int = Field(description="Số token đổi trạng thái")
+    tokens: list[TokenInfo]
+
+
+@op(
+    "agents.pause_all",
+    summary="Tạm dừng MỌI agent (mọi token API còn hiệu lực, kể cả agent cục bộ) — nút dừng khẩn",
+    params=AuthNoParams,
+    result=AgentsPauseOut,
+    idempotent=True,
+    viewer=False,
+    mcp="tool",
+)
+def agents_pause_all(ctx: OpContext, p: AuthNoParams) -> dict:
+    return auth.set_all_suspended(ctx, True)
+
+
+@op(
+    "agents.resume_all",
+    summary="Bật lại mọi agent đã tạm dừng (chỉ chủ trong giao diện/máy cục bộ, không qua token API)",
+    params=AuthNoParams,
+    result=AgentsPauseOut,
+    idempotent=True,
+    viewer=False,
+)
+def agents_resume_all(ctx: OpContext, p: AuthNoParams) -> dict:
+    return auth.set_all_suspended(ctx, False)
 
 
 class SessionInfo(BaseModel):

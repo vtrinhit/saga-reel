@@ -104,7 +104,10 @@ class SecurityMiddleware:
         if bearer is not None:
             if bearer:
                 # `local`: token agent cục bộ (`local_only`) chỉ hợp lệ trên request cục bộ thật.
-                principal = await anyio.to_thread.run_sync(auth.authenticate_token, services, bearer, cfg, local)
+                try:
+                    principal = await anyio.to_thread.run_sync(auth.authenticate_token, services, bearer, cfg, local)
+                except AppError as e:  # token hợp lệ nhưng agent đang tạm dừng → 403 token_suspended
+                    return e
             if principal is None and protected:
                 return security.auth_required("Token API không hợp lệ, đã hết hạn hoặc đã bị thu hồi.")
         elif local and not cfg.local_login_required:
