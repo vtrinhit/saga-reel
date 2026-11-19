@@ -176,6 +176,15 @@ def load(
                     sm = normalize.SourceMedia(vpath, video.sha256, info.has_audio, info.duration_ms)
                 cp = normalize.ClipParams(c.trim_in_ms, c.trim_out_ms, float(c.speed or 1.0),
                                           "keep" if grok_keep else (c.grok_audio or "ambient"), None)
+                fit: dict[str, Any] = {"mode": "source"}
+                if c.engine == "ai_video" and sm.duration_ms:
+                    # Theo clip.duration_ms (spec §11): video dài → cắt; ngắn → chậm ≤ 0,8× rồi giữ khung cuối.
+                    cp, fit = normalize.fit_to_duration(sm.duration_ms, cp, c.duration_ms)
+                    if fit.get("hold_last_frame_ms"):
+                        loaded.warnings.append({
+                            "code": "video_short", "clip_id": c.id,
+                            "message": f"Video clip {c.key} ngắn hơn thời lượng clip; giữ khung cuối "
+                                       f"{fit['hold_last_frame_ms'] / 1000:.1f} s."})
                 try:
                     p = normalize.plan(sm, cp, prof)
                 except AppError as e:

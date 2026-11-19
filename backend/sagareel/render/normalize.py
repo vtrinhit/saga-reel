@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -89,6 +89,30 @@ def coerce_clip(clip: ClipParams | Mapping[str, Any] | Any) -> ClipParams:
 def available_ms(src_ms: int, clip: ClipParams) -> int:
     """Độ dài dùng được sau trim và tốc độ."""
     return max(0, round((src_ms - clip.trim_in_ms - clip.trim_out_ms) / max(clip.speed, 0.01)))
+
+
+MIN_SLOWDOWN = 0.8  # spec §11: video ngắn hơn clip → làm chậm tối đa còn 0,8× rồi giữ khung cuối
+
+
+def fit_to_duration(src_ms: int, clip: ClipParams, target_ms: int | None) -> tuple[ClipParams, dict[str, Any]]:
+    """Khớp video provider với `clip.duration_ms` (spec §11): dài hơn → cắt bớt cuối; ngắn hơn → làm chậm (chỉ khi
+    tốc độ clip đang là 1×, tối đa ≥ 0,8×) rồi giữ khung cuối phần còn thiếu. Trả (ClipParams mới, mô tả cách khớp)."""
+    if not target_ms or target_ms <= 0:
+        return clip, {"mode": "source"}
+    avail = available_ms(src_ms, clip)
+    if avail <= 0:
+        return clip, {"mode": "source"}
+    if avail >= target_ms:
+        return replace(clip, dur_ms=int(target_ms)), {"mode": "trim" if avail > target_ms else "exact",
+                                                      "cut_ms": avail - int(target_ms)}
+    speed = clip.speed
+    if abs(clip.speed - 1.0) < 1e-9:
+        speed = max(MIN_SLOWDOWN, avail / target_ms)
+    slowed = available_ms(src_ms, replace(clip, speed=speed))
+    hold = max(0, int(target_ms) - slowed)
+    mode = "slow" if hold == 0 else ("slow_hold" if speed < clip.speed else "hold")
+    return replace(clip, speed=round(speed, 6), dur_ms=int(target_ms)), {
+        "mode": mode, "speed": round(speed, 4), "hold_last_frame_ms": hold}
 
 
 def plan(src: SourceMedia, clip: ClipParams, prof: Profile) -> dict[str, Any]:
