@@ -73,7 +73,9 @@ def probe(path: Path) -> ProbeInfo:
 
     streams = data.get("streams") or []
     fmt = data.get("format") or {}
-    video = next((s for s in streams if s.get("codec_type") == "video"), None)
+    # Bỏ qua luồng ảnh bìa (`attached_pic`, vd. mjpeg trong MP4 của GrokTele): thông số phải là của video thật.
+    video = next((s for s in streams if s.get("codec_type") == "video"
+                  and (s.get("disposition") or {}).get("attached_pic") != 1), None)
     audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
 
     duration = _seconds(fmt.get("duration"))

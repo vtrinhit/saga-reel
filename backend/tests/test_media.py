@@ -206,6 +206,49 @@ def test_probe_video(sample_video):
     assert info.size == sample_video.stat().st_size
 
 
+def test_probe_skips_attached_picture_in_real_mp4(tmp_path):
+    """MP4 có thêm luồng ảnh bìa mjpeg (như GrokTele) — thông số là của luồng video thật."""
+    out, cover = tmp_path / "cover.mp4", _png(tmp_path / "cover.png", (32, 32))
+    subprocess.run(
+        ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+         "-f", "lavfi", "-i", "testsrc2=s=64x112:d=1:r=24", "-f", "lavfi", "-i", "sine=d=1", "-i", str(cover),
+         "-map", "0:v", "-map", "1:a", "-map", "2:v", "-c:v:0", "libx264", "-pix_fmt:v:0", "yuv420p",
+         "-c:a", "aac", "-c:v:1", "mjpeg", "-disposition:v:1", "attached_pic", str(out)],
+        check=True, stdin=subprocess.DEVNULL, capture_output=True,
+    )
+    covers = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries", "stream=codec_name:stream_disposition"
+         "=attached_pic", "-of", "csv=p=0", str(out)], check=True, capture_output=True, text=True).stdout.split()
+    assert sorted(covers) == ["h264,0", "mjpeg,1"]  # file mẫu thật sự có luồng ảnh bìa
+    info = probe(out)
+    assert (info.width, info.height, info.vcodec, info.acodec) == (64, 112, "h264", "aac")
+    assert info.fps == pytest.approx(24, abs=0.5)
+
+
+def test_probe_skips_attached_picture_listed_first(tmp_path, monkeypatch):
+    """ffmpeg luôn xếp ảnh bìa xuống cuối khi ghi MP4, nhưng file của bên khác có thể để ảnh bìa trước."""
+    import json
+
+    from sagareel.media import probe as probe_mod
+
+    f = tmp_path / "grok.mp4"
+    f.write_bytes(b"x" * 10)
+    streams = [
+        {"index": 0, "codec_type": "video", "codec_name": "mjpeg", "width": 32, "height": 32,
+         "avg_frame_rate": "0/0", "r_frame_rate": "90000/1", "disposition": {"attached_pic": 1}},
+        {"index": 1, "codec_type": "video", "codec_name": "h264", "width": 720, "height": 1280,
+         "avg_frame_rate": "24/1", "r_frame_rate": "24/1", "disposition": {"attached_pic": 0}},
+        {"index": 2, "codec_type": "audio", "codec_name": "aac", "disposition": {"attached_pic": 0}},
+    ]
+    stdout = json.dumps({"streams": streams, "format": {"format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+                                                         "duration": "6.0"}}).encode()
+    monkeypatch.setattr(probe_mod.subprocess, "run",
+                        lambda *a, **kw: subprocess.CompletedProcess(a, 0, stdout=stdout, stderr=b""))
+    info = probe(f)
+    assert (info.width, info.height, info.vcodec, info.fps) == (720, 1280, "h264", 24.0)
+    assert info.duration_ms == 6000 and info.acodec == "aac"
+
+
 def test_probe_image_has_no_duration(tmp_path):
     info = probe(_png(tmp_path / "p.png", (64, 112)))
     assert (info.width, info.height, info.duration_ms, info.has_audio) == (64, 112, 0, False)
