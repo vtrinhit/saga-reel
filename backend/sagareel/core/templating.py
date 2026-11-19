@@ -67,10 +67,11 @@ def _missing(name: str) -> AppError:
 
 
 def render(body: str, variables: dict[str, Any]) -> str:
-    """Render `body` với `variables`; giá trị biến chèn nguyên văn."""
-    missing = [n for n in variables_of(body) if n not in variables]
-    if missing:
-        raise _missing(missing[0])
+    """Render `body` với `variables`; giá trị biến chèn nguyên văn.
+
+    Biến chỉ bị coi là thiếu khi template thật sự dùng tới giá trị của nó (`{{ x | default("…") }}` và
+    `{% if x is defined %}` vẫn chạy khi không truyền `x`).
+    """
     try:
         return _env.from_string(body).render(dict(variables))
     except TemplateSyntaxError as e:

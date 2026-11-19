@@ -152,8 +152,16 @@ def test_routes_skip_non_vision_for_vision_tasks(services):
         assert [r.connection for r in llm.routes(s, "drift_check", None)] == ["seeing"]  # mặc định: kết nối có vision
         task.fallbacks = []
         s.flush()
+        # route của công việc không dùng được, không còn dự phòng → kết nối đang bật đầu tiên đọc được ảnh
+        assert [(r.connection, r.model) for r in llm.routes(s, "score_take", None)] == [("seeing", None)]
+        s.scalars(select(ProviderConnection).where(ProviderConnection.name == "seeing")).one().enabled = False
+        s.flush()
         with pytest.raises(AppError) as e:
             llm.routes(s, "score_take", None)
+        assert e.value.code == "llm_not_configured" and "text-only" in e.value.detail
+        # override chỉ định kết nối thì không tự đổi sang kết nối khác
+        with pytest.raises(AppError) as e:
+            llm.routes(s, "write_script", {"connection": "seeing"})
         assert e.value.code == "llm_not_configured"
 
 

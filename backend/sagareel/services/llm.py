@@ -188,11 +188,19 @@ def not_configured(task_key: str, reasons: list[str], need_vision: bool) -> AppE
                     extra={"task": task_key, "skipped": reasons, "alternatives": ["manual", "agent"]})
 
 
+def _first_enabled(session: Session, need_vision: bool) -> ProviderConnection | None:
+    rows = session.scalars(select(ProviderConnection).where(
+        ProviderConnection.kind == "llm", ProviderConnection.enabled.is_(True),
+        ProviderConnection.deleted_at.is_(None)).order_by(ProviderConnection.id)).all()
+    return next((r for r in rows if not need_vision or supports_vision(r)), None)
+
+
 def _candidates(
     session: Session, task: LlmTask, override: dict | None, need_vision: bool,
 ) -> list[tuple[Route, ProviderConnection]]:
     reasons: list[str] = []
     primary = normalize_route(task.route)
+    explicit = False  # route chính do override của lần chạy chỉ định kết nối
     chain: list[tuple[dict, str]] = []  # (route, nguồn)
     if override:
         ov = normalize_route(override)
@@ -205,6 +213,7 @@ def _candidates(
                 raise AppError("capability_mismatch", f"Kết nối '{row.name}' là loại {row.kind}, không phải LLM.",
                                hint="Chọn một kết nối loại llm.", status=422)
             primary = ov
+            explicit = True
         else:  # override chỉ đổi model/tham số của route chính
             primary = {"connection": primary["connection"],
                        "model": ov["model"] if ov["model"] is not None else primary["model"],
@@ -212,10 +221,7 @@ def _candidates(
     if primary["connection"] is not None:
         chain.append((primary, "route chính"))
     else:
-        rows = session.scalars(select(ProviderConnection).where(
-            ProviderConnection.kind == "llm", ProviderConnection.enabled.is_(True),
-            ProviderConnection.deleted_at.is_(None)).order_by(ProviderConnection.id)).all()
-        first = next((r for r in rows if not need_vision or supports_vision(r)), None)
+        first = _first_enabled(session, need_vision)
         if first is not None:
             chain.append(({**primary, "connection": first.name}, "kết nối mặc định"))
     chain += [(normalize_route(f), "dự phòng") for f in (task.fallbacks or [])]
@@ -244,6 +250,12 @@ def _candidates(
             continue
         seen.add(ident)
         out.append((route, row))
+    if not out and not explicit and primary["connection"] is not None:
+        # Kết nối đã chọn cho công việc đang tắt/đã xoá/không đọc được ảnh và không còn dự phòng nào dùng được:
+        # dùng kết nối LLM đang bật đầu tiên (model mặc định của nó) thay vì chặn người dùng.
+        first = _first_enabled(session, need_vision)
+        if first is not None:
+            out.append((Route(connection=first.name, model=None, params=primary["params"]), first))
     if not out:
         raise not_configured(task.key, reasons, need_vision)
     return out
@@ -461,6 +473,8 @@ async def llm_run_job(run: JobRun) -> dict:
 
     throttle = DeltaThrottle(emit)
     received = 0
+    if run.attempt > 0:  # worker chạy lại job (lỗi tạm thời): chữ đã stream ở lần trước bỏ đi
+        emit("", reset=True, attempt=0, job_attempt=run.attempt)
 
     def on_delta(chunk: str) -> None:
         nonlocal received

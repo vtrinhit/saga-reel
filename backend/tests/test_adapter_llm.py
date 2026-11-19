@@ -263,6 +263,14 @@ def test_render_missing_variable_raises():
     assert e.value.status == 422
 
 
+def test_render_allows_default_and_is_defined_for_missing_variables():
+    body = "{{ tone | default('trung tính') }}{% if extra is defined %}!{% endif %}"
+    assert templating.render(body, {}) == "trung tính"
+    with pytest.raises(AppError) as e:
+        templating.render("{{ input }}", {})
+    assert e.value.code == "template_variable_missing" and e.value.extra["name"] == "input"
+
+
 def test_render_keeps_user_content_verbatim():
     value = "  dòng 1\r\n\tdòng 2  \n\n"
     assert templating.render("{{ input }}", {"input": value}) == value
