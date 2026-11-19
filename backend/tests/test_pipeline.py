@@ -130,7 +130,6 @@ def test_workflow_validation_errors():
 # --- luồng chính: job con, gate, reject → chạy lại với góp ý, approve → xong ---------------------------------------
 
 
-@pytest.mark.xfail(reason="S2: cập nhật thứ tự job con khi mô-đun âm thanh (D) đã có", strict=False)
 async def test_pipeline_runs_children_stops_at_gate_reject_rerun_approve(services, owner_ctx, proj, fake_llm,
                                                                           children):
     sid = make_seq(owner_ctx, proj)
@@ -161,7 +160,7 @@ async def test_pipeline_runs_children_stops_at_gate_reject_rerun_approve(service
         # từ chối kèm góp ý → chạy lại prompt ảnh (LLM nhận góp ý) + tạo lại ảnh + animatic
         res = await anyio.to_thread.run_sync(engine.reject, owner_ctx, sid, "animatic", "sáng hơn")
         assert res["rerun"] == ["image_prompts", "generate_images", "render_animatic"]
-        await wait_for(lambda: len(children.calls) == 5 and run_state(services, sid)["status"] == "waiting_review")
+        await wait_for(lambda: len(children.calls) == 6 and run_state(services, sid)["status"] == "waiting_review")
         assert fake_llm.calls_of("story_image_prompts")[-1]["variables"]["feedback"] == "sáng hơn"
         assert children.calls[3][1]["overrides"] == {"feedback": "sáng hơn"}
         with services.db.session() as s:
@@ -173,8 +172,9 @@ async def test_pipeline_runs_children_stops_at_gate_reject_rerun_approve(service
         await anyio.to_thread.run_sync(engine.approve, owner_ctx, sid, "gate:animatic")
         await wait_for(status_is(services, sid, "done", "failed"))
         await wait_for(lambda: job_status(services, sid) == "succeeded")
-        assert [c[0] for c in children.calls[5:]] == ["clip.regenerate", "render.start"]
-        assert children.calls[5][1]["part"] == "video" and children.calls[6][1]["variant"] == "final"
+        # âm thanh đã tạo ở lượt animatic, không đổi thoại → không tạo lại
+        assert [c[0] for c in children.calls[6:]] == ["clip.regenerate", "render.start"]
+        assert children.calls[6][1]["part"] == "video" and children.calls[7][1]["variant"] == "final"
         steps = {x["name"]: x for x in run_state(services, sid)["steps"]}
         assert steps["gate:pilot"]["status"] == "skipped"
         with services.db.session() as s:
