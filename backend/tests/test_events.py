@@ -241,6 +241,37 @@ def test_sse_replays_after_last_event_id_with_project_filter(client):
     assert bus.subscriber_count == 0
 
 
+def test_sse_replays_after_last_event_id_query_param(client):
+    """EventSource mới tạo không gửi được header Last-Event-ID → client gửi `?last_event_id=` khi tự mở lại."""
+    bus = client.app.state.services.bus
+    client.portal.call(_publish_on_loop, bus, [("a", None), ("b", None), ("c", None)])
+    with client.stream("GET", "/api/events?last_event_id=1") as r:
+        evs = _read_events(r, 3)
+    assert evs[0]["event"] == "server.hello"
+    assert [(e["id"], e["event"]) for e in evs[1:]] == [("2", "b"), ("3", "c")]
+
+
+def test_sse_last_event_id_header_wins_over_query(client):
+    """Trình duyệt tự nối lại dùng lại URL cũ (query cũ) nhưng gửi header mới nhất → header thắng."""
+    bus = client.app.state.services.bus
+    client.portal.call(_publish_on_loop, bus, [("a", None), ("b", None), ("c", None)])
+    with client.stream("GET", "/api/events?last_event_id=1", headers={"Last-Event-ID": "2"}) as r:
+        evs = _read_events(r, 2)
+    assert [(e.get("id"), e["event"]) for e in evs] == [(None, "server.hello"), ("3", "c")]
+
+
+def test_sse_bad_last_event_id_query_is_ignored(client):
+    bus = client.app.state.services.bus
+    client.portal.call(_publish_on_loop, bus, [("a", None)])
+    with client.stream("GET", "/api/events?last_event_id=abc") as r:
+        first = _read_events(r, 1)
+    assert first[0]["event"] == "server.hello"
+    # header hỏng không che query hợp lệ
+    with client.stream("GET", "/api/events?last_event_id=0", headers={"Last-Event-ID": "x"}) as r:
+        evs = _read_events(r, 2)
+    assert [(e.get("id"), e["event"]) for e in evs] == [(None, "server.hello"), ("1", "a")]
+
+
 def test_sse_bad_last_event_id_is_ignored(client):
     with client.stream("GET", "/api/events", headers={"Last-Event-ID": "abc"}) as r:
         evs = _read_events(r, 1)

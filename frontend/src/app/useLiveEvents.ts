@@ -3,12 +3,15 @@ import { useEffect, useRef } from 'react';
 import { fetchAuthStatus } from '../api/auth';
 import { requireLogin } from '../api/client';
 import { useSession } from '../api/session';
+import { emitServerEvent } from '../lib/eventHub';
 import { connectEvents, type EventsConnection, type EventsState } from '../lib/events';
 import { useConnection } from '../stores/connection';
 import { useJobs } from '../stores/jobs';
 import { toast } from '../stores/toast';
 
 const RECONNECTED_MS = 3000;
+/** Hỏi `/api/auth/status` tối đa một lần mỗi chừng này ms khi luồng cứ lỗi (backoff tối đa 15 s). */
+export const PROBE_MIN_MS = 5000;
 
 /**
  * Luồng sự kiện đứt mà không biết lý do (EventSource không cho xem mã HTTP): hỏi `/api/auth/status`; nếu phiên đã
@@ -37,13 +40,13 @@ export function useLiveEvents(project?: number): void {
     const conn = useConnection.getState();
     let prev: EventsState | null = null;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastProbe = -Infinity;
 
     const stop = connectEvents({
       project: projectRef.current,
       queryClient,
       onState: (s) => {
         const wasDown = prev === 'reconnecting' || prev === 'offline';
-        const wasUp = prev === null || prev === 'open';
         prev = s;
         if (s === 'open') {
           conn.set({ state: s, nextRetryAt: null, justReconnected: wasDown });
@@ -53,8 +56,14 @@ export function useLiveEvents(project?: number): void {
           }
         } else {
           conn.set({ state: s, justReconnected: false });
-          if (wasUp) void probeAuth(); // lần đứt đầu tiên: có phải do hết phiên?
         }
+      },
+      // Mỗi lần lỗi (kể cả khi đang nối lại): có phải do hết phiên? Giãn cách để không dồn request.
+      onFailure: () => {
+        const now = Date.now();
+        if (useSession.getState().expired || now - lastProbe < PROBE_MIN_MS) return;
+        lastProbe = now;
+        void probeAuth();
       },
       onRetryIn: (ms) => conn.set({ nextRetryAt: ms == null ? null : Date.now() + ms }),
       onEvent: (e) => {
@@ -70,6 +79,7 @@ export function useLiveEvents(project?: number): void {
             toast({ message: 'Máy chủ vừa khởi động lại. Đã tải lại dữ liệu đang xem.' });
             break;
         }
+        emitServerEvent(e);
       },
     });
     connRef.current = stop;

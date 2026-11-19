@@ -9,6 +9,8 @@ export interface AuthStatus {
   via: string | null;
   local: boolean;
   password_set: { owner: boolean; viewer: boolean };
+  /** Chưa có mật khẩu chủ: ai tới được cổng cục bộ cũng là chủ → cảnh báo "đừng mở ra Internet". */
+  password_required_warning?: boolean;
 }
 
 export const authKeys = { status: ['auth', 'status'] as const };
@@ -43,4 +45,10 @@ export async function logout(): Promise<void> {
 export function isLocal(status: AuthStatus | null | undefined): boolean {
   if (status) return status.local;
   return ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(window.location.hostname);
+}
+
+/** Đang đăng nhập với vai trò người xem (chỉ xem): ẩn/khoá mọi thao tác ghi. */
+export function useIsViewer(): boolean {
+  const { data } = useAuthStatus();
+  return data?.role === 'viewer';
 }

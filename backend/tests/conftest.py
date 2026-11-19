@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Iterator
 
 import pytest
@@ -13,11 +14,13 @@ from sagareel.db.session import Database
 @pytest.fixture
 def settings(tmp_path) -> AppSettings:
     # env_file trỏ tới file tạm không tồn tại: test không bao giờ đọc .env.local thật.
-    return load_settings(
+    # frontend_dist trỏ tới thư mục tạm (chưa build): `frontend/dist` thật (sau `npm run build`) không đổi hành vi test.
+    s = load_settings(
         data_dir=tmp_path / "data",
         env_file=tmp_path / ".env.local",
         outputs_dir=tmp_path / "outputs",
     )
+    return dataclasses.replace(s, frontend_dist=tmp_path / "frontend_dist")
 
 
 @pytest.fixture

@@ -1172,3 +1172,28 @@ def test_adapters_use_shared_health_rule():
     for mod in (maivideo, openai_images, openai_audio, multikit, openai_compat):
         assert getattr(mod, "http_health_status", None) is base.http_health_status, mod.__name__
         assert not hasattr(mod, "health_status_for") and not hasattr(mod, "_health_status_for"), mod.__name__
+
+
+# --- budget.status ----------------------------------------------------------------------------------------------
+
+
+def test_budget_status_op_reports_totals_and_spend_excluding_fakes(client):
+    real = create(client, {"kind": "image", "adapter": "openai_images", "name": "real-img"})
+    fake = create(client, FAKE_IMG)
+    r = call(client, "settings.set_global", {"values": {"budget.images_total": 10, "budget.videos_total": 0}})
+    assert r.status_code == 200, r.text
+    with client.app.state.services.db.session() as s:
+        budget.record(s, "image", 3, None, real["id"])
+        budget.record(s, "image", 5, None, fake["id"])  # kết nối giả: không tính
+        s.commit()
+
+    r = call(client, "budget.status")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["image"] == {"enabled": True, "total": 10, "spent": 3.0, "remaining": 7.0}
+    # 0 = không giới hạn → total/remaining null
+    assert body["video"] == {"enabled": True, "total": None, "spent": 0.0, "remaining": None}
+
+    call(client, "settings.set_global", {"values": {"budget.enabled": False}})
+    body = call(client, "budget.status").json()
+    assert body["image"]["enabled"] is False and body["image"]["total"] is None and body["image"]["spent"] == 3.0

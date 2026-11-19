@@ -83,10 +83,90 @@ describe('shell (smoke)', () => {
     expect(container.textContent).toContain('Nhớ thiết bị này (30 ngày)');
   });
 
-  it('backend chưa có /api/auth (404) → shell vẫn dùng được', async () => {
+  it('backend chưa có /api/auth (404) → shell vẫn dùng được (trang Việc báo lỗi tải, không trắng)', async () => {
     api.defaults.adapter = reply(404, { detail: 'Not Found' });
     await render('/jobs');
-    expect(container.textContent).toContain('Đang xây');
+    expect(container.querySelector('h1')?.textContent).toBe('Việc');
+    expect(container.textContent).toContain('Không tải được danh sách việc');
+  });
+
+  it('trang Việc và Cài đặt dựng được từ dữ liệu thật của op (job, kết nối, LLM chưa có)', async () => {
+    const JOB = {
+      id: 7, type: 'provider.try_image', status: 'failed', priority: 0, lane: 'conn:1', project_id: null,
+      sequence_id: null, clip_id: null, parent_id: null, params: { prompt: 'a cat' }, progress: 30, stage: '',
+      eta_at: null, client_ref: null, external_id: null, external_state: {}, attempt: 0, max_attempts: 3,
+      next_attempt_at: null, error_code: 'internal_error', error_message: "Lỗi nội bộ không lường trước: KeyError: 'x'",
+      hint: 'Xem nhật ký job để biết chi tiết.', result: {}, cost_estimate: { units: 1 }, cost_actual: {},
+      created_at: '2026-11-19T12:00:00+00:00', started_at: null, finished_at: null, updated_at: null,
+    };
+    const CONN = {
+      id: 1, kind: 'image', adapter: 'fake_image', name: 'Ảnh giả', base_url: '', api_key: '', has_api_key: false,
+      default_model: '', options: {}, concurrency: 2, enabled: true,
+      health: { status: 'alive', detail: 'ok', checked_at: new Date().toISOString() }, created_at: null, updated_at: null,
+    };
+    const routes: Record<string, unknown> = {
+      '/api/auth/status': { authenticated: true, role: 'owner', via: 'local', local: true, password_set: { owner: false, viewer: false }, password_required_warning: true },
+      '/api/ops/job.list': { items: [JOB], next_cursor: null, paused: false },
+      '/api/ops/provider.list': { items: [CONN] },
+      '/api/ops/provider.adapters': { items: [{ id: 'fake_image', kind: 'image', label: 'Ảnh giả (không tốn tiền)', config_fields: [], default_capabilities: {} }] },
+      '/api/ops': [{ name: 'job.list' }],
+      '/api/ops/settings.explain': [{ key: 'remote.allow_viewer', value: false, source: 'default' }],
+      '/api/ops/settings.schema': [{ key: 'remote.allow_viewer', type: 'bool', default: false, description: 'x' }],
+      '/api/ops/token.list': [],
+      '/api/ops/session.list': [],
+    };
+    api.defaults.adapter = async (config) => ({
+      data: routes[String(config.url)] ?? {}, status: 200, statusText: 'OK', headers: {}, config, request: {},
+    });
+    await render('/jobs');
+    expect(container.textContent).toContain('Thử tạo ảnh');
+    expect(container.textContent).toContain('Lỗi nội bộ không lường trước.');
+    expect(container.textContent).not.toContain('KeyError');
+
+    await render('/settings/providers');
+    expect(container.textContent).toContain('Ảnh giả');
+    expect(container.textContent).toContain('Hoạt động');
+
+    await render('/settings/llm');
+    expect(container.textContent).toContain('Chưa có');
+
+    await render('/settings/access');
+    expect(container.textContent).toContain('Chưa đặt mật khẩu — đừng mở ra Internet.');
+    expect(container.textContent).toContain('Cho người xem truy cập từ xa');
+    expect(container.textContent).toContain('mặc định');
+  });
+
+  it('trang Việc: tải trang sau lỗi → giữ danh sách đã tải, báo lỗi ngay dưới danh sách', async () => {
+    const job = (id: number) => ({
+      id, type: 'provider.try_tts', status: 'succeeded', priority: 0, lane: 'conn:1', project_id: null, sequence_id: null,
+      clip_id: null, parent_id: null, params: {}, progress: 100, stage: '', eta_at: null, client_ref: null, external_id: null,
+      external_state: {}, attempt: 0, max_attempts: 3, next_attempt_at: null, error_code: null, error_message: null, hint: null,
+      result: {}, cost_estimate: {}, cost_actual: {}, created_at: null, started_at: null, finished_at: null, updated_at: null,
+    });
+    api.defaults.adapter = async (config) => {
+      const url = String(config.url);
+      if (url === '/api/ops/job.list') {
+        const body = JSON.parse(String(config.data));
+        if (body.cursor) {
+          const { AxiosError } = await import('axios');
+          throw new AxiosError('x', 'ERR_BAD_RESPONSE', config, {}, {
+            data: { ok: false, error_code: 'internal_error', detail: 'Lỗi máy chủ.', status: 500 }, status: 500, statusText: '', headers: {}, config,
+          });
+        }
+        return { data: { items: [job(9), job(8)], next_cursor: 8, paused: false }, status: 200, statusText: 'OK', headers: {}, config, request: {} };
+      }
+      const data = url === '/api/auth/status'
+        ? { authenticated: true, role: 'owner', via: 'local', local: true, password_set: { owner: true, viewer: false } }
+        : url === '/api/ops' ? [] : { items: [] };
+      return { data, status: 200, statusText: 'OK', headers: {}, config, request: {} };
+    };
+    await render('/jobs');
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(container.textContent).toContain('#9');
+    expect(container.textContent).toContain('Không tải được các việc cũ hơn');
+    expect(container.textContent).not.toContain('Không tải được danh sách việc');
   });
 
   it('trang trong dự án hiện "Sắp có" và điều hướng dự án', async () => {

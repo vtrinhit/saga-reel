@@ -13,6 +13,8 @@ export interface ConfirmDeleteProps extends Omit<ButtonProps, 'onClick' | 'varia
   onConfirm: () => void | Promise<void>;
   /** Nhãn nút ở bước 1 (mặc định "Xoá"). */
   label?: string;
+  /** Nhãn khi đã lên cò (mặc định "Bấm lần nữa để xoá <what>"), vd "Bấm lần nữa để thu hồi". */
+  armedLabel?: string;
   /**
    * Bước 2 (modal) chỉ khi xoá vĩnh viễn, > 50 mục, hoặc cả tập/dự án. Khi có, người dùng phải gõ đúng
    * `typeToConfirm` mới xoá được.
@@ -29,7 +31,7 @@ export interface ConfirmDeleteProps extends Omit<ButtonProps, 'onClick' | 'varia
  * Xoá hai bước (DESIGN §5.5): bấm "Xoá" → nút đổi thành "Bấm lần nữa để xoá …" (danger) trong 4 giây.
  * Mặc định việc xoá là vào Thùng rác + toast Hoàn tác (do nơi gọi lo).
  */
-export function ConfirmDelete({ what, onConfirm, label = 'Xoá', strong, loading, ...rest }: ConfirmDeleteProps) {
+export function ConfirmDelete({ what, onConfirm, label = 'Xoá', armedLabel, strong, loading, ...rest }: ConfirmDeleteProps) {
   const [armed, setArmed] = useState(false);
   const [modal, setModal] = useState(false);
   const [typed, setTyped] = useState('');
@@ -78,7 +80,7 @@ export function ConfirmDelete({ what, onConfirm, label = 'Xoá', strong, loading
       <Button
         {...rest}
         variant="danger"
-        icon={Trash}
+        icon={rest.icon ?? Trash}
         armed={armed}
         loading={loading || (busy && !strong)}
         onClick={onClick}
@@ -88,7 +90,7 @@ export function ConfirmDelete({ what, onConfirm, label = 'Xoá', strong, loading
         }}
         aria-live="polite"
       >
-        {armed ? `Bấm lần nữa để xoá ${what}` : label}
+        {armed ? (armedLabel ?? `Bấm lần nữa để xoá ${what}`) : label}
       </Button>
       {strong ? (
         <Modal

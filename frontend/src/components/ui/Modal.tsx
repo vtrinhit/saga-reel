@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../lib/cn';
 import { DialogDepthContext, useDialogA11y } from '../../lib/useDialogA11y';
@@ -17,15 +17,64 @@ export interface ModalProps {
   children?: ReactNode;
   /** `alertdialog` cho xác nhận phá huỷ. */
   role?: 'dialog' | 'alertdialog';
+  /**
+   * Luôn là dialog trên cùng ("Phiên đã hết hạn"): đứng đầu ngăn xếp focus/Esc và nằm cuối `body` (cùng lớp z
+   * `modal`, phần tử sau vẽ đè phần tử trước) kể cả khi dialog khác mở sau nó.
+   */
+  priority?: boolean;
   className?: string;
 }
 
+/**
+ * Lớp chứa cho dialog ưu tiên: một `div` luôn được giữ là con cuối của `body` (MutationObserver đưa nó xuống cuối
+ * mỗi khi có portal khác được thêm), nên cùng z-index vẫn vẽ trên mọi modal/drawer.
+ */
+function usePriorityLayer(active: boolean): HTMLElement | null {
+  const [layer, setLayer] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const el = document.createElement('div');
+    el.dataset.srLayer = 'priority';
+    document.body.appendChild(el);
+    const keepLast = () => {
+      if (document.body.lastElementChild === el) return;
+      // Chuyển node làm mất focus bên trong: giữ lại phần tử đang focus rồi trả focus sau khi chuyển.
+      const active = document.activeElement instanceof HTMLElement && el.contains(document.activeElement)
+        ? document.activeElement
+        : null;
+      document.body.appendChild(el);
+      active?.focus({ preventScroll: true });
+    };
+    const mo = new MutationObserver(keepLast);
+    mo.observe(document.body, { childList: true });
+    setLayer(el);
+    return () => {
+      mo.disconnect();
+      el.remove();
+      setLayer(null);
+    };
+  }, [active]);
+  return layer;
+}
+
 /** Rộng 480 (lớn 720), r-lg, bg-4, e3 + scrim 60%; giữ focus bên trong; không dùng để điều hướng. */
-export function Modal({ open, title, onClose, size = 'md', actions, children, role = 'dialog', className }: ModalProps) {
+export function Modal({
+  open,
+  title,
+  onClose,
+  size = 'md',
+  actions,
+  children,
+  role = 'dialog',
+  priority = false,
+  className,
+}: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
-  const depth = useDialogA11y(open, panelRef, onClose);
+  const layer = usePriorityLayer(open && priority);
+  const depth = useDialogA11y(open && (!priority || layer != null), panelRef, onClose, { priority });
   if (!open) return null;
+  if (priority && !layer) return null;
 
   return createPortal(
     <DialogDepthContext.Provider value={depth}>
@@ -58,6 +107,6 @@ export function Modal({ open, title, onClose, size = 'md', actions, children, ro
       </div>
     </div>
     </DialogDepthContext.Provider>,
-    document.body,
+    priority && layer ? layer : document.body,
   );
 }

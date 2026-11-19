@@ -22,7 +22,7 @@ export interface EstimateDialogProps {
   rows: EstimateRow[];
   /** Số việc sẽ chạy (cho nhãn nút). Mặc định = tổng số lượng. */
   jobCount?: number;
-  /** Ngân sách tháng còn lại (lượt); null = chưa đặt ngân sách. */
+  /** Ngân sách còn lại (tổng toàn cục); null = không giới hạn / chưa đặt. */
   budgetRemaining?: number | null;
   /** Cảnh báo khả năng provider, vd "GrokTele không nhận ảnh tham chiếu thứ 2 — chỉ gửi ảnh đầu." */
   warnings?: ReactNode[];
@@ -105,14 +105,14 @@ export function EstimateDialog({
 
         {budgetRemaining != null ? (
           <p className="text-xs text-fg-2">
-            Ngân sách tháng còn <span className="font-mono tnum text-fg-1">{formatCredits(budgetRemaining)}</span>
+            Ngân sách còn <span className="font-mono tnum text-fg-1">{formatCredits(budgetRemaining)}</span>
           </p>
         ) : null}
 
         {overBudget ? (
           <div role="alert" className="sr-warnbox flex items-start gap-2 rounded-sm px-2.5 py-2 text-sm">
             <CircleAlert className="sr-ico mt-0.5 text-warn" aria-hidden />
-            <span>Vượt ngân sách tháng {formatCredits(totalCredits - (budgetRemaining ?? 0))}.</span>
+            <span>Vượt ngân sách {formatCredits(totalCredits - (budgetRemaining ?? 0))}.</span>
           </div>
         ) : null}
 

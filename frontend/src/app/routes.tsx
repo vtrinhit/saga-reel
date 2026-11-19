@@ -1,7 +1,13 @@
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router';
 import { Login } from '../pages/Login';
-import { ComingSoon, NotFound, ProjectSection, UnderConstruction } from '../pages/Placeholders';
+import { Jobs } from '../pages/Jobs';
+import { ComingSoon, NotFound, ProjectSection } from '../pages/Placeholders';
 import { Projects } from '../pages/Projects';
+import { SettingsAccess } from '../pages/settings/SettingsAccess';
+import { SettingsBudget } from '../pages/settings/SettingsBudget';
+import { SettingsLayout } from '../pages/settings/SettingsLayout';
+import { SettingsLlm } from '../pages/settings/SettingsLlm';
+import { SettingsProviders } from '../pages/settings/SettingsProviders';
 import { AppShell } from './AppShell';
 import { PROJECT_SECTIONS } from './nav';
 
@@ -13,10 +19,19 @@ export const routes: RouteObject[] = [
       { index: true, element: <Navigate to="/projects" replace /> },
       { path: 'projects', element: <Projects /> },
       { path: 'presets', element: <ComingSoon title="Mẫu" /> },
-      // Settings và Jobs: Task 17b thay các placeholder này.
-      { path: 'settings', element: <Navigate to="/settings/providers" replace /> },
-      { path: 'settings/*', element: <UnderConstruction title="Cài đặt" /> },
-      { path: 'jobs', element: <UnderConstruction title="Việc" /> },
+      {
+        path: 'settings',
+        element: <SettingsLayout />,
+        children: [
+          { index: true, element: <Navigate to="/settings/providers" replace /> },
+          { path: 'providers', element: <SettingsProviders /> },
+          { path: 'llm', element: <SettingsLlm /> },
+          { path: 'access', element: <SettingsAccess /> },
+          { path: 'budget', element: <SettingsBudget /> },
+          { path: '*', element: <NotFound /> },
+        ],
+      },
+      { path: 'jobs', element: <Jobs /> },
       {
         path: 'p/:projectId',
         children: [

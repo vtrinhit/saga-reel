@@ -50,9 +50,19 @@ def build_router() -> APIRouter:
         request: Request,
         project: int | None = Query(None, description="Chỉ nhận sự kiện của project này (và sự kiện toàn cục)"),
         last_event_id: str | None = Header(None, alias="Last-Event-ID"),
+        last_event_id_q: str | None = Query(
+            None,
+            alias="last_event_id",
+            description=(
+                "Như header Last-Event-ID, cho EventSource mới tạo (không gửi được header). "
+                "Có header hợp lệ thì header thắng (trình duyệt tự nối lại gửi header mới nhất, URL vẫn là URL cũ)."
+            ),
+        ),
     ) -> EventSourceResponse:
         services = request.app.state.services
         last_seq = _parse_last_event_id(last_event_id)
+        if last_seq is None:
+            last_seq = _parse_last_event_id(last_event_id_q)
 
         principal = getattr(request.state, "principal", None)
 

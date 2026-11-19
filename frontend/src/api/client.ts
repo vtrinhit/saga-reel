@@ -157,6 +157,7 @@ export const api: AxiosInstance = axios.create({
 api.interceptors.request.use((config) => {
   const token = readCookie(CSRF_COOKIE);
   if (token) config.headers.set(CSRF_HEADER, token);
+  (config as StampedConfig)[GEN] = generation;
   return config;
 });
 
@@ -169,9 +170,6 @@ api.interceptors.request.use((config) => {
  * 401 chuyển thẳng tới `/login?next=…`; sau đó, 401 mở modal "Phiên đã hết hạn" và giữ nguyên màn đang làm.
  */
 let appReady = false;
-export function setAppReady(ready: boolean): void {
-  appReady = ready;
-}
 
 interface Pending {
   config: InternalAxiosRequestConfig;
@@ -179,6 +177,36 @@ interface Pending {
   reject: (err: unknown) => void;
 }
 let pending: Pending[] = [];
+
+/**
+ * Đời phiên: tăng mỗi lần đăng nhập lại thành công. Mỗi request ghi đời lúc gửi; 401 của request gửi ở đời cũ (về
+ * muộn, sau khi đã đăng nhập lại) được gửi lại ngay một lần thay vì mở modal lần nữa.
+ */
+let generation = 0;
+const GEN = Symbol('srGeneration');
+type StampedConfig = InternalAxiosRequestConfig & { [GEN]?: number };
+
+/**
+ * `false` (rời shell, đăng xuất, chuyển sang /login): huỷ hàng chờ "Phiên đã hết hạn" — các request cũ bị từ chối
+ * với `auth_required`, không bao giờ được gửi lại sau này (không phát lại POST cũ).
+ */
+export function setAppReady(ready: boolean): void {
+  appReady = ready;
+  if (ready) return;
+  const queue = pending;
+  pending = [];
+  if (queue.length || useSession.getState().expired) useSession.getState().set({ expired: false, waiting: 0 });
+  for (const p of queue) {
+    p.reject(
+      new ApiError({
+        code: 'auth_required',
+        detail: 'Phiên đã hết hạn.',
+        hint: 'Đăng nhập lại rồi thử lại thao tác.',
+        status: 401,
+      }),
+    );
+  }
+}
 
 const isAuthPath = (url: string | undefined) => !!url && /^\/api\/auth(\/|$)/.test(url.replace(/^https?:\/\/[^/]+/, ''));
 
@@ -199,6 +227,7 @@ export function requireLogin(): void {
 export function resumeSession(): void {
   const queue = pending;
   pending = [];
+  generation += 1;
   const s = useSession.getState();
   s.set({ expired: false, waiting: 0, resumedCount: s.resumedCount + 1 });
   for (const p of queue) {
@@ -214,6 +243,17 @@ api.interceptors.response.use(
       const config = err instanceof AxiosError ? err.config : undefined;
       // 401 của chính /api/auth/* (form đăng nhập, modal phiên hết hạn) do nơi gọi tự hiện lỗi.
       if (config && isAuthPath(config.url)) return Promise.reject(e);
+      const stamped = config as StampedConfig | undefined;
+      if (
+        appReady &&
+        stamped &&
+        (stamped[GEN] ?? generation) < generation &&
+        !useSession.getState().expired
+      ) {
+        // Gửi trước lần đăng nhập lại gần nhất: cookie mới đã có → gửi lại ngay. Lần gửi lại mang đời hiện tại nên
+        // nếu vẫn 401 thì vào hàng chờ như thường (không lặp).
+        return api.request(stamped);
+      }
       if (appReady && config) {
         // Giữ lời gọi lại; modal đăng nhập xong sẽ gửi lại và trả kết quả cho người gọi.
         return new Promise<AxiosResponse>((resolve, reject) => {
