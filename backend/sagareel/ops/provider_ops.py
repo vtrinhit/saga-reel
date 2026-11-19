@@ -28,10 +28,11 @@ from sagareel.providers.base import (
     ConfigField,
     Connection,
     ImageRequest,
+    LLMRequest,
+    STTRequest,
     TTSRequest,
     VideoRequest,
 )
-from sagareel.providers.fake import ASPECTS
 from sagareel.services import budget, confirm, jobs, media
 from sagareel.services import provider_jobs as pj
 from sagareel.services.providers import ProviderService, get_row
@@ -422,15 +423,17 @@ async def provider_try_image(ctx: OpContext, p: TryImageParams) -> dict:
                            budget_kind="image")
 
 
-def _nearest_aspect(width: int | None, height: int | None) -> str:
+def _nearest_aspect(ctx: OpContext, width: int | None, height: int | None) -> str:
+    """Tỉ lệ trong `image.aspect` (choices của schema) gần nhất với kích thước ảnh."""
+    d = ctx.services.resolver.definition("image.aspect")
     if not width or not height:
-        return "9:16"
+        return str(d.default)
 
     def ratio(a: str) -> float:
         w, h = a.split(":")
         return float(w) / float(h)
 
-    return min(ASPECTS, key=lambda a: abs(ratio(a) - width / height))
+    return min(d.choices or [d.default], key=lambda a: abs(ratio(a) - width / height))
 
 
 def _media_info(ctx: OpContext, media_id: int, kind: str) -> tuple[Path, int | None, int | None]:
@@ -461,7 +464,7 @@ async def provider_try_video(ctx: OpContext, p: TryVideoParams) -> dict:
         resolution = p.resolution or ps.setting("video.resolution")
         _require_capability(adapter, "durations", duration, "thời lượng")
         _require_capability(adapter, "resolutions", resolution, "độ phân giải")
-        return conn, enabled, adapter, duration, resolution, _nearest_aspect(w, h)
+        return conn, enabled, adapter, duration, resolution, _nearest_aspect(ctx, w, h)
 
     conn, enabled, adapter, duration, resolution, aspect = await anyio.to_thread.run_sync(prepare)
     req = VideoRequest(image=_DRY_DIR / "image", prompt=p.prompt, duration_s=duration, resolution=resolution,
@@ -507,7 +510,8 @@ async def provider_try_stt(ctx: OpContext, p: TrySTTParams) -> dict:
         return conn, enabled, adapter
 
     conn, enabled, adapter = await anyio.to_thread.run_sync(prepare)
-    return await _dispatch(ctx, pj.TRY_STT, conn, enabled, adapter, None,
+    req = STTRequest(audio=_DRY_DIR / "audio", lang=p.lang, word_timestamps=True)
+    return await _dispatch(ctx, pj.TRY_STT, conn, enabled, adapter, req,
                            {"audio_media_id": p.audio_media_id, "lang": p.lang}, dry_run=False, budget_kind=None)
 
 
@@ -529,7 +533,9 @@ async def provider_try_llm(ctx: OpContext, p: TryLLMParams) -> dict:
 
     conn, enabled, adapter = await anyio.to_thread.run_sync(prepare)
     model = p.model or conn.default_model or None
-    return await _dispatch(ctx, pj.TRY_LLM, conn, enabled, adapter, None,
+    req = LLMRequest(messages=[{"role": "user", "content": p.prompt}], model=model, params={}, json_mode=False,
+                     images=[_DRY_DIR / "image"] if p.image_media_id is not None else [])
+    return await _dispatch(ctx, pj.TRY_LLM, conn, enabled, adapter, req,
                            {"prompt": p.prompt, "model": model, "image_media_id": p.image_media_id},
                            dry_run=False, budget_kind=None)
 

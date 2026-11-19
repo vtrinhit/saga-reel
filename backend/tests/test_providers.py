@@ -379,6 +379,32 @@ async def test_try_tts_stt_llm(client, run_jobs):
     assert llm["result"]["text"] == "Chào  bạn,\nmình là LLM giả."
 
 
+def test_try_ops_pass_real_request_to_estimate(client, monkeypatch):
+    """`estimate(req)` luôn nhận request thật của kind (adapter thật đọc req.messages / req.audio…)."""
+    from sagareel.providers.base import STTRequest
+
+    seen = []
+
+    async def estimate(self, req):
+        seen.append(req)
+        return {"units": 1}
+
+    for adapter_id in ("fake_llm", "fake_stt"):
+        monkeypatch.setattr(registry.get(adapter_id), "estimate", estimate)
+    create(client, FAKE_LLM)
+    create(client, FAKE_STT)
+    with client.app.state.services.db.session() as s:
+        m = Media(kind="audio", path="a.mp3", mime="audio/mpeg", size=1, sha256="1" * 64, origin="fake", meta={})
+        s.add(m)
+        s.flush()
+        audio_id = m.id
+    client.app.state.services.worker.pause_all()  # chỉ kiểm tra lúc tạo job
+    assert call(client, "provider.try_llm", {"connection": "fake-llm", "prompt": " hỏi "}).status_code == 200
+    assert call(client, "provider.try_stt", {"connection": "fake-stt", "audio_media_id": audio_id}).status_code == 200
+    assert isinstance(seen[0], LLMRequest) and seen[0].messages == [{"role": "user", "content": " hỏi "}]
+    assert isinstance(seen[1], STTRequest)
+
+
 # --- Adapter giả trực tiếp ----------------------------------------------------------------------------------------
 
 
