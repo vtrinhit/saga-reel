@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Mapped, mapped_column
@@ -23,3 +24,5 @@ class Media(Plain, Base):
     sha256: Mapped[str] = mapped_column(index=True)
     origin: Mapped[str]  # generated/upload/derived/fake
     meta: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)
+    trashed_at: Mapped[datetime | None]  # file gốc đã chuyển vào data/trash/ (media.cleanup)
+    purged_at: Mapped[datetime | None]  # file trong thùng rác đã xoá hẳn (trash.purge)

@@ -34,4 +34,5 @@ class Take(Plain, Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     auto_score: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)
     lang: Mapped[str] = mapped_column(default="")
+    selected_by: Mapped[str] = mapped_column(default="")  # actor đã chọn take (sheet: một take mỗi look+góc)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)

@@ -64,3 +64,4 @@ class Spend(Plain, Base):
     units: Mapped[float] = mapped_column(default=0.0)
     cost: Mapped[float | None]
     job_id: Mapped[int | None]
+    project_id: Mapped[int | None] = mapped_column(index=True)  # ngân sách theo dự án

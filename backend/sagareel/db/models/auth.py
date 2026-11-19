@@ -40,3 +40,5 @@ class ApiToken(Plain, Base):
     revoked_at: Mapped[datetime | None]
     # Chỉ hợp lệ trên request cục bộ thật (`security.is_local`): token agent cục bộ trong `data/local-agent.token`.
     local_only: Mapped[bool] = mapped_column(default=False, server_default=false())
+    # Tạm dừng agent (`token.suspend`): request bằng token này nhận 403 `token_suspended`; bật lại được.
+    suspended: Mapped[bool] = mapped_column(default=False, server_default=false())
