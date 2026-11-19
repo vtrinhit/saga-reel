@@ -175,11 +175,22 @@ export function nextCost(seg: NextSegment, plan: PipelinePlan['sequences'][numbe
   const parts: string[] = [];
   let credits = 0;
   let overBudget = false;
+  // Tập chưa chia clip: dry_run chưa đếm được ảnh/video → không được báo "0 lượt" (duyệt sẽ tốn lượt sau khi chia).
+  if ((seg.spends.images || seg.spends.videos) && plan.clips === 0) {
+    const what = [seg.spends.images ? 'ảnh' : null, seg.spends.videos ? 'video' : null].filter(Boolean).join(' + ');
+    const llm = seg.spends.llm && plan.llm_calls > 0 ? `${nf.format(plan.llm_calls)} lần gọi LLM · ` : '';
+    return {
+      lead,
+      amount: `${llm}${what}: chưa tính được`,
+      notes: [...notes, 'tập chưa chia clip — số lượt ảnh/video biết sau bước chia clip'],
+      overBudget: false,
+      credits: 0,
+    };
+  }
   for (const kind of ['images', 'videos'] as const) {
     if (!seg.spends[kind]) continue;
     const n = plan[kind] ?? 0;
     const bk = budget?.[kind === 'images' ? 'image' : 'video'];
-    if (n === 0 && seg.spends.llm && plan.llm_calls > 0) continue;
     parts.push(`${nf.format(n)} ${kind === 'images' ? 'ảnh' : 'video'}`);
     if (bk?.enabled) {
       credits += n;

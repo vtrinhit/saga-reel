@@ -9,7 +9,7 @@ import { callOp } from '../../api/ops';
 import type { BudgetStatus, ChangeSet, HistoryPage, Job, JobPage } from '../../api/types';
 import { shellKeys } from '../../components/shell/useShellData';
 import type { PipelinePlan, PipelineSummary, SequenceStatus } from '../../lib/activity';
-import { errorMessage } from '../../lib/activity';
+import { errorMessage, gateLabel } from '../../lib/activity';
 import { useServerEvent } from '../../lib/eventHub';
 import { toast } from '../../stores/toast';
 
@@ -168,7 +168,7 @@ export function useGateActions() {
     mutationFn: (v: { sequenceId: number; gate: string; note?: string }) =>
       callOp('gate.approve', { sequence_id: v.sequenceId, gate: v.gate, note: v.note ?? '' }),
     onSuccess: (_r, v) => {
-      toast({ message: `Đã duyệt gate ${v.gate} — quy trình chạy tiếp.`, tone: 'success' });
+      toast({ message: `Đã duyệt gate ${gateLabel(v.gate)} — quy trình chạy tiếp.`, tone: 'success' });
       refresh();
     },
     onError: (e) => toast({ message: errorMessage(e, 'Không duyệt được gate.'), tone: 'error' }),

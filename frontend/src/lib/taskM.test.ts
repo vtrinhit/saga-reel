@@ -56,6 +56,14 @@ describe('activity', () => {
     expect(nextCost(seg, null, null).amount).toBeNull();
   });
 
+  it('tập chưa chia clip: không báo 0 lượt khi đoạn kế có tạo ảnh', () => {
+    const steps = [step('gate:outline', 'running'), step('write_script'), step('split_clips'), step('generate_images'), step('gate:storyboard')];
+    const v = nextCost(nextSegment(steps, 'outline'), { sequence_id: 3, clips: 0, images: 0, videos: 0, llm_calls: 4, status: 'waiting_review' }, null);
+    expect(v.amount).toBe('4 lần gọi LLM · ảnh: chưa tính được');
+    expect(v.amount).not.toContain('0 lượt');
+    expect(v.notes.join(' ')).toContain('chưa chia clip');
+  });
+
   it('gom Cần bạn: gate trước, rồi chờ nhập, lỗi, việc; gộp việc vượt ngân sách', () => {
     const needs = buildNeeds(
       [summary(), summary({ sequence_id: 13, number: 13, status: 'waiting_input', waiting: { step: 'write_script' }, current: 'write_script' }), summary({ sequence_id: 14, number: 14, status: 'failed', waiting: null, error: { message: 'LLM lỗi' } }), summary({ sequence_id: 15, status: 'running', waiting: null })],
