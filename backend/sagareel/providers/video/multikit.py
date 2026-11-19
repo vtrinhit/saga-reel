@@ -106,6 +106,10 @@ def _error_body(resp: httpx.Response) -> dict:
     return err if isinstance(err, dict) else {"message": _short(resp.text)}
 
 
+class _RemoteCancelled(ProviderJobError):
+    """Job ở trạng thái `cancelled` phía GrokTele mà người dùng không huỷ trong SagaReel."""
+
+
 def _valid_video(path: Path) -> bool:
     try:
         return path.is_file() and path.stat().st_size > MIN_VIDEO_BYTES
@@ -236,7 +240,8 @@ class MultiKitVideoAdapter(VideoAdapter):
         out = Path(req.out_path).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
 
-        if run is not None and run.external_id:
+        resumed = run is not None and bool(run.external_id)
+        if resumed:
             job_id = str(run.external_id)
             ref = str(run.external.get("client_ref") or self._base_ref(run))
             deduped = False
@@ -245,11 +250,23 @@ class MultiKitVideoAdapter(VideoAdapter):
             ref = str((run.external.get("client_ref") if run is not None else None) or self._base_ref(run))
             job_id, deduped = await self._submit(req, ref, run)
 
+        # Mỗi trường hợp gửi lại tối đa một lần (đều ghi dấu bền trước khi POST như lần đầu):
+        # - nối lại mà job cũ đã bị huỷ phía GrokTele khi app vắng mặt (tắt app gửi DELETE, hoặc GrokTele tự huỷ job
+        #   5 phút không ai hỏi) → gửi lại cùng clientRef: GrokTele bỏ qua job đã huỷ khi chống trùng → job mới;
+        # - clientRef trả lại job cũ đã xong mà file không còn (vd. chạy lại job sau khi file đã vào kho media) →
+        #   gửi lại bằng ref mới.
+        resent_cancelled = resent_missing = False
         async with self.client() as c:
-            # Tối đa 2 lượt: lượt 2 chỉ khi clientRef trả lại một job cũ đã xong mà file không còn (vd. chạy lại job
-            # sau khi file đã được chuyển vào kho media) → gửi lại bằng ref mới, cũng ghi bền trước khi POST.
-            for attempt in range(2):
-                job = await self._wait(c, job_id, run)
+            while True:
+                try:
+                    job = await self._wait(c, job_id, run)
+                except _RemoteCancelled:
+                    if not resumed or resent_cancelled:
+                        raise
+                    resent_cancelled = True
+                    _log(run, "warning", f"GrokTele: job {job_id} đã bị huỷ khi ứng dụng vắng mặt — gửi lại.")
+                    job_id, deduped = await self._submit(req, ref, run)
+                    continue
                 produced = Path(str((job.get("result") or {}).get("filePath") or out))
                 if _valid_video(produced):
                     if produced.resolve() != out:
@@ -258,7 +275,8 @@ class MultiKitVideoAdapter(VideoAdapter):
                         await anyio.to_thread.run_sync(shutil.copyfile, produced, out)
                         produced = out
                     return await self._result(produced, job, job_id=job_id, ref=ref, deduped=deduped, req=req)
-                if deduped and attempt == 0:
+                if deduped and not resent_missing:
+                    resent_missing = True
                     _log(run, "warning", f"GrokTele: job cũ {job_id} báo xong nhưng file không còn — gửi job mới.")
                     ref = f"{self._base_ref(run)}:{uuid.uuid4().hex[:8]}"
                     job_id, deduped = await self._submit(req, ref, run)
@@ -414,7 +432,8 @@ class MultiKitVideoAdapter(VideoAdapter):
         status = str(job.get("status") or "failed")
         kind = _kind(err.get("kind") or err.get("code"), "cancelled" if status.startswith("cancel") else "failed")
         message = _short(err.get("message")) or f"trạng thái {status}"
-        return ProviderJobError(
+        cls = _RemoteCancelled if status.startswith("cancel") else ProviderJobError
+        return cls(
             kind, f"Job GrokTele {job_id} thất bại [{kind}]: {message}",
             hint=_ERROR_HINTS.get(kind, "Xem log của GrokTele/MultiKit rồi chạy lại job."),
         )

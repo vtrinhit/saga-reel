@@ -66,14 +66,18 @@ def make_adapter(http: httpx.AsyncClient, *, api_key: str = KEY, base_url: str =
 
 @pytest.fixture(scope="session")
 def sample_mp4(tmp_path_factory) -> Path:
-    """MP4 thật (H.264 + AAC, 1 s) tạo bằng ffmpeg testsrc — đóng vai file GrokTele tải về."""
-    out = tmp_path_factory.mktemp("mp4") / "sample.mp4"
-    subprocess.run(
-        [shutil.which("ffmpeg"), "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=24",
-         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "1", "-c:v", "libx264",
-         "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", str(out)],
-        check=True, stdin=subprocess.DEVNULL, capture_output=True,
-    )
+    """MP4 thật như GrokTele tải về: H.264 24 fps + AAC 48 kHz + luồng ảnh bìa `mjpeg` (attached_pic), 1 s."""
+    folder = tmp_path_factory.mktemp("mp4")
+    cover, out = folder / "cover.jpg", folder / "sample.mp4"
+    ff = shutil.which("ffmpeg")
+    for args in (
+        ["-f", "lavfi", "-i", "color=red:size=64x64", "-frames:v", "1", str(cover)],
+        ["-f", "lavfi", "-i", "testsrc=size=320x240:rate=24",
+         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-i", str(cover), "-map", "0:v", "-map", "1:a", "-map", "2:v", "-t", "1", "-c:v:0", "libx264",
+         "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-c:v:1", "mjpeg",
+         "-disposition:v:1", "attached_pic", str(out)],
+    ):
+        subprocess.run([ff, "-v", "error", "-y", *args], check=True, stdin=subprocess.DEVNULL, capture_output=True)
     assert out.stat().st_size > 5 * 1024
     return out
 
@@ -247,6 +251,8 @@ async def test_submit_poll_success(adapter, run_ctx, req, sample_mp4):
     assert result.meta["has_audio"] is True
     assert result.meta["size"] == sample_mp4.stat().st_size
     assert 900 <= result.meta["duration_ms"] <= 1200
+    # luồng ảnh bìa mjpeg không được lẫn vào thông tin video chính
+    assert (result.meta["vcodec"], result.meta["width"], result.meta["height"]) == ("h264", 320, 240)
     assert result.meta["job_id"] == "job_1" and result.meta["client_ref"] == "proj7:scene03"
 
 
@@ -394,6 +400,35 @@ async def test_resume_with_external_id_polls_without_post(adapter, run_ctx, req,
     result = await adapter.generate(req, run_ctx)
     assert not post.called
     assert result.path == req.out_path
+
+
+@respx.mock
+async def test_resume_finds_job_cancelled_while_away_resubmits_same_ref(adapter, run_ctx, req, sample_mp4):
+    """Tắt app (handler bị huỷ → DELETE) hoặc vắng > 5 phút (GrokTele tự huỷ job không ai hỏi): khi nối lại thấy
+    `cancelled` mà người dùng không huỷ → gửi lại một lần cùng clientRef (GrokTele bỏ qua job đã huỷ khi chống
+    trùng)."""
+    run_ctx.external_id = "job_9"
+    run_ctx.external = {"state": "submitted", "client_ref": "proj7:scene03"}
+    respx.get(f"{BASE}/grok/jobs/job_9").mock(return_value=httpx.Response(200, json={
+        "jobId": "job_9", "status": "cancelled", "error": {"kind": "cancelled", "message": "Đã huỷ"}}))
+    post = respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted("job_10"))
+    respx.get(f"{BASE}/grok/jobs/job_10").mock(side_effect=succeeded_copying(sample_mp4, post, "job_10"))
+    result = await adapter.generate(req, run_ctx)
+    assert body_of(post.calls.last)["clientRef"] == "proj7:scene03"
+    assert run_ctx.external_id == "job_10"
+    assert result.path.is_file()
+
+
+@respx.mock
+async def test_job_cancelled_on_provider_during_poll_fails(adapter, run_ctx, req):
+    """Job vừa gửi trong lần chạy này bị huỷ phía GrokTele (vd. 08.cancel-all.bat) → thất bại, không tự gửi lại."""
+    post = respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted())
+    respx.get(f"{BASE}/grok/jobs/job_1").mock(return_value=httpx.Response(200, json={
+        "jobId": "job_1", "status": "cancelled", "error": {"kind": "cancelled", "message": "Đã huỷ"}}))
+    with pytest.raises(ProviderJobError) as ei:
+        await adapter.generate(req, run_ctx)
+    assert ei.value.code == "provider_cancelled"
+    assert post.call_count == 1
 
 
 @respx.mock
