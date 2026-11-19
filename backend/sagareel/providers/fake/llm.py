@@ -1,4 +1,8 @@
-"""`fake_llm`: trả lời theo `options.replies` (khoá = `params["template_key"]` hoặc `"default"`), stream theo từ."""
+"""`fake_llm`: trả lời theo `options.replies` (khoá = `params["template_key"]` hoặc `"default"`), stream theo từ.
+
+`options.fail` giả lập lỗi provider (thử chuỗi dự phòng): `true`/`"unavailable"` → `ProviderUnavailable`,
+`"transient"` → `TransientError`.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,15 @@ import re
 from collections.abc import Callable
 from typing import ClassVar
 
-from sagareel.providers.base import ConfigField, Health, LLMAdapter, LLMRequest, LLMResult
+from sagareel.providers.base import (
+    ConfigField,
+    Health,
+    LLMAdapter,
+    LLMRequest,
+    LLMResult,
+    ProviderUnavailable,
+    TransientError,
+)
 from sagareel.providers.fake import HEALTH_FIELD, fake_health
 from sagareel.providers.registry import register_adapter
 
@@ -29,6 +41,8 @@ class FakeLLMAdapter(LLMAdapter):
                     help='JSON {"<template_key>|default": "câu trả lời"}; khoá lấy từ params.template_key.'),
         ConfigField("models", "Danh sách model", "str", False, None, help="Mặc định [\"fake-llm\"]."),
         ConfigField("delay_ms", "Trễ mỗi từ (ms)", "int", False, 0),
+        ConfigField("fail", "Giả lập lỗi", "str", False, None,
+                    help='true/"unavailable" → provider không dùng được; "transient" → lỗi tạm thời.'),
         HEALTH_FIELD,
     ]
     default_capabilities: ClassVar[dict] = {"vision": True, "json_mode": True, "stream": True}
@@ -44,6 +58,11 @@ class FakeLLMAdapter(LLMAdapter):
         return list(models) if isinstance(models, list) and models else ["fake-llm"]
 
     async def chat(self, req: LLMRequest, on_delta: Callable[[str], None] | None = None) -> LLMResult:
+        fail = self.conn.options.get("fail")
+        if fail == "transient":
+            raise TransientError(f"LLM giả '{self.conn.name}' đang giả lập lỗi tạm thời.", retry_after=0)
+        if fail is True or fail == "unavailable":
+            raise ProviderUnavailable(f"LLM giả '{self.conn.name}' đang giả lập lỗi không dùng được.")
         replies = self.conn.options.get("replies") or {}
         key = req.params.get("template_key")
         text = replies.get(key) if key is not None and key in replies else replies.get("default", DEFAULT_REPLY)
