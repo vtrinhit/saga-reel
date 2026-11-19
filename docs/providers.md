@@ -25,12 +25,14 @@ Thư mục `<kind>/` mới cần một `__init__.py` (có thể rỗng) để `d
 1. Tạo `providers/<kind>/<ten>.py`, lớp kế thừa **một** trong `ImageAdapter | VideoAdapter | LLMAdapter | TTSAdapter |
    STTAdapter` và gắn `@register_adapter`.
 2. Khai báo:
-   - `adapter_id` — snake_case, duy nhất (`maivideo`, `edge_tts`…). Trùng id → `ValueError` khi nạp.
+   - `adapter_id` — snake_case, duy nhất (`maivideo`, `edge_tts`…). Trùng id → `ValueError` khi nạp; lớp còn
+     phương thức trừu tượng chưa cài → `TypeError`.
    - `label` — tên hiển thị tiếng Việt.
    - `config_fields` — `ConfigField(name, label, type, required, default=None, choices=None, help="")`, `type` ∈
-     `str | secret | int | bool | enum | url`. `name` là `base_url`, `api_key`, `default_model` (cột của kết nối)
-     hoặc một khoá trong `options`. **Bí mật duy nhất là `api_key`** (registry từ chối trường `secret` tên khác):
-     `options` là JSON thường, vào cả lịch sử phiên bản.
+     `str | secret | int | bool | enum | url | json`. `name` là `base_url`, `api_key`, `default_model` (cột của kết
+     nối) hoặc một khoá trong `options`; `provider.create/update` kiểm kiểu các khoá `options` đã khai báo (`json` phải
+     là dict/list, cùng kiểu với `default` nếu có). **Bí mật duy nhất là `api_key`** (registry từ chối trường `secret`
+     tên khác): `options` là JSON thường, vào cả lịch sử phiên bản.
    - `default_capabilities` — dict năng lực (vd. `{"durations": [6, 10, 15], "aspects": [...], "max_refs": 9}`).
      Khoá trùng trong `options` của kết nối ghi đè (`adapter.capabilities()`); op chạy thử từ chối giá trị ngoài danh
      sách bằng `capability_mismatch`.
@@ -53,7 +55,8 @@ Thư mục `<kind>/` mới cần một `__init__.py` (có thể rỗng) để `d
 
 - **Prompt nguyên văn**: gửi `req.prompt`/`req.text` đúng như nhận — không `.strip()`, không chuẩn hoá Unicode.
 - **Không lộ khoá**: không log/ném/trả `self.conn.api_key`. `repr(Connection)` đã ẩn khoá; `ProviderService.check`
-  che khoá nếu nó lọt vào thông báo lỗi, nhưng đừng dựa vào đó.
+  và mọi handler job provider (`provider_jobs.provider_job`) che khoá nếu nó lọt vào thông báo lỗi/log, nhưng đừng
+  dựa vào đó.
 - **Không I/O trong `__init__`**: adapter được dựng rẻ, nhiều lần. Khởi động app không gọi provider nào.
 - **HTTP**: dùng `async with self.client() as c:` — trả `self.http` nếu người gọi đưa (test), ngược lại mở client tạm
   với `base_url` của kết nối.
@@ -186,11 +189,17 @@ Lane `ffmpeg` theo cài đặt `jobs.ffmpeg_concurrency`.
 
 ## Ngân sách
 
-`services.budget`: `budget.enabled`, `budget.images_total`, `budget.videos_total` (**0 = không giới hạn**). Handler
-tạo ảnh/video kiểm tra trước khi gọi provider (`budget.check`, ném `budget_exceeded` 402) và ghi sổ `spend` sau khi có
-kết quả (`budget.record`). Kết nối có adapter `fake_*` được ghi sổ nhưng không tính vào tổng và không bị chặn.
-Vì không giữ chỗ trước, các job chạy song song trên cùng lane có thể cùng qua bước kiểm tra: tổng có thể vượt trần
-tối đa **(concurrency của lane − 1)** đơn vị (đã chấp nhận).
+`services.budget`: `budget.enabled`, `budget.images_total`, `budget.videos_total` (**0 = không giới hạn**).
+
+- Op `provider.try_*` chặn sớm khi đã biết vượt trần (`budget.check` → 402 `budget_exceeded`, không tạo job).
+- Handler tạo ảnh/video **giữ chỗ** trước khi gọi provider: `budget.reserve` kiểm tra trần và chèn dòng `spend` của
+  job trong **một** phiên ngắn giữ khoá ghi. Job chạy song song (mọi kết nối, mọi lane) thấy chỗ đã giữ của nhau, nên
+  tổng **không bao giờ vượt trần**; job không giữ được chỗ thất bại với `budget_exceeded` và không để lại dòng `spend`.
+- Provider thất bại hoặc job bị huỷ → `budget.release` trả chỗ. Thành công → `budget.finalize` chỉnh `units` theo kết
+  quả thật (tiền đã tiêu thì luôn ghi).
+- Kết nối có adapter `fake_*` được ghi sổ nhưng không tính vào tổng và không bị chặn.
+
+Job tốn tiền viết sau (sản xuất clip…) dùng cùng mẫu: `reserve` → gọi provider → `finalize` / `release`.
 
 ## Sức khoẻ là cột sổ sách
 

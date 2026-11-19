@@ -4,11 +4,12 @@
   hạn** (vd. video GrokTele của chủ dự án không giới hạn).
 - Sổ `spend` ghi mọi lần tạo (kể cả adapter giả); tổng đã dùng **không tính** kết nối có adapter `fake_*`, và kiểm
   tra bỏ qua kết nối giả.
-- Kiểm tra trước khi gọi provider (`check`), ghi sổ sau khi có kết quả (`record`) — tiền đã tiêu thì luôn ghi, kể cả
-  khi lúc đó đã vượt trần. `check_and_record` gộp cả hai trong một transaction (dùng khi việc tạo không tốn tiền
-  trước, hoặc để giữ chỗ).
-- **Vượt trần có giới hạn (đã chấp nhận):** kiểm tra trước và ghi sau không giữ chỗ, nên các job chạy song song trên
-  cùng lane có thể cùng qua `check`; tổng có thể vượt trần tối đa (concurrency của lane − 1) đơn vị.
+- **Giữ chỗ (job tạo ảnh/video):** trước khi gọi provider, `reserve` kiểm tra trần và chèn dòng `spend` của job trong
+  **một** phiên ngắn giữ khoá ghi (`db.session(immediate=True)`) — các job chạy song song thấy chỗ đã giữ của nhau nên
+  tổng **không bao giờ vượt trần**. Thành công → `finalize` (chỉnh `units` theo kết quả thật); provider thất bại hoặc
+  job bị huỷ → `release` xoá chỗ đã giữ. Dòng giữ chỗ và dòng chốt giống nhau (cùng được tính); khoá là `job_id`, và
+  `reserve` lại cho cùng job (thử lại sau lỗi tạm thời) thay chỗ cũ thay vì giữ thêm.
+- `check` (không ghi) dùng để chặn sớm ở op; `check_and_record` = `check` + `record` trong cùng phiên.
 """
 
 from __future__ import annotations
@@ -107,6 +108,52 @@ def record(
     """Ghi một dòng `spend` (flush, người gọi commit)."""
     row = Spend(kind=kind, units=float(units), job_id=job_id, connection_id=connection_id, cost=cost)
     session.add(row)
+    session.flush()
+    return row
+
+
+def release(session: Session, job_id: int) -> int:
+    """Xoá mọi dòng `spend` của job (chỗ đã giữ). Trả số dòng đã xoá."""
+    rows = session.scalars(select(Spend).where(Spend.job_id == job_id)).all()
+    for row in rows:
+        session.delete(row)
+    session.flush()
+    return len(rows)
+
+
+def reserve(
+    session: Session,
+    kind: str,
+    units: float,
+    job_id: int,
+    connection_id: int | None,
+    *,
+    resolver: Resolver | None = None,
+) -> Spend:
+    """Giữ chỗ cho job: bỏ chỗ cũ của chính job này, `check`, rồi chèn dòng `spend`. Gọi trong phiên giữ khoá ghi
+    (`db.session(immediate=True)`) để hai job không cùng lọt trần; vượt trần → `budget_exceeded` (không ghi gì)."""
+    release(session, job_id)
+    check(session, kind, units, connection_id, resolver=resolver)
+    return record(session, kind, units, job_id, connection_id)
+
+
+def finalize(
+    session: Session,
+    job_id: int,
+    units: float,
+    *,
+    kind: str,
+    connection_id: int | None,
+    cost: float | None = None,
+) -> Spend:
+    """Chốt chỗ đã giữ của job theo kết quả thật. Tiền đã tiêu thì luôn ghi: không còn chỗ giữ → chèn dòng mới,
+    không kiểm tra trần."""
+    row = session.scalars(select(Spend).where(Spend.job_id == job_id, Spend.kind == kind).order_by(Spend.id)).first()
+    if row is None:
+        return record(session, kind, units, job_id, connection_id, cost=cost)
+    row.units = float(units)
+    if cost is not None:
+        row.cost = cost
     session.flush()
     return row
 

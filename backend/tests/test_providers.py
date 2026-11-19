@@ -588,3 +588,170 @@ def test_startup_calls_no_provider(settings, monkeypatch):
     with TestClient(create_app(settings)) as c:
         assert c.get("/api/health").status_code == 200
     assert called == [] and issubclass(registry.get("fake_image"), Adapter)
+
+
+# --- Fix round 1: ngân sách giữ chỗ qua op/handler với adapter trả tiền (chỉ test) ---------------------------------
+
+
+@pytest.fixture
+def paid_adapter():
+    """Adapter ảnh "trả tiền" chỉ dùng trong test (id không bắt đầu bằng fake_ → ngân sách có tính)."""
+    import asyncio
+
+    from sagareel.providers.fake.image import FakeImageAdapter
+
+    class PaidImage(FakeImageAdapter):
+        adapter_id = "test_paid_image"
+        label = "Ảnh trả tiền (test)"
+
+        async def generate(self, req, run=None):
+            o = self.conn.options
+            if o.get("delay"):
+                await asyncio.sleep(o["delay"])
+            if o.get("crash"):
+                raise ValueError(f"lỗi lạ, khoá {self.conn.api_key}")
+            if o.get("fail"):
+                raise ProviderJobError("rejected", f"bị từ chối với khoá {self.conn.api_key}",
+                                       hint=f"khoá {self.conn.api_key}")
+            return await super().generate(req, run)
+
+    registry.register_adapter(PaidImage)
+    try:
+        yield PaidImage
+    finally:
+        registry.unregister("test_paid_image")
+
+
+PAID = {"kind": "image", "adapter": "test_paid_image", "name": "paid", "api_key": "sk-PAIDSECRET-4321"}
+
+
+def set_cap(client, **values):
+    r = call(client, "settings.set_global", {"values": values})
+    assert r.status_code == 200, r.text
+
+
+def spend_rows(client):
+    with client.app.state.services.db.session() as s:
+        return [(x.kind, x.units, x.job_id) for x in s.scalars(select(Spend).order_by(Spend.id))]
+
+
+async def test_paid_try_image_op_returns_402_at_cap(client, run_jobs, paid_adapter):
+    create(client, PAID)
+    set_cap(client, **{"budget.images_total": 1})
+    job = await run_jobs(call(client, "provider.try_image", {"connection": "paid", "prompt": "a"}).json()["job_id"])
+    assert job["status"] == "succeeded", job
+    r = call(client, "provider.try_image", {"connection": "paid", "prompt": "b"})
+    assert r.status_code == 402 and r.json()["error_code"] == "budget_exceeded"
+    assert len(spend_rows(client)) == 1
+
+
+async def test_job_queued_before_cap_fails_and_leaves_no_spend(client, run_jobs, paid_adapter):
+    create(client, PAID, concurrency=1)
+    set_cap(client, **{"budget.images_total": 1})
+    services = client.app.state.services
+    services.worker.pause_all()
+    a = call(client, "provider.try_image", {"connection": "paid", "prompt": "a"}).json()["job_id"]
+    b = call(client, "provider.try_image", {"connection": "paid", "prompt": "b"}).json()["job_id"]  # cũng qua op
+    services.worker.resume_all()
+    ja, jb = await run_jobs(a), await run_jobs(b)
+    assert ja["status"] == "succeeded", ja
+    assert jb["status"] == "failed" and jb["error_code"] == "budget_exceeded", jb
+    assert spend_rows(client) == [("image", 1.0, a)]
+
+
+async def test_reservation_never_exceeds_cap_with_concurrent_jobs(client, run_jobs, paid_adapter):
+    n = 2
+    create(client, PAID, concurrency=n + 2, options={"delay": 0.3})
+    set_cap(client, **{"budget.images_total": n})
+    worker = client.app.state.services.worker
+    worker.pause_all()  # xếp đủ n+2 job trước (chỗ đã giữ cũng chặn op), rồi cho chạy cùng lúc
+    ids = [call(client, "provider.try_image", {"connection": "paid", "prompt": str(i)}).json()["job_id"]
+           for i in range(n + 2)]
+    worker.resume_all()
+    results = [await run_jobs(i) for i in ids]
+    ok = [j for j in results if j["status"] == "succeeded"]
+    blocked = [j for j in results if j["error_code"] == "budget_exceeded"]
+    assert len(ok) == n and len(blocked) == 2, [(j["status"], j["error_code"]) for j in results]
+    assert sorted(r[2] for r in spend_rows(client)) == sorted(j["id"] for j in ok)
+
+
+async def test_failed_generation_releases_reservation_and_redacts_key(client, run_jobs, paid_adapter):
+    create(client, PAID, options={"fail": True})
+    set_cap(client, **{"budget.images_total": 1})
+    job = await run_jobs(call(client, "provider.try_image", {"connection": "paid", "prompt": "a"}).json()["job_id"])
+    assert job["status"] == "failed" and job["error_code"] == "provider_rejected"
+    assert "PAIDSECRET" not in json.dumps(job) and "••••4321" in job["error_message"]
+    assert spend_rows(client) == []  # chỗ đã giữ được trả
+
+
+async def test_unexpected_error_message_is_redacted(client, run_jobs, paid_adapter):
+    create(client, PAID, options={"crash": True})
+    job = await run_jobs(call(client, "provider.try_image", {"connection": "paid", "prompt": "a"}).json()["job_id"])
+    assert job["status"] == "failed" and job["error_code"] == "internal_error"
+    assert "ValueError" in job["error_message"] and "••••4321" in job["error_message"]
+    logs = call(client, "job.logs", {"id": job["id"]}).text
+    assert "PAIDSECRET" not in json.dumps(job) and "PAIDSECRET" not in logs
+    assert spend_rows(client) == []
+
+
+def test_budget_reserve_release_finalize(session):
+    conn = add_connection(session)
+    set_global(session, **{"budget.images_total": 2})
+    budget.reserve(session, "image", 1, 10, conn.id)
+    budget.reserve(session, "image", 1, 10, conn.id)  # giữ lại cho cùng job (thử lại) không giữ thêm
+    budget.reserve(session, "image", 1, 11, conn.id)
+    with pytest.raises(AppError):
+        budget.reserve(session, "image", 1, 12, conn.id)
+    assert budget.release(session, 11) == 1
+    budget.reserve(session, "image", 1, 12, conn.id)
+    budget.finalize(session, 12, 3, kind="image", connection_id=conn.id)  # tiền đã tiêu: ghi đúng thực tế
+    assert budget.spent(session, "image") == 4
+
+
+# --- Fix round 1: registry, năng lực, kiểu options -----------------------------------------------------------------
+
+
+def test_register_rejects_abstract_adapter():
+    from sagareel.providers.base import ImageAdapter
+
+    class Half(ImageAdapter):
+        adapter_id = "half_done"
+        label = "Dở dang"
+
+        async def check_health(self):  # pragma: no cover
+            raise NotImplementedError
+
+    with pytest.raises(TypeError):
+        registry.register_adapter(Half)
+    with pytest.raises(AppError):
+        registry.get("half_done")
+
+
+def test_try_image_rejects_unsupported_resolution(client):
+    create(client, {**FAKE_IMG, "options": {"resolutions": ["1080p"]}})
+    r = call(client, "provider.try_image", {"connection": "fake-img", "prompt": "x", "resolution": "2160p"})
+    assert r.status_code == 422 and r.json()["error_code"] == "capability_mismatch"
+
+
+def test_try_llm_with_image_requires_vision(client):
+    create(client, {**FAKE_LLM, "options": {"vision": False}})
+    with client.app.state.services.db.session() as s:
+        m = Media(kind="image", path="i.png", mime="image/png", size=1, sha256="2" * 64, origin="fake", meta={},
+                  width=9, height=16)
+        s.add(m)
+        s.flush()
+        mid = m.id
+    r = call(client, "provider.try_llm", {"connection": "fake-llm", "prompt": "x", "image_media_id": mid})
+    assert r.status_code == 422 and r.json()["error_code"] == "capability_mismatch"
+
+
+@pytest.mark.parametrize("spec, options", [
+    (FAKE_LLM, {"replies": "không phải dict"}),
+    (FAKE_LLM, {"models": {"a": 1}}),
+    (FAKE_IMG, {"short_side": "lớn"}),
+    (FAKE_STT, {"transcript": 123}),
+    (FAKE_IMG, {"health": "khoẻ"}),
+])
+def test_option_types_validated(client, spec, options):
+    r = call(client, "provider.create", {**spec, "options": options})
+    assert r.status_code == 422 and r.json()["error_code"] == "validation_failed", r.text

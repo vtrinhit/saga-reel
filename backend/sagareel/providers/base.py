@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 Kind = Literal["image", "video", "llm", "tts", "stt"]
 KINDS: tuple[str, ...] = ("image", "video", "llm", "tts", "stt")
-FieldType = Literal["str", "secret", "int", "bool", "enum", "url"]
+FieldType = Literal["str", "secret", "int", "bool", "enum", "url", "json"]  # json: dict/list, cùng kiểu với `default`
 HealthStatus = Literal["alive", "dead", "not_configured", "unknown"]
 
 __all__ = [

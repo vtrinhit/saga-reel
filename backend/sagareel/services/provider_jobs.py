@@ -2,10 +2,14 @@
 
 `params` của job chỉ chứa `connection_id` (không bao giờ có khoá API) và các trường của request. Thứ tự trong handler
 tạo media (ràng buộc UnitOfWork/khoá ghi SQLite):
-1. phiên ngắn: kiểm tra ngân sách (`budget.check`, không ghi);
-2. gọi provider + `media.prepare` (băm/probe/đặt file) — **ngoài** mọi transaction;
-3. một phiên ngắn giữ khoá ghi: `media.record` + `budget.record`;
-4. `media.reconcile` sau commit.
+1. một phiên ngắn giữ khoá ghi: giữ chỗ ngân sách (`budget.reserve` — kiểm tra trần + chèn dòng `spend` của job);
+2. gọi provider — thất bại/huỷ thì `budget.release` trả chỗ;
+3. `media.prepare` (băm/probe/đặt file) — **ngoài** mọi transaction;
+4. một phiên ngắn giữ khoá ghi: `media.record` + `budget.finalize`;
+5. `media.reconcile` sau commit.
+
+Mọi handler đi qua `provider_job(...)`: lỗi nào thoát ra cũng được che khoá API của kết nối trước khi thành
+`job.error_message`/log (lỗi không lường trước được thay bằng `ProviderCrash` mang thông báo đã che).
 """
 
 from __future__ import annotations
@@ -14,6 +18,9 @@ import asyncio
 import contextlib
 import functools
 import json
+import logging
+import traceback
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -28,9 +35,10 @@ from sagareel.providers.base import (
     TTSRequest,
     VideoRequest,
 )
+from sagareel.core.errors import AppError
 from sagareel.services import budget, media
-from sagareel.services.jobs import job_handler
-from sagareel.services.providers import ProviderService
+from sagareel.services.jobs import JobFailed, NeedsAttention, TransientError, job_handler
+from sagareel.services.providers import ProviderService, redact_secret
 
 if TYPE_CHECKING:
     from sagareel.container import Services
@@ -41,6 +49,12 @@ TRY_VIDEO = "provider.try_video"
 TRY_TTS = "provider.try_tts"
 TRY_STT = "provider.try_stt"
 TRY_LLM = "provider.try_llm"
+
+logger = logging.getLogger("sagareel.providers")
+
+
+class ProviderCrash(Exception):
+    """Lỗi không lường trước trong job provider, thông báo đã che khoá API (thay cho lỗi gốc)."""
 
 
 def provider_service(services: Services) -> ProviderService:
@@ -71,9 +85,74 @@ def _media_path(services: Services, media_id: int, kind: str) -> Path:
         return media.file_path(services.settings, m)
 
 
-def _budget_precheck(services: Services, kind: str, units: float, connection_id: int) -> None:
-    with services.db.session() as s:
-        budget.check(s, kind, units, connection_id, resolver=services.resolver)
+def _secret_of(services: Services, connection_id: Any) -> str:
+    try:
+        return provider_service(services).find(connection_id)[0].api_key
+    except Exception:  # noqa: BLE001 — không đọc được thì không có gì để che
+        return ""
+
+
+def _redacted(e: Exception, secret: str) -> Exception:
+    """Che `secret` trong lỗi: lỗi chuẩn được sửa tại chỗ; lỗi lạ → `ProviderCrash` (traceback đã che vào log)."""
+    def r(text: str | None) -> str | None:
+        return redact_secret(text, secret) if text is not None else None
+
+    if isinstance(e, (JobFailed, NeedsAttention, TransientError)):
+        e.msg = r(e.msg)
+        if hasattr(e, "hint"):
+            e.hint = r(e.hint)
+        e.args = (e.msg,)
+        return e
+    if isinstance(e, AppError):
+        e.detail, e.hint = r(e.detail), r(e.hint)
+        e.args = (e.detail,)
+        return e
+    logger.error("Job provider lỗi không lường trước:\n%s", r("".join(traceback.format_exception(e))))
+    return ProviderCrash(f"{type(e).__name__}: {r(str(e))}")
+
+
+def provider_job(type_: str) -> Callable[[Callable[[JobRun], Awaitable[dict]]], Callable[[JobRun], Awaitable[dict]]]:
+    """`job_handler(type_)` kèm che khoá API của kết nối (`params.connection_id`) trong mọi lỗi thoát ra."""
+
+    def decorator(fn: Callable[[JobRun], Awaitable[dict]]) -> Callable[[JobRun], Awaitable[dict]]:
+        @functools.wraps(fn)
+        async def wrapper(run: JobRun) -> dict:
+            try:
+                return await fn(run)
+            except Exception as e:
+                secret = await anyio.to_thread.run_sync(_secret_of, run.services, run.params.get("connection_id"))
+                if not secret:
+                    raise
+                out = _redacted(e, secret)
+                if out is e:
+                    raise
+                raise out from None
+
+        job_handler(type_)(wrapper)
+        return fn
+
+    return decorator
+
+
+def _reserve(services: Services, kind: str, units: float, job_id: int, connection_id: int) -> None:
+    with services.db.session(immediate=True) as s:  # kiểm tra + giữ chỗ trong cùng khoá ghi
+        budget.reserve(s, kind, units, job_id, connection_id, resolver=services.resolver)
+
+
+def _release(services: Services, job_id: int) -> None:
+    with services.db.session(immediate=True) as s:
+        budget.release(s, job_id)
+
+
+async def _paid(run: JobRun, adapter: Adapter, kind: str, units: float, generate: Callable[[], Awaitable[Any]]) -> Any:
+    """Giữ chỗ ngân sách → gọi provider; provider lỗi/bị huỷ → trả chỗ rồi ném lại."""
+    await anyio.to_thread.run_sync(_reserve, run.services, kind, units, run.job_id, adapter.conn.id)
+    try:
+        return await generate()
+    except BaseException:
+        with contextlib.suppress(Exception):
+            await asyncio.shield(anyio.to_thread.run_sync(_release, run.services, run.job_id))
+        raise
 
 
 async def _store(
@@ -98,7 +177,7 @@ async def _store(
         with run.services.db.session(immediate=True) as s:  # expire_on_commit=False: dùng được sau commit
             rows = [media.record(s, pr) for pr in prepared]
             if spend_kind is not None:
-                budget.record(s, spend_kind, len(rows), run.job_id, adapter.conn.id)
+                budget.finalize(s, run.job_id, len(rows), kind=spend_kind, connection_id=adapter.conn.id)
             return rows
 
     rows = await anyio.to_thread.run_sync(write)
@@ -107,7 +186,7 @@ async def _store(
     return [row.id for row in rows]
 
 
-@job_handler(TRY_IMAGE)
+@provider_job(TRY_IMAGE)
 async def try_image(run: JobRun) -> dict:
     p = run.params
     adapter = await _adapter(run, "image")
@@ -116,9 +195,8 @@ async def try_image(run: JobRun) -> dict:
         quality=p.get("quality"), out_dir=run.workdir / "out",
     )
     units = (await adapter.estimate(req)).get("units", 1)
-    await anyio.to_thread.run_sync(_budget_precheck, run.services, "image", units, adapter.conn.id)
     run.progress(0.0, stage="Đang tạo ảnh")
-    result = await adapter.generate(req, run)
+    result = await _paid(run, adapter, "image", units, lambda: adapter.generate(req, run))
     meta = _plain({"prompt": p["prompt"], "connection_id": adapter.conn.id, "adapter": adapter.adapter_id,
                    "job_id": run.job_id, "provider_meta": result.meta})
     ids = await _store(run, adapter, result.paths, kind="image", meta=meta, spend_kind="image")
@@ -126,7 +204,7 @@ async def try_image(run: JobRun) -> dict:
             "adapter": adapter.adapter_id}
 
 
-@job_handler(TRY_VIDEO)
+@provider_job(TRY_VIDEO)
 async def try_video(run: JobRun) -> dict:
     p = run.params
     adapter = await _adapter(run, "video")
@@ -136,15 +214,18 @@ async def try_video(run: JobRun) -> dict:
         aspect=p["aspect"], out_path=run.workdir / "video.mp4",
     )
     units = (await adapter.estimate(req)).get("units", 1)
-    await anyio.to_thread.run_sync(_budget_precheck, run.services, "video", units, adapter.conn.id)
     run.progress(0.0, stage="Đang tạo video")
-    try:
-        result = await adapter.generate(req, run)
-    except asyncio.CancelledError:
-        if run.external_id:  # báo provider huỷ job phía họ (không chờ lâu, không che việc huỷ)
-            with contextlib.suppress(Exception):
-                await asyncio.shield(asyncio.wait_for(adapter.cancel(run.external_id), 10))
-        raise
+
+    async def generate() -> Any:
+        try:
+            return await adapter.generate(req, run)
+        except asyncio.CancelledError:
+            if run.external_id:  # báo provider huỷ job phía họ (không chờ lâu, không che việc huỷ)
+                with contextlib.suppress(Exception):
+                    await asyncio.shield(asyncio.wait_for(adapter.cancel(run.external_id), 10))
+            raise
+
+    result = await _paid(run, adapter, "video", units, generate)
     meta = _plain({"prompt": p["prompt"], "image_media_id": p["image_media_id"], "connection_id": adapter.conn.id,
                    "adapter": adapter.adapter_id, "job_id": run.job_id, "provider_meta": result.meta})
     ids = await _store(run, adapter, [result.path], kind="video", meta=meta, spend_kind="video")
@@ -152,7 +233,7 @@ async def try_video(run: JobRun) -> dict:
             "adapter": adapter.adapter_id}
 
 
-@job_handler(TRY_TTS)
+@provider_job(TRY_TTS)
 async def try_tts(run: JobRun) -> dict:
     p = run.params
     adapter = await _adapter(run, "tts")
@@ -166,7 +247,7 @@ async def try_tts(run: JobRun) -> dict:
             "connection_id": adapter.conn.id, "adapter": adapter.adapter_id}
 
 
-@job_handler(TRY_STT)
+@provider_job(TRY_STT)
 async def try_stt(run: JobRun) -> dict:
     p = run.params
     adapter = await _adapter(run, "stt")
@@ -176,7 +257,7 @@ async def try_stt(run: JobRun) -> dict:
             "adapter": adapter.adapter_id}
 
 
-@job_handler(TRY_LLM)
+@provider_job(TRY_LLM)
 async def try_llm(run: JobRun) -> dict:
     p = run.params
     adapter = await _adapter(run, "llm")

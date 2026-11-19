@@ -14,6 +14,7 @@ import, không I/O, không gọi provider. `get()`/`all()` tự `discover()` ở
 from __future__ import annotations
 
 import importlib
+import inspect
 import pkgutil
 import re
 import threading
@@ -32,6 +33,9 @@ def register_adapter(cls: type[Adapter]) -> type[Adapter]:
     """Decorator: đăng ký lớp adapter theo `cls.adapter_id`. Trùng id với lớp khác → `ValueError`."""
     if not (isinstance(cls, type) and issubclass(cls, BASE_CLASSES)):
         raise TypeError(f"{cls!r} phải kế thừa một trong {[b.__name__ for b in BASE_CLASSES]}")
+    if inspect.isabstract(cls):
+        missing = sorted(getattr(cls, "__abstractmethods__", ()))
+        raise TypeError(f"{cls.__name__} còn phương thức trừu tượng chưa cài đặt: {missing}")
     adapter_id = getattr(cls, "adapter_id", None)
     if not isinstance(adapter_id, str) or not _ID_RE.match(adapter_id):
         raise ValueError(f"{cls.__name__}.adapter_id không hợp lệ: {adapter_id!r} (cần snake_case)")
@@ -72,6 +76,11 @@ def unknown_adapter(adapter_id: str) -> AppError:
         hint="Gọi provider.adapters để xem các adapter hiện có.",
         status=422,
     )
+
+
+def unregister(adapter_id: str) -> None:
+    """Gỡ một adapter (dùng cho test đăng ký adapter tạm)."""
+    _ADAPTERS.pop(adapter_id, None)
 
 
 def get(adapter_id: str) -> type[Adapter]:

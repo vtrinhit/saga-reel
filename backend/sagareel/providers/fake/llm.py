@@ -25,9 +25,9 @@ class FakeLLMAdapter(LLMAdapter):
     adapter_id = "fake_llm"
     label = "LLM giả (trả lời cố định)"
     config_fields: ClassVar[list[ConfigField]] = [
-        ConfigField("replies", "Câu trả lời theo template", "str", False, None,
-                    help='JSON {"<template_key>|default": "câu trả lời"}; khoá lấy từ params.template_key.'),
-        ConfigField("models", "Danh sách model", "str", False, None, help="Mặc định [\"fake-llm\"]."),
+        ConfigField("replies", "Câu trả lời theo template", "json", False, {},
+                    help='{"<template_key>|default": "câu trả lời"}; khoá lấy từ params.template_key.'),
+        ConfigField("models", "Danh sách model", "json", False, [], help='Mặc định ["fake-llm"].'),
         ConfigField("delay_ms", "Trễ mỗi từ (ms)", "int", False, 0),
         HEALTH_FIELD,
     ]

@@ -83,11 +83,21 @@ def _adapter_cls(adapter_id: str, kind: str) -> type[Adapter]:
 _TYPE_CHECKS = {
     "int": lambda v: isinstance(v, int) and not isinstance(v, bool),
     "bool": lambda v: isinstance(v, bool),
-    "str": lambda v: True,  # trường "str" có thể mang dữ liệu có cấu trúc (vd. replies của fake_llm)
+    "str": lambda v: isinstance(v, str),
     "url": lambda v: isinstance(v, str),
     "secret": lambda v: isinstance(v, str),
-    "enum": lambda v: True,
+    "enum": lambda v: True,  # kiểm qua choices
+    "json": lambda v: isinstance(v, (dict, list)),
 }
+
+
+def _option_ok(f: ConfigField, value: Any) -> bool:
+    if not _TYPE_CHECKS.get(f.type, lambda v: True)(value):
+        return False
+    if f.type == "enum" and f.choices and value not in f.choices:
+        return False
+    # json: phải cùng kiểu với mặc định (vd. replies là dict, models là list)
+    return not (f.type == "json" and isinstance(f.default, (dict, list)) and not isinstance(value, type(f.default)))
 
 
 def _check_options(cls: type[Adapter], options: dict[str, Any]) -> None:
@@ -96,12 +106,13 @@ def _check_options(cls: type[Adapter], options: dict[str, Any]) -> None:
     errors = []
     for key, value in options.items():
         f = fields.get(key)
-        if f is None or value is None:
+        if f is None or value is None or _option_ok(f, value):
             continue
-        if not _TYPE_CHECKS[f.type](value) or (f.type == "enum" and f.choices and value not in f.choices):
-            allowed = f" (một trong {f.choices})" if f.choices else ""
-            errors.append({"loc": ["options", key], "msg": f"'{f.label}' phải có kiểu {f.type}{allowed}.",
-                           "type": "option_invalid"})
+        expected = {"json": type(f.default).__name__ if isinstance(f.default, (dict, list)) else "dict/list"}.get(
+            f.type, f.type)
+        allowed = f" (một trong {f.choices})" if f.choices else ""
+        errors.append({"loc": ["options", key], "msg": f"'{f.label}' phải có kiểu {expected}{allowed}.",
+                       "type": "option_invalid"})
     if errors:
         raise ValidationFailed("Tuỳ chọn kết nối không hợp lệ.", hint="Xem `extra.errors`.", extra={"errors": errors})
 
@@ -413,6 +424,7 @@ async def provider_try_image(ctx: OpContext, p: TryImageParams) -> dict:
         aspect = p.aspect or ps.setting("image.aspect")
         resolution = p.resolution or ps.setting("image.resolution")
         _require_capability(adapter, "aspects", aspect, "tỉ lệ")
+        _require_capability(adapter, "resolutions", resolution, "độ phân giải")
         return conn, enabled, adapter, aspect, resolution
 
     conn, enabled, adapter, aspect, resolution = await anyio.to_thread.run_sync(prepare)
@@ -530,6 +542,14 @@ async def provider_try_llm(ctx: OpContext, p: TryLLMParams) -> dict:
         conn, enabled, adapter = _target(ctx, "llm", p.connection)
         if p.image_media_id is not None:
             _media_info(ctx, p.image_media_id, "image")
+            if not (adapter.capabilities().get("vision") or conn.options.get("vision")):
+                raise AppError(
+                    "capability_mismatch",
+                    f"Kết nối '{conn.name}' không nhận ảnh (thiếu năng lực vision).",
+                    hint="Bỏ ảnh, chọn kết nối LLM có vision, hoặc bật options.vision nếu model hỗ trợ.",
+                    status=422,
+                    extra={"capability": "vision"},
+                )
         return conn, enabled, adapter
 
     conn, enabled, adapter = await anyio.to_thread.run_sync(prepare)

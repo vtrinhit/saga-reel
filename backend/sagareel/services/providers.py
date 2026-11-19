@@ -64,8 +64,13 @@ def get_row(session: Session, name_or_id: int | str) -> ProviderConnection:
     return row
 
 
+def redact_secret(text: str, secret: str) -> str:
+    """Thay mọi lần xuất hiện của `secret` trong `text` bằng dạng che."""
+    return text.replace(secret, mask(secret)) if secret else text
+
+
 def _redact(text: str, conn: Connection) -> str:
-    return text.replace(conn.api_key, mask(conn.api_key)) if conn.api_key else text
+    return redact_secret(text, conn.api_key)
 
 
 class ProviderService:
