@@ -103,3 +103,11 @@
   template_key: score_take
   needs_vision: true
   json_mode: true
+
+# --- task a ---
+- key: describe_asset
+  label: Mô tả tài sản từ ảnh
+  description: Xem ảnh nhân vật/bối cảnh/đạo cụ và gợi ý mô tả khoá, cụm lock word và các nét phải giữ (không tự lưu).
+  template_key: describe_asset
+  needs_vision: true
+  json_mode: true

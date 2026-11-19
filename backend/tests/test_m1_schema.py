@@ -160,7 +160,4 @@ def test_compile_contract_stubs():
 
     cp = contracts.CompiledPrompt(text="x", refs=[contracts.RefItem(1, "appearance", "Ảnh 1: ngoại hình của An", "anchor")])
     assert cp.warnings == [] and cp.provider_caps == {}
-    for fn, args in ((contracts.compile_clip_image, (None, 1)), (contracts.compile_clip_motion, (None, 1)),
-                     (contracts.compile_sheet, (None, 1, "anchor"))):
-        with pytest.raises(NotImplementedError):
-            fn(*args)
+    # Task A đã thay stub bằng compiler thật (test ở test_compiler.py).

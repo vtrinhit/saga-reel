@@ -355,7 +355,7 @@ async def test_llm_run_with_image_media_and_override(client, app_services, run_j
 
 def test_task_list_and_update_validates(client, app_services):
     items = {t["key"]: t for t in ok(client, "llm.task_list")["items"]}
-    assert len(items) == 14 and items["score_take"]["needs_vision"] and items["caption"]["json_mode"]
+    assert len(items) == len(llm.default_tasks()) and items["score_take"]["needs_vision"] and items["caption"]["json_mode"]
     assert items["caption"]["effective_routes"] == []
     r = call(client, "llm.task_update", {"key": "caption", "route": {"connection": "khong-co"}})
     assert r.status_code == 404 and r.json()["error_code"] == "connection_not_found"
@@ -395,7 +395,7 @@ def test_task_create(client, app_services):
 
 def test_template_list_get_update_reset(client, app_services):
     items = {t["key"]: t for t in ok(client, "template.list")["items"]}
-    assert len(items) == 14 and items["caption"]["modified"] is False and items["caption"]["has_builtin"]
+    assert len(items) == len(llm.default_tasks()) and items["caption"]["modified"] is False and items["caption"]["has_builtin"]
     got = ok(client, "template.get", {"key": "caption"})
     assert "{{ input }}" in got["body"] and got["variables"] == ["input"]
     new_body = "<!-- role: user -->\nViết chú thích cho {{ input }} theo giọng {{ tone }}"
