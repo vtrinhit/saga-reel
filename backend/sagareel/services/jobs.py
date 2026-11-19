@@ -497,10 +497,10 @@ def retry_job(
     job.result = {}
     job.cost_actual = {}
     if resume:
-        state = {k: v for k, v in (job.external_state or {}).items() if k != USER_CANCELLED_KEY}
-        if was_cancelled:
-            state[USER_CANCELLED_KEY] = True
-        job.external_state = state  # dict mới: cột JSON không theo dõi sửa tại chỗ
+        # Cờ bám theo đúng lần gửi đó (chỉ force_new / clear_attention xoá external_state): nối lại thêm lần nữa sau khi
+        # đã thất bại vì "đã huỷ trước đó" vẫn phải báo đúng nguyên nhân.
+        if was_cancelled and not (job.external_state or {}).get(USER_CANCELLED_KEY):
+            job.external_state = {**(job.external_state or {}), USER_CANCELLED_KEY: True}  # dict mới (cột JSON)
     else:
         job.external_id = None
         # Giữ thế hệ gửi qua mọi lần đặt lại; force_new = thế hệ mới (clientRef mới phía provider).

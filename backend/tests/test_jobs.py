@@ -1038,11 +1038,15 @@ async def test_job_retry_keeps_accepted_provider_job_unless_force_new(svc, op_ct
         resumed = {**ext, "user_cancelled": True} if st == "cancelled" else ext
         assert (out["status"], out["attempt"], out["external_id"], out["external_state"]) == (
             "queued", 0, "p-1", resumed)
-        if st == "cancelled":  # chạy lại lần nữa sau khi job không còn là "đã huỷ" → bỏ cờ
+        if st == "cancelled":  # nối lại thêm lần nữa (vd. sau failed/provider_cancelled) → cờ vẫn còn
             with svc.db.session() as s:
                 s.get(Job, kept).status = "failed"
             out = (await ops.invoke("job.retry", {"ids": [kept]}, op_ctx))["items"][0]
-            assert out["external_state"] == ext
+            assert out["external_state"] == resumed
+            with svc.db.session() as s:
+                s.get(Job, kept).status = "failed"
+            out = (await ops.invoke("job.retry", {"ids": [kept], "force_new": True}, op_ctx))["items"][0]
+            assert out["external_state"] == {"gen": 1}  # lần gửi mới: không còn cờ
     fresh = insert_job(svc, "test.sleep", status=st, external_id="p-2", external_state=ext)
     out = (await ops.invoke("job.retry", {"ids": [fresh], "force_new": True}, op_ctx))["items"][0]
     assert (out["status"], out["external_id"], out["external_state"]) == ("queued", None, {"gen": 1})

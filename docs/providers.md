@@ -165,8 +165,8 @@ Worker (`_final_values`): lần chạy không thành công (kể cả `Transient
     file của job cũ không còn) → `queued`, lần sau **tự** POST lại bằng `client_ref` đã lưu.
   - 202 thiếu `jobId` → `needs_attention/multikit_job_unknown`; job bị huỷ phía GrokTele lúc SagaReel tắt →
     `needs_attention/remote_cancelled`; nối lại (`job.retry` không `force_new`) một job **người dùng** đã huỷ
-    (`job.retry` ghi `external_state.user_cancelled`) mà GrokTele báo đã huỷ → `failed/provider_cancelled`, gợi ý
-    `force_new`; 404 khi poll → `failed/provider_not_found`; quá `timeout_s` →
+    (`job.retry` ghi `external_state.user_cancelled`, giữ qua các lần nối lại sau; chỉ `force_new`/`clear_attention`
+    xoá) mà GrokTele báo đã huỷ → `failed/provider_cancelled`, gợi ý `force_new`; 404 khi poll → `failed/provider_not_found`; quá `timeout_s` →
     `TransientError` → `queued`, chờ tiếp đúng job cũ.
 - **Sức khoẻ**: `GET /health` rồi `GET /grok/accounts`; không kết nối được, 401/403, 4xx khác → `dead`; 429 và
   5xx/cổng → `unknown`; ≥ 1 tài khoản dùng được → `alive`; không → `dead` kèm
