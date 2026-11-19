@@ -1,4 +1,8 @@
-"""`fake_llm`: trả lời theo `options.replies` (khoá = `params["template_key"]` hoặc `"default"`), stream theo từ."""
+"""`fake_llm`: trả lời theo `options.replies` (khoá = `params["template_key"]` hoặc `"default"`), stream theo từ.
+
+Giả lập lỗi provider (thử chuỗi dự phòng): `options.fail=true` → `ProviderUnavailable`, `options.fail_transient=true`
+→ `TransientError`. `options.finish_reason` (vd. `"length"`) được trả trong `LLMResult.finish_reason`.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,15 @@ import re
 from collections.abc import Callable
 from typing import ClassVar
 
-from sagareel.providers.base import ConfigField, Health, LLMAdapter, LLMRequest, LLMResult
+from sagareel.providers.base import (
+    ConfigField,
+    Health,
+    LLMAdapter,
+    LLMRequest,
+    LLMResult,
+    ProviderUnavailable,
+    TransientError,
+)
 from sagareel.providers.fake import HEALTH_FIELD, fake_health
 from sagareel.providers.registry import register_adapter
 
@@ -29,6 +41,9 @@ class FakeLLMAdapter(LLMAdapter):
                     help='{"<template_key>|default": "câu trả lời"}; khoá lấy từ params.template_key.'),
         ConfigField("models", "Danh sách model", "json", False, [], help='Mặc định ["fake-llm"].'),
         ConfigField("delay_ms", "Trễ mỗi từ (ms)", "int", False, 0),
+        ConfigField("fail", "Giả lập lỗi không dùng được", "bool", False, False),
+        ConfigField("fail_transient", "Giả lập lỗi tạm thời", "bool", False, False),
+        ConfigField("finish_reason", "finish_reason trả về", "str", False, "stop"),
         HEALTH_FIELD,
     ]
     default_capabilities: ClassVar[dict] = {"vision": True, "json_mode": True, "stream": True}
@@ -44,6 +59,10 @@ class FakeLLMAdapter(LLMAdapter):
         return list(models) if isinstance(models, list) and models else ["fake-llm"]
 
     async def chat(self, req: LLMRequest, on_delta: Callable[[str], None] | None = None) -> LLMResult:
+        if self.conn.options.get("fail_transient") is True:
+            raise TransientError(f"LLM giả '{self.conn.name}' đang giả lập lỗi tạm thời.", retry_after=0)
+        if self.conn.options.get("fail") is True:
+            raise ProviderUnavailable(f"LLM giả '{self.conn.name}' đang giả lập lỗi không dùng được.")
         replies = self.conn.options.get("replies") or {}
         key = req.params.get("template_key")
         text = replies.get(key) if key is not None and key in replies else replies.get("default", DEFAULT_REPLY)
@@ -60,4 +79,5 @@ class FakeLLMAdapter(LLMAdapter):
             text=text,
             model=req.model or self.conn.default_model or "fake-llm",
             usage={"prompt_tokens": prompt_chars // 4, "completion_tokens": len(parts), "images": len(req.images)},
+            finish_reason=str(self.conn.options.get("finish_reason") or "stop"),
         )
