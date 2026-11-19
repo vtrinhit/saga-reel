@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { callOp } from '../../api/ops';
 import { cn } from '../../lib/cn';
-import { kindLabel, kindViews, summarizeDrift, type Asset, type AssetKind } from '../../lib/library';
+import { defaultViews, kindLabel, kindViews, summarizeDrift, type Asset, type AssetKind } from '../../lib/library';
 import { toast } from '../../stores/toast';
 import { Button } from '../ui/Button';
 import { ConfirmDelete } from '../ui/ConfirmDelete';
@@ -93,7 +93,7 @@ export function AssetDetail({
 
   return (
     <div className="grid gap-5">
-      <header className="grid gap-1">
+      <header className={cn('grid gap-1', layout === 'inspector' && 'pr-8')}>
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <h2 className={cn('min-w-0 break-words font-semibold', layout === 'page' ? 'text-xl' : 'text-md')}>{asset.name}</h2>
           <span className="font-mono text-xs text-fg-2">{asset.key}</span>
@@ -120,7 +120,6 @@ export function AssetDetail({
             icon={asset.locked ? Lock : LockOpen}
             onClick={toggleLock}
             loading={update.isPending && 'locked' in (update.variables ?? {})}
-            aria-pressed={asset.locked}
           >
             {asset.locked ? 'Đã khoá mô tả' : 'Khoá mô tả'}
           </Button>
@@ -208,7 +207,7 @@ export function AssetDetail({
       ) : null}
 
       <section className="border-t border-line-1 pt-4">
-        <LookPanel asset={asset} views={views} layout={layout} driftByLook={dsum?.byLook} />
+        <LookPanel asset={asset} views={views} baseViews={defaultViews(kind)} layout={layout} driftByLook={dsum?.byLook} />
       </section>
 
       <footer className="flex flex-wrap gap-2 border-t border-line-1 pt-4">

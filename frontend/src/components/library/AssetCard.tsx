@@ -1,4 +1,4 @@
-import { AudioLines, Lock, Sparkles } from 'lucide-react';
+import { AudioLines, ImageOff, Lock, Sparkles } from 'lucide-react';
 import type { MouseEvent, ReactNode } from 'react';
 import { Link } from 'react-router';
 import { cn, focusRing } from '../../lib/cn';
@@ -46,7 +46,16 @@ export function AssetCard({
       )}
     >
       <div className="relative">
-        <MediaThumb mediaId={assetCover(asset)} alt="" width={360} className="aspect-square w-full" />
+        {assetCover(asset) != null ? (
+          <MediaThumb mediaId={assetCover(asset)} alt="" width={360} className="aspect-square w-full" />
+        ) : (
+          <div className="grid aspect-square w-full place-items-center bg-bg-1 text-fg-3">
+            <span className="grid justify-items-center gap-1.5 text-xs">
+              <ImageOff className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+              chưa có sheet
+            </span>
+          </div>
+        )}
         <span className="sr-pill-on-media absolute left-2 top-2 rounded-xs px-1.5 font-mono text-2xs font-semibold text-fg-1">
           {asset.key}
         </span>
@@ -90,11 +99,14 @@ export function SuggestedAssetCard({
   name,
   code,
   note,
+  pending,
   action,
 }: {
   name: string;
   code: string;
   note: string;
+  /** Mục bible còn chờ xác nhận (LLM gợi ý) → pill `wait`. */
+  pending: boolean;
   action: ReactNode;
 }) {
   return (
@@ -107,7 +119,11 @@ export function SuggestedAssetCard({
       </div>
       <div className="grid min-w-0 gap-1.5 px-2.5 pb-2.5 pt-2">
         <span className="truncate text-sm font-semibold">{name}</span>
-        <StatusPill status="wait" label="chờ xác nhận" className="justify-self-start" />
+        {pending ? (
+          <StatusPill status="wait" label="chờ xác nhận" className="justify-self-start" />
+        ) : (
+          <span className="text-xs text-fg-3">có trong bible · chưa có tài sản</span>
+        )}
         <span className="line-clamp-2 text-xs text-fg-2">{note}</span>
         {action}
       </div>

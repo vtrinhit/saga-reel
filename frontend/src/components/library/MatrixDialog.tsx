@@ -102,7 +102,7 @@ export function MatrixDialog({ asset, onClose }: { asset: Asset; onClose: () => 
         }
       >
         <div className="grid gap-3">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid items-start gap-3 md:grid-cols-2">
             <Textarea
               id="matrix-outfits"
               label="Trang phục"

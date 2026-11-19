@@ -76,7 +76,7 @@ export function SheetGrid({
                 focusRing,
               )}
             >
-              <MediaThumb mediaId={media} alt="" width={300} className="aspect-[3/4] w-full" />
+              <MediaThumb mediaId={media} alt="" width={300} className={cn('aspect-[3/4] w-full', !media && 'bg-bg-1')} />
               {!media ? (
                 <span className="absolute inset-0 grid place-items-center text-fg-3">
                   {failed ? (

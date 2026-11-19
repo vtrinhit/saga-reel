@@ -228,6 +228,17 @@ export function addLabel(kinds: AssetKind[] | undefined, key: string): string {
   return `Thêm ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
 }
 
+const KIND_ORDER = ['character', 'location', 'prop'];
+
+/** Nhân vật · Bối cảnh · Đạo cụ trước, loại tự thêm sau (theo nhãn). */
+export function sortKinds(kinds: AssetKind[]): AssetKind[] {
+  const rank = (k: AssetKind) => {
+    const i = KIND_ORDER.indexOf(k.key);
+    return i < 0 ? KIND_ORDER.length : i;
+  };
+  return [...kinds].sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label, 'vi'));
+}
+
 // --- Tìm, đếm -------------------------------------------------------------------------------------------------------
 
 /** Khớp tên/mã/mô tả/tag/look, gõ không dấu vẫn khớp. */

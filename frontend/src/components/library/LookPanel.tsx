@@ -1,4 +1,4 @@
-import { ChevronRight, Grid3x3, ImagePlus, Plus, Star } from 'lucide-react';
+import { ChevronRight, CircleAlert, Grid3x3, ImagePlus, Plus, Star } from 'lucide-react';
 import { useState } from 'react';
 import { callOp } from '../../api/ops';
 import { cn } from '../../lib/cn';
@@ -36,12 +36,15 @@ function lookOptionLabel(l: Look): string {
  */
 export function LookPanel({
   asset,
-  views,
+  views: allViews,
+  baseViews = [],
   layout,
   driftByLook,
 }: {
   asset: Asset;
   views: string[];
+  /** Góc mặc định của loại (luôn hiện); góc khác chỉ hiện khi đã có take. */
+  baseViews?: string[];
   /** `inspector` 3 cột; `page` 3 cột (375) → 5 cột (≥768). */
   layout: 'inspector' | 'page';
   driftByLook?: Record<number, number>;
@@ -82,6 +85,10 @@ export function LookPanel({
   }
 
   const selected = sheet.data?.selected ?? lookSelected(look);
+  // Góc mặc định của loại + góc phụ đã có ảnh/take (góc phụ chưa dùng thì ẩn để "x/y góc" không bị đè).
+  const views = allViews.filter(
+    (v) => !baseViews.length || baseViews.includes(v) || selected[v] != null || (sheet.data?.views?.[v]?.length ?? 0) > 0,
+  );
   const hasAnchor = selected.anchor != null;
   const prog = sheetProgress(views, selected);
   const missing = views.filter((v) => selected[v] == null);
@@ -127,10 +134,13 @@ export function LookPanel({
           </span>
         ) : null}
         {drift ? <StatusPill status="drifted" label={`${drift} clip lệch`} /> : null}
-        {look.warnings.map((w) => (
-          <StatusPill key={w} status="warn" label={w} />
-        ))}
       </div>
+      {look.warnings.map((w) => (
+        <p key={w} className="sr-warnbox flex items-start gap-2 rounded-sm px-2.5 py-2 text-sm">
+          <CircleAlert className="sr-ico mt-0.5 text-warn" aria-hidden />
+          <span className="min-w-0">{w}</span>
+        </p>
+      ))}
 
       <SheetGrid
         look={look}
@@ -163,7 +173,7 @@ export function LookPanel({
           Prompt cuối
         </summary>
         <div className="pt-3">
-          <PromptFinal look={look} views={views} />
+          <PromptFinal look={look} views={allViews} />
         </div>
       </details>
 

@@ -24,7 +24,7 @@ const STATUS_PILL: Record<string, 'queued' | 'running' | 'failed' | 'done'> = {
 export function TakesDialog({
   look,
   view,
-  takes,
+  takes: rawTakes,
   hasAnchor,
   onClose,
   onRegenerate,
@@ -39,6 +39,9 @@ export function TakesDialog({
   regenerating?: boolean;
 }) {
   const [compare, setCompare] = useState<number[]>([]);
+  // Hai take trùng ảnh (cùng media) đều được server đánh `selected` — chỉ coi take đầu là đang dùng.
+  const selId = rawTakes.find((t) => t.selected)?.id ?? null;
+  const takes = rawTakes.map((t) => (t.selected && t.id !== selId ? { ...t, selected: false } : t));
   const select = useLibMutation(
     (t: SheetTake) => callOp('sheet.select', { look_id: look.id, view, take_id: t.id }),
     {

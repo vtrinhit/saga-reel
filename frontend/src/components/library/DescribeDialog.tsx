@@ -63,13 +63,14 @@ export function DescribeDialog({
   const abort = useRef<AbortController | null>(null);
   const job = useJob(jobId);
 
-  useEffect(() => () => abort.current?.abort(), []);
-  useEffect(() => {
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+  const previewRef = useRef<string | null>(null);
+  useEffect(
+    () => () => {
+      abort.current?.abort();
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     const j = job.data;
@@ -101,6 +102,9 @@ export function DescribeDialog({
       return;
     }
     setFile(f);
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = URL.createObjectURL(f);
+    setPreview(previewRef.current);
     setMediaId(null);
     setSuggest(null);
   };

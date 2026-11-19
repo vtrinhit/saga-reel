@@ -99,7 +99,11 @@ export function useProjectData(pid: number | null) {
 export function usePresets(kind: 'genre' | 'platform') {
   return useQuery({
     queryKey: libKeys.presets(kind),
-    queryFn: async () => ((await callOp('preset.list', { kind })) as unknown as { items: Preset[] }).items ?? [],
+    queryFn: async () => {
+      // `preset.list` trả mảng trần (một số bản cũ bọc `{items}`).
+      const r = (await callOp('preset.list', { kind })) as unknown as Preset[] | { items: Preset[] };
+      return Array.isArray(r) ? r : (r.items ?? []);
+    },
     staleTime: 5 * 60_000,
   });
 }
@@ -182,15 +186,15 @@ export function useVoices(pid: number | null) {
 
 const SUGGEST_TYPES = new Set(['character', 'location', 'prop']);
 
-/** Nhân vật/bối cảnh bible gợi ý (đang chờ, chưa gắn tài sản) — hiện thành thẻ "chờ xác nhận". */
+/** Nhân vật/bối cảnh/đạo cụ trong bible chưa gắn tài sản (chờ xác nhận hoặc đã xác nhận) — thẻ gợi ý tạo tài sản. */
 export function useBibleSuggestions(pid: number | null) {
   return useQuery({
     queryKey: libKeys.bible(pid ?? -1),
     queryFn: async () => {
-      const res = (await callOp('bible.list', { project_id: pid!, status: 'pending', limit: 500 })) as unknown as {
+      const res = (await callOp('bible.list', { project_id: pid!, limit: 500 })) as unknown as {
         items: BibleItem[];
       };
-      return (res.items ?? []).filter((b) => SUGGEST_TYPES.has(b.type) && b.asset_id == null);
+      return (res.items ?? []).filter((b) => SUGGEST_TYPES.has(b.type) && b.asset_id == null && b.status !== 'rejected');
     },
     enabled: pid != null,
     retry: false,

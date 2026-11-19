@@ -23,7 +23,7 @@ import { ErrorState } from '../../components/ui/ErrorState';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { cn } from '../../lib/cn';
 import { foldVi } from '../../lib/format';
-import { addLabel, countByKind, kindLabel, matchAsset, type Asset, type BibleItem } from '../../lib/library';
+import { addLabel, countByKind, kindLabel, matchAsset, sortKinds, type Asset, type BibleItem } from '../../lib/library';
 import { toast } from '../../stores/toast';
 import { PageHeader } from '../PageHeader';
 
@@ -76,10 +76,14 @@ export function LibraryPage() {
   const [creating, setCreating] = useState<{ name?: string; bible?: BibleItem } | null>(null);
   const [describing, setDescribing] = useState(false);
 
-  const kindList = kinds.data ?? [];
+  const kindList = useMemo(() => sortKinds(kinds.data ?? []), [kinds.data]);
   const counts = useMemo(() => countByKind(assets.data ?? []), [assets.data]);
-  const tab = params.get('kind') ?? kindList[0]?.key ?? 'character';
   const selectedId = params.get('asset') ? Number(params.get('asset')) : null;
+  const tab =
+    params.get('kind') ??
+    (assets.data ?? []).find((a) => a.id === selectedId)?.kind ??
+    kindList[0]?.key ??
+    'character';
   const voiceName = useMemo(() => {
     const m = new Map((voices.data ?? []).map((v) => [v.id, v.name]));
     return (a: Asset) => (a.voice_profile_id != null ? (m.get(a.voice_profile_id) ?? null) : null);
@@ -112,7 +116,7 @@ export function LibraryPage() {
   const confirmSuggestion = async (b: BibleItem, created: Asset) => {
     try {
       await callOp('bible.update', { id: b.id, values: { asset_id: created.id } });
-      await callOp('bible.confirm', { ids: [b.id] });
+      if (b.status === 'pending') await callOp('bible.confirm', { ids: [b.id] });
     } catch (e) {
       toastError(e, 'Đã tạo tài sản nhưng chưa xác nhận được mục bible.');
     }
@@ -225,8 +229,9 @@ export function LibraryPage() {
                 <li key={`b${b.id}`} className="min-w-0">
                   <SuggestedAssetCard
                     name={bibleName(b)}
-                    code={b.key.slice(0, 3).toUpperCase()}
+                    code={bibleName(b).split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
                     note={b.summary || 'gợi ý từ bible · chưa có sheet'}
+                    pending={b.status === 'pending'}
                     action={
                       <Button className="mt-1" onClick={() => setCreating({ name: bibleName(b), bible: b })}>
                         Tạo tài sản
@@ -242,9 +247,9 @@ export function LibraryPage() {
         {selected ? (
           <aside
             aria-label={`Chi tiết ${selected.name}`}
-            className="hidden min-w-0 self-start overflow-y-auto overscroll-contain rounded-md border border-line-2 bg-bg-1 p-4 xl:sticky xl:top-[calc(var(--sr-top)+16px)] xl:block xl:max-h-[calc(100dvh-var(--sr-top)-32px)]"
+            className="relative hidden min-w-0 self-start overflow-y-auto overscroll-contain rounded-md border border-line-2 bg-bg-1 p-4 xl:sticky xl:top-[calc(var(--sr-top)+16px)] xl:block xl:max-h-[calc(100dvh-var(--sr-top)-32px)]"
           >
-            <div className="mb-2 flex justify-end">
+            <div className="absolute right-2 top-2 z-[1]">
               <button
                 type="button"
                 className="sr-hit grid h-7 w-7 place-items-center rounded-sm text-fg-2 hover:bg-bg-3 hover:text-fg-1"

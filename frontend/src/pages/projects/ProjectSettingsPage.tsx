@@ -285,7 +285,13 @@ function SettingsForm({ project }: { project: Project }) {
         </p>
       </Section>
 
-      <div className="sticky bottom-[calc(var(--sr-bottom-offset,0px)+8px)] z-sticky mt-2 flex flex-wrap items-center justify-end gap-3 rounded-md border border-line-2 bg-bg-2 px-3 py-2">
+      <div
+        className={
+          dirty
+            ? 'sticky bottom-[calc(var(--sr-bottom-offset,0px)+8px)] z-sticky mt-2 flex flex-wrap items-center justify-end gap-3 rounded-md border border-line-2 bg-bg-2 px-3 py-2'
+            : 'mt-2 flex flex-wrap items-center justify-end gap-3 border-t border-line-1 pt-4'
+        }
+      >
         <span className="mr-auto text-sm text-fg-2" aria-live="polite">
           {dirty ? `${Object.keys(changes).length} mục chưa lưu` : 'Đã lưu mọi thay đổi'}
         </span>
