@@ -53,9 +53,10 @@ def ok(client, name: str, payload: dict | None = None) -> dict:
 
 @pytest.fixture
 def app_services(client):
+    # Lifespan của app đã seed công việc LLM + template mặc định (services/seed.py, Task 15).
     services = client.app.state.services
     with services.db.session() as s:
-        seed_llm_defaults(s)
+        assert s.scalars(select(LlmTask)).first() is not None
     return services
 
 
