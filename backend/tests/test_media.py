@@ -422,6 +422,17 @@ def test_media_full_and_download(client_with_media):
     assert r.status_code == 200 and r.headers["content-disposition"].startswith("attachment")
 
 
+@pytest.mark.parametrize("principal", [None, SimpleNamespace(role="viewer"), SimpleNamespace(role="guest")])
+async def test_download_fails_closed_without_owner(principal):
+    """Tải file gốc chỉ cho chủ: không có principal hoặc vai trò khác → 403, không đọc DB."""
+    from sagareel.api.routes_media import get_media
+    from sagareel.core.errors import Forbidden
+
+    request = SimpleNamespace(state=SimpleNamespace(principal=principal), app=SimpleNamespace(state=SimpleNamespace()))
+    with pytest.raises(Forbidden):
+        await get_media(request, 1, download=True)
+
+
 def test_media_missing_is_404(client_with_media):
     r = client_with_media.client.get("/media/999999")
     assert r.status_code == 404 and r.json()["error_code"] == "not_found"

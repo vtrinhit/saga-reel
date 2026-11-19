@@ -813,3 +813,26 @@ async def test_try_image_maivideo_success_after_429(client, run_jobs):
         m = s.get(Media, job["result"]["media_ids"][0])
         assert m.kind == "image" and m.origin == "generated" and (m.width, m.height) == (48, 64)
         assert [(x.kind, x.connection_id) for x in s.scalars(select(Spend)).all()] == [("image", cid)]
+
+
+@pytest.mark.parametrize(("code", "expected"), [
+    (429, "unknown"), (500, "unknown"), (502, "unknown"), (503, "unknown"), (504, "unknown"), (521, "unknown"),
+    (530, "unknown"), (400, "dead"), (401, "dead"), (403, "dead"), (404, "dead"), (408, "dead"),
+])
+def test_http_health_status_shared_rule(code, expected):
+    from sagareel.providers.base import http_health_status
+
+    assert http_health_status(code) == expected
+
+
+def test_adapters_use_shared_health_rule():
+    """Một quy tắc duy nhất: các adapter HTTP không tự định nghĩa lại bảng phân loại sức khoẻ."""
+    from sagareel.providers import base, openai_audio
+    from sagareel.providers.image import _paid, maivideo, openai_images
+    from sagareel.providers.llm import openai_compat
+    from sagareel.providers.video import multikit
+
+    assert not hasattr(_paid, "health_status_for")
+    for mod in (maivideo, openai_images, openai_audio, multikit, openai_compat):
+        assert getattr(mod, "http_health_status", None) is base.http_health_status, mod.__name__
+        assert not hasattr(mod, "health_status_for") and not hasattr(mod, "_health_status_for"), mod.__name__

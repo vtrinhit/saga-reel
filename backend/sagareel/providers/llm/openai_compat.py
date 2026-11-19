@@ -43,6 +43,7 @@ from sagareel.providers.base import (
     ProviderJobError,
     ProviderUnavailable,
     TransientError,
+    http_health_status,
 )
 from sagareel.providers.registry import register_adapter
 from sagareel.services.jobs import JobFailed
@@ -362,9 +363,7 @@ class OpenAICompatAdapter(LLMAdapter):
             resp = await self._get_models()
             if resp.status_code >= 400:
                 err = self._status_error(resp)
-                # 429 và 5xx/cổng: có thể chỉ tạm thời → "unknown"; 401/403 và 4xx khác → "dead".
-                status = "unknown" if resp.status_code == 429 or resp.status_code >= 500 else "dead"
-                return Health(status=status, detail=self._redact(err.msg))
+                return Health(status=http_health_status(resp.status_code), detail=self._redact(err.msg))
             models = self._parse_models(resp)
         except (TransientError, ProviderUnavailable, ProviderJobError) as e:
             return Health(status="dead", detail=self._redact(e.msg))

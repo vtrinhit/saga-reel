@@ -42,8 +42,14 @@ __all__ = [
     "KINDS", "Adapter", "CapabilityError", "ConfigField", "Connection", "Health", "ImageAdapter", "ImageRequest",
     "ImageResult", "JobUnknown", "LLMAdapter", "LLMRequest", "LLMResult", "ProviderJobError", "ProviderUnavailable",
     "STTAdapter", "STTRequest", "TTSAdapter", "TTSRequest", "TTSResult", "Transcript", "TransientError",
-    "VideoAdapter", "VideoRequest", "VideoResult",
+    "VideoAdapter", "VideoRequest", "VideoResult", "http_health_status",
 ]
+
+
+def http_health_status(status_code: int) -> HealthStatus:
+    """Quy tắc chung khi endpoint kiểm tra sức khoẻ trả HTTP lỗi: 429 (giới hạn tạm thời) và 5xx/cổng → `unknown`
+    (có thể chỉ tạm thời, không kết luận được); 401/403 và 4xx khác → `dead`."""
+    return "unknown" if status_code == 429 or status_code >= 500 else "dead"
 
 
 # --- Lỗi chuẩn ------------------------------------------------------------------------------------------------------

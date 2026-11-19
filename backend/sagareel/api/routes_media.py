@@ -1,7 +1,7 @@
 """Phục vụ file media và thumbnail.
 
 - `GET /media/{media_id}`: `FileResponse` (Starlette tự xử lý `Range` → 206); `?download=1` thêm
-  `Content-Disposition: attachment` — chỉ chủ; người xem (viewer) nhận 403 `forbidden` (xem trực tiếp và thumbnail
+  `Content-Disposition: attachment` — chỉ chủ (`role == "owner"`); còn lại (viewer, không có principal) nhận 403 `forbidden` (xem trực tiếp và thumbnail
   vẫn được).
 - `GET /media/{media_id}/thumb?w=320`: JPEG cache theo `(sha256, w)` ở `cache_dir/thumbs`; `w` làm tròn lên
   {160, 320, 480, 720}. Ảnh: Pillow; video: khung đầu qua ffmpeg.
@@ -40,10 +40,10 @@ def _load(services: Services, media_id: int) -> tuple[Media, Path]:
 
 @router.get("/media/{media_id}", response_class=FileResponse, summary="Tải file media (hỗ trợ Range)")
 async def get_media(request: Request, media_id: int, download: bool = False) -> FileResponse:
-    services: Services = request.app.state.services
     principal = getattr(request.state, "principal", None)
-    if download and principal is not None and principal.role == "viewer":
-        raise Forbidden("Người xem không được tải file gốc; chỉ xem trực tiếp hoặc ảnh thu nhỏ.")
+    if download and (principal is None or principal.role != "owner"):  # chặn mặc định: chỉ chủ được tải file gốc
+        raise Forbidden("Chỉ chủ được tải file gốc; người xem chỉ xem trực tiếp hoặc ảnh thu nhỏ.")
+    services: Services = request.app.state.services
     m, path = await anyio.to_thread.run_sync(_load, services, media_id)
     if download:
         return FileResponse(path, media_type=m.mime, filename=f"sagareel-{m.id}{path.suffix}")

@@ -25,6 +25,7 @@ from sagareel.providers.base import (
     JobUnknown,
     ProviderJobError,
     ProviderUnavailable,
+    http_health_status,
 )
 from sagareel.services.jobs import TransientError
 
@@ -70,11 +71,6 @@ def error_message(r: httpx.Response) -> str:
     return r.text[:300]
 
 
-def health_status_for(status_code: int) -> str:
-    """HTTP lỗi khi kiểm tra sức khoẻ: 429 và 5xx/cổng → `unknown` (có thể tạm thời); còn lại → `dead`."""
-    return "unknown" if status_code == 429 or status_code >= 500 else "dead"
-
-
 def no_credentials(r: httpx.Response) -> bool:
     return 400 <= r.status_code < 500 and NO_CREDENTIALS.lower() in r.text.lower()
 
@@ -114,7 +110,7 @@ class OpenAIAudioMixin(Adapter):
                     return Health(status="dead", detail=f"Máy chủ từ chối khoá API (HTTP {r.status_code}).")
                 # 404: máy chủ không có /models (nhiều máy chủ chỉ có TTS/STT) — yêu cầu thử mới quyết định.
                 if not r.is_success and r.status_code != 404:
-                    return Health(status=health_status_for(r.status_code),
+                    return Health(status=http_health_status(r.status_code),
                                   detail=f"Máy chủ trả lỗi HTTP {r.status_code}: {self._msg(r)}")
                 if not health_speech(self.conn.options):
                     if r.status_code == 404:
@@ -130,7 +126,7 @@ class OpenAIAudioMixin(Adapter):
             return Health(status="not_configured",
                           detail=f"Máy chủ chưa cấu hình dịch vụ {self.service_label}: {self._msg(p)}")
         if not p.is_success:
-            return Health(status=health_status_for(p.status_code),
+            return Health(status=http_health_status(p.status_code),
                           detail=f"Yêu cầu thử lỗi HTTP {p.status_code}: {self._msg(p)}")
         return Health(status="alive", detail=f"Đã thử {self.service_label} thành công.",
                       capabilities=self.capabilities())

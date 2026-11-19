@@ -46,6 +46,7 @@ from sagareel.providers.base import (
     VideoAdapter,
     VideoRequest,
     VideoResult,
+    http_health_status,
 )
 from sagareel.providers.registry import register_adapter
 from sagareel.services.jobs import NeedsAttention, TransientError
@@ -113,11 +114,6 @@ class _RemoteCancelled(ProviderJobError):
     """Job ở trạng thái `cancelled` phía GrokTele mà người dùng không huỷ trong SagaReel."""
 
 
-def _health_status_for(status_code: int) -> str:
-    """HTTP lỗi khi kiểm tra sức khoẻ: 429 và 5xx/cổng → `unknown` (có thể tạm thời); còn lại → `dead`."""
-    return "unknown" if status_code == 429 or status_code >= 500 else "dead"
-
-
 def _valid_video(path: Path) -> bool:
     try:
         return path.is_file() and path.stat().st_size > MIN_VIDEO_BYTES
@@ -177,7 +173,7 @@ class MultiKitVideoAdapter(VideoAdapter):
             async with self.client() as c:
                 r = await c.get("/health")
                 if not r.is_success:
-                    return Health(status=_health_status_for(r.status_code),
+                    return Health(status=http_health_status(r.status_code),
                                   detail=f"GrokTele/MultiKit /health trả HTTP {r.status_code}.")
                 acc = await c.get("/grok/accounts", headers=self._headers())
         except httpx.HTTPError:
@@ -186,7 +182,7 @@ class MultiKitVideoAdapter(VideoAdapter):
             return Health(status="dead",
                           detail=f"GrokTele/MultiKit từ chối khoá API (HTTP {acc.status_code}). {KEY_HINT}")
         if not acc.is_success:
-            return Health(status=_health_status_for(acc.status_code),
+            return Health(status=http_health_status(acc.status_code),
                           detail=f"GrokTele/MultiKit /grok/accounts trả HTTP {acc.status_code}.")
         try:
             data = acc.json()

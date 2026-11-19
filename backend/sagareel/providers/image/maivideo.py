@@ -12,6 +12,7 @@ chỉ poll; có dấu mà không có `external_id` → `JobUnknown("maivideo_job
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, ClassVar
 
 import anyio
@@ -27,10 +28,13 @@ from sagareel.providers.base import (
     JobUnknown,
     ProviderJobError,
     ProviderUnavailable,
+    http_health_status,
 )
 from sagareel.providers.image import _paid
 from sagareel.providers.registry import register_adapter
 from sagareel.services.jobs import JobStateLost, TransientError
+
+logger = logging.getLogger("sagareel.providers.maivideo")
 
 DEFAULT_BASE_URL = "https://maivideo.top"
 DEFAULT_MODEL = "gpt-image-2.0"
@@ -140,7 +144,7 @@ class MaiVideoImageAdapter(ImageAdapter):
         if r.status_code in (401, 403):
             return Health(status="dead", detail=f"MaiVideo từ chối khoá API (HTTP {r.status_code}).")
         if r.status_code != 200:
-            return Health(status=_paid.health_status_for(r.status_code),
+            return Health(status=http_health_status(r.status_code),
                           detail=f"MaiVideo trả lỗi HTTP {r.status_code}: {_paid.error_detail(r, self.key)[:200]}")
         try:
             data = r.json()
@@ -213,7 +217,9 @@ class MaiVideoImageAdapter(ImageAdapter):
         job_id = _job_id(data)
         if not job_id:
             raise await paid.keep(f"HTTP {resp.status_code}, thiếu job_id")
-        # Ghi log trước: nếu lưu `external_id` hỏng, mã job vẫn còn trong log để người dùng đối chiếu.
+        # Ghi log trước: nếu lưu `external_id` hỏng, mã job vẫn còn để người dùng đối chiếu. `run.log` đi qua cùng bộ
+        # ghi DB (có thể đang hỏng) nên ghi thêm vào log ứng dụng. Không bao giờ ghi khoá.
+        logger.warning("MaiVideo đã nhận job %s (job #%s)", job_id, getattr(run, "job_id", None))
         self._log(run, "info", f"MaiVideo đã nhận job {job_id}.")
         if run is not None:
             try:

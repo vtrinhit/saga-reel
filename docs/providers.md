@@ -135,7 +135,8 @@ Worker (`_final_values`): lần chạy không thành công (kể cả `Transient
   - 202 thiếu `jobId` → `needs_attention/multikit_job_unknown`; job bị huỷ phía GrokTele lúc SagaReel tắt →
     `needs_attention/remote_cancelled`; 404 khi poll → `failed/provider_not_found`; quá `timeout_s` →
     `TransientError` → `queued`, chờ tiếp đúng job cũ.
-- **Sức khoẻ**: `GET /health` rồi `GET /grok/accounts`; ≥ 1 tài khoản dùng được → `alive`; không → `dead` kèm
+- **Sức khoẻ**: `GET /health` rồi `GET /grok/accounts`; không kết nối được, 401/403, 4xx khác → `dead`; 429 và
+  5xx/cổng → `unknown`; ≥ 1 tài khoản dùng được → `alive`; không → `dead` kèm
   `label: status (reason)` (đã che số điện thoại/@username, không bao giờ đưa `telegramUser`).
 
 ### `openai_compat` — LLM qua API tương thích OpenAI (proxy cục bộ, OpenRouter, vLLM…)

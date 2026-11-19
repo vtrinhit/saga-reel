@@ -362,6 +362,22 @@ async def test_job_id_logged_before_save_and_db_error_is_job_unknown_with_id(ada
 
 
 @respx.mock
+async def test_job_id_also_goes_to_app_log_before_save(adapter, req, tmp_path, caplog):
+    """`run.log` đi qua cùng bộ ghi DB đang hỏng → mã job (đã tính tiền) phải nằm cả trong log ứng dụng."""
+    import logging
+    import sqlite3
+
+    run = _BrokenSaveRun(tmp_path / "w", sqlite3.OperationalError("disk I/O error"))
+    run.job_id = 42
+    respx.post(URL).mock(return_value=httpx.Response(200, json={"job_id": "j-779"}))
+    with caplog.at_level(logging.INFO, logger="sagareel.providers.maivideo"), pytest.raises(JobUnknown):
+        await adapter.generate(req, run)
+    recs = [r for r in caplog.records if r.name == "sagareel.providers.maivideo" and "j-779" in r.getMessage()]
+    assert recs and recs[0].levelno >= logging.WARNING and "#42" in recs[0].getMessage()
+    assert all(KEY not in r.getMessage() for r in caplog.records)
+
+
+@respx.mock
 async def test_job_state_lost_on_save_propagates(adapter, req, tmp_path):
     from sagareel.services.jobs import JobStateLost
 
