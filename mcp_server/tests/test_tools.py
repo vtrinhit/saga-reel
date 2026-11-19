@@ -24,6 +24,10 @@ def test_every_tool_op_has_a_tool(catalog):
     assert not ({t.op for t in tools.values() if t.op} & call_ops - {"sequence.get"})
 
 
+def _without(catalog, *names):
+    return [o for o in catalog if o["name"] not in names and not o["name"].endswith(".estimate")]
+
+
 def test_generic_tools_and_aliases(catalog):
     tools = build_tools(catalog)
     for name in ("sr_describe_ops", "sr_call", "sr_reload", "sr_job_wait", "sr_entity_get", "sr_entity_list",
@@ -31,10 +35,11 @@ def test_generic_tools_and_aliases(catalog):
         assert name in tools, name
     assert tools["sr_entity_patch"].op == "entity.patch"
     assert tools["sr_history_undo"].op == "history.undo"
-    # Không có op ước tính / sequence.get → không đăng ký.
-    assert "sr_estimate" not in tools
-    assert "sr_sequence_status" not in tools
     assert all(TOOL_NAME_RE.match(n) for n in tools)
+    # Không có op ước tính / sequence.get → không đăng ký.
+    bare = build_tools(_without(catalog, "sequence.get", "sequence.status"))
+    assert "sr_estimate" not in bare
+    assert "sr_sequence_status" not in bare
 
 
 def test_estimate_and_sequence_status_registered_when_present(catalog):
@@ -44,7 +49,7 @@ def test_estimate_and_sequence_status_registered_when_present(catalog):
         {"name": "sequence.get", "group": "sequence", "summary": "Chi tiết sequence", "mcp": "call",
          "read_only": True, "params_schema": {"type": "object", "properties": {"id": {"type": "integer"}}}},
     ]
-    tools = build_tools(catalog + extra)
+    tools = build_tools(_without(catalog, "sequence.get", "sequence.status") + extra)
     assert tools["sr_estimate"].extra["ops"] == ["job.estimate"]
     assert tools["sr_sequence_status"].op == "sequence.get"
 
