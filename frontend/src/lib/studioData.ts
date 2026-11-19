@@ -310,7 +310,7 @@ export function useRenders(seqId: number | null) {
 export function usePresets<D = Record<string, unknown>>(kind: string, pid: number | null) {
   return useQuery({
     queryKey: sk.presets(kind, pid ?? -1),
-    queryFn: () => callOpLoose<PresetRow<D>[]>('preset.list', { kind, project_id: pid }),
+    queryFn: async () => (await callOpLoose<{ items: PresetRow<D>[] }>('preset.list', { kind, project_id: pid })).items,
     enabled: pid != null,
     staleTime: 5 * 60_000,
   });

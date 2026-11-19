@@ -50,7 +50,7 @@ export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workfl
 
   const workflows = useQuery({
     queryKey: ['pipeline', 'workflows'],
-    queryFn: async () => (await callOp('preset.list', { kind: 'workflow' })) as unknown as WorkflowPreset[],
+    queryFn: async () => ((await callOp('preset.list', { kind: 'workflow' })) as unknown as { items: WorkflowPreset[] }).items,
     enabled: open,
     staleTime: 5 * 60_000,
   });

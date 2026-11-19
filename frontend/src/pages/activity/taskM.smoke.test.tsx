@@ -57,9 +57,9 @@ const OPS: Record<string, unknown> = {
   },
   'sequence.list': { items: [{ id: 12, project_id: 3, number: 12, title: 'Đêm trăng máu', synopsis: 'Khang gặp An', script: 'Cảnh 1 · Phố Hội, mưa đêm.', workflow_key: 'storyboard_first', gates: {}, pipeline: {}, counts: {} }], next_cursor: null },
   'sequence.get': { id: 12, project_id: 3, number: 12, title: 'Đêm trăng máu', synopsis: 'Khang gặp An', script: 'Cảnh 1 · Phố Hội, mưa đêm.', workflow_key: 'storyboard_first', gates: {}, pipeline: {}, counts: {} },
-  'preset.list': [
+  'preset.list': { items: [
     { id: 1, kind: 'platform', key: 'tiktok', name: 'TikTok', data: { label: 'TikTok', width: 1080, duration_s: { min: 3, max: 600, recommended: [15, 60] } }, builtin: true, modified: true, project_id: null },
-  ],
+  ] },
   'render.cache_stats': { segments: { files: 2, bytes: 2048 }, chunks: { files: 0, bytes: 0 }, work: { files: 1, bytes: 10 }, total: { files: 3, bytes: 2058 } },
 };
 

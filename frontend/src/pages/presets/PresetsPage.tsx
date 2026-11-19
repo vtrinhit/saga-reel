@@ -47,7 +47,7 @@ export function PresetsPage() {
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const list = useQuery({
     queryKey: listKey(kind),
-    queryFn: async () => (await callOp('preset.list', { kind: kind as 'genre' })) as unknown as Preset[],
+    queryFn: async () => ((await callOp('preset.list', { kind: kind as 'genre' })) as unknown as { items: Preset[] }).items,
   });
   const items = list.data ?? [];
   const selected = items.find((p) => p.key === selKey) ?? items[0] ?? null;

@@ -153,7 +153,7 @@ def test_removed_builtin_is_not_resurrected(services, owner_ctx):
 
 
 def test_preset_ops_crud_flow(client):
-    lst = call(client, "preset.list", {"kind": "platform"}).json()
+    lst = call(client, "preset.list", {"kind": "platform"}).json()["items"]
     assert {p["key"] for p in lst} == set(PLATFORMS)
     got = call(client, "preset.get", {"kind": "platform", "key": "tiktok"}).json()
     assert got["builtin"] and got["data"]["width"] == 1080 and got["modified"] is False
@@ -179,7 +179,7 @@ def test_preset_ops_crud_flow(client):
     assert call(client, "preset.delete", {}).json()["error_code"] == "confirm_required"
     assert call(client, "preset.delete", {"confirm_token": prev["confirm_token"]}).status_code == 200
     assert call(client, "preset.get", {"id": dup["id"]}).status_code == 404
-    keys = {p["key"] for p in call(client, "preset.list", {"kind": "platform"}).json()}
+    keys = {p["key"] for p in call(client, "preset.list", {"kind": "platform"}).json()["items"]}
     assert "tiktok-nho" not in keys
 
 
@@ -200,9 +200,9 @@ def test_project_scoped_preset_overrides_global(client):
     tid = call(client, "preset.get", {"kind": "platform", "key": "tiktok"}).json()["id"]
     mine = call(client, "preset.duplicate", {"id": tid, "key": "tiktok", "to_project": True, "project_id": pid}).json()
     assert mine["project_id"] == pid
-    lst = call(client, "preset.list", {"kind": "platform", "project_id": pid}).json()
+    lst = call(client, "preset.list", {"kind": "platform", "project_id": pid}).json()["items"]
     assert next(p for p in lst if p["key"] == "tiktok")["id"] == mine["id"] and len(lst) == 5
-    assert len(call(client, "preset.list", {"kind": "platform"}).json()) == 5
+    assert len(call(client, "preset.list", {"kind": "platform"}).json()["items"]) == 5
 
 
 def test_viewer_can_read_presets_but_not_write():

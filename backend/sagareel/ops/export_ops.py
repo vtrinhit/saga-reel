@@ -76,8 +76,8 @@ class PresetResetParams(BaseModel):
 
 @op("preset.list", summary="Liệt kê preset (nền tảng, thể loại, phụ đề…), lọc theo loại; có `modified` cho preset cài sẵn đã sửa",
     params=PresetListParams, read_only=True, idempotent=True, mcp="tool")
-def preset_list(ctx: OpContext, p: PresetListParams) -> list[dict]:
-    return presets.list_presets(ctx, p.kind, p.project_id)
+def preset_list(ctx: OpContext, p: PresetListParams) -> dict:
+    return {"items": presets.list_presets(ctx, p.kind, p.project_id)}
 
 
 @op("preset.get", summary="Đọc một preset theo id hoặc (kind, key)", params=PresetRef, read_only=True,

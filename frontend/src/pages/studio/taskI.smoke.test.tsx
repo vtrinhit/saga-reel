@@ -44,9 +44,9 @@ const OPS: Record<string, unknown> = {
   },
   'timeline.list': { items: [{ id: 20, sequence_id: 3, track: 'music', anchor_clip_id: 1, offset_ms: 0, end_anchor: null, duration_ms: null, media_id: 9, sound_id: 1, params: { volume_db: -18 } }] },
   'render.list': { items: [] },
-  'preset.list': [
+  'preset.list': { items: [
     { id: 1, kind: 'platform', key: 'tiktok', name: 'TikTok', data: { aspect: '9:16', width: 1080, height: 1920, duration_s: { max: 180 }, safe_zone_px: { top: 160, bottom: 480, left: 60, right: 140 }, safe_zone_ref: { width: 1080, height: 1920 }, caption: { max_utf16: 2200 }, hashtags: { max: 5 } } },
-  ],
+  ] },
   'sound.list': { items: [{ id: 1, project_id: 3, media_id: 9, kind: 'music', title: 'Sáo trúc đêm', tags: [], source: 'tự thu', license: 'CC BY 4.0', attribution: '' }] },
   'voice.list': { items: [{ id: 2, project_id: 3, key: 'v', name: 'HoaiMy ấm', connection: '', voice: 'vi-VN-HoaiMyNeural', rate: '', pitch: '', volume: '', style: '', per_lang: {} }] },
   'asset.list': { items: [{ id: 5, key: 'an', name: 'Lạc An', kind: 'character', voice_profile_id: 2 }] },
@@ -63,7 +63,7 @@ const adapter: AxiosAdapter = async (config) => {
   const name = url.replace('/api/ops/', '');
   const body = typeof config.data === 'string' ? JSON.parse(config.data) : (config.data ?? {});
   let data = url.startsWith('/api/auth') ? OPS['auth.status'] : (OPS[name] ?? {});
-  if (name === 'preset.list') data = body.kind === 'platform' ? OPS['preset.list'] : []; // transition rỗng → bảng mặc định
+  if (name === 'preset.list') data = body.kind === 'platform' ? OPS['preset.list'] : { items: [] }; // transition rỗng → bảng mặc định
   return { data, status: 200, statusText: 'OK', headers: {}, config, request: {} };
 };
 
