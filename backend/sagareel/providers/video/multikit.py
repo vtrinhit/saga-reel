@@ -216,18 +216,32 @@ class MultiKitVideoAdapter(VideoAdapter):
         if req.resolution not in caps["resolutions"]:
             raise CapabilityError(f"Độ phân giải {req.resolution} không được hỗ trợ.",
                                   hint=f"Chọn một trong {caps['resolutions']}.")
-        if req.aspect not in caps["aspects"]:
-            raise CapabilityError(f"Tỉ lệ khung {req.aspect} không được hỗ trợ.",
-                                  hint=f"Chọn một trong {caps['aspects']}.")
+        self._aspect_sent(req.aspect)
         if not Path(req.image).is_file():
             raise ProviderJobError("invalid_input", f"Không tìm thấy ảnh đầu vào {Path(req.image).name}.",
                                    hint="Chọn lại ảnh cho cảnh này.")
+
+    def _aspect_sent(self, aspect: str) -> str:
+        """Tỉ lệ gửi đi. Grok chỉ có nút Dọc 9:16 / Ngang 16:9 (GrokTele cũng tự quy đổi 1:1, 4:5, 3:4… như vậy):
+        tỉ lệ khác được quy về nút gần nhất — dọc hoặc vuông → 9:16, ngang → 16:9."""
+        caps = self.capabilities()
+        if aspect in caps["aspects"]:
+            return aspect
+        try:
+            w_s, h_s = aspect.split(":")
+            w, h = float(w_s), float(h_s)
+            if w <= 0 or h <= 0:
+                raise ValueError
+        except ValueError:
+            raise CapabilityError(f"Tỉ lệ khung {aspect!r} không hợp lệ.",
+                                  hint=f"Chọn một trong {caps['aspects']}.") from None
+        return "9:16" if w <= h else "16:9"
 
     def _payload(self, req: VideoRequest, client_ref: str) -> dict:
         return {
             "imagePath": str(Path(req.image).resolve()),
             "prompt": req.prompt,  # nguyên văn
-            "aspectRatio": req.aspect,
+            "aspectRatio": self._aspect_sent(req.aspect),
             "duration": int(req.duration_s),
             "resolution": req.resolution,
             "outputPath": str(Path(req.out_path).resolve()),
@@ -460,6 +474,7 @@ class MultiKitVideoAdapter(VideoAdapter):
             "vcodec": info.vcodec,
             "acodec": info.acodec,
             "has_audio": info.has_audio,
+            "aspect_sent": self._aspect_sent(req.aspect),
             "requested": {"duration_s": req.duration_s, "resolution": req.resolution, "aspect": req.aspect},
         })
 

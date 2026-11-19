@@ -275,6 +275,27 @@ async def test_client_ref_falls_back_to_job_id(adapter, req, sample_mp4):
     assert body_of(post.calls.last)["clientRef"] == "sagareel:job:77"
 
 
+@pytest.mark.parametrize(("aspect", "sent"), [("1:1", "9:16"), ("4:5", "9:16"), ("3:4", "9:16"), ("4:3", "16:9")])
+@respx.mock
+async def test_other_aspects_map_to_grok_buttons(adapter, run_ctx, req, sample_mp4, aspect, sent):
+    """Grok chỉ có nút Dọc 9:16 / Ngang 16:9 (GrokTele cũng tự quy đổi như vậy): gửi tỉ lệ đã quy đổi, ghi vào meta."""
+    req.aspect = aspect
+    post = respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted())
+    respx.get(f"{BASE}/grok/jobs/job_1").mock(side_effect=succeeded_copying(sample_mp4, post))
+    result = await adapter.generate(req, run_ctx)
+    assert body_of(post.calls.last)["aspectRatio"] == sent
+    assert result.meta["aspect_sent"] == sent and result.meta["requested"]["aspect"] == aspect
+
+
+async def test_unparseable_aspect_is_capability_error(adapter, run_ctx, req):
+    from sagareel.providers.base import CapabilityError
+
+    req.aspect = "dọc"
+    with pytest.raises(CapabilityError):
+        await adapter.generate(req, run_ctx)
+    assert run_ctx.saves == []
+
+
 async def test_unsupported_duration_is_capability_error(adapter, run_ctx, req):
     from sagareel.providers.base import CapabilityError
 
