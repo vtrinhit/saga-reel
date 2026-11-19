@@ -41,7 +41,8 @@ const ENGINE_LABEL: Record<string, string> = { ai_video: 'video AI', still_motio
  */
 export function ClonePanel({ projectId, sequences, viewer }: { projectId: number; sequences: SequenceInfo[]; viewer: boolean }) {
   const [media, setMedia] = useState<number[]>([]);
-  const [seqId, setSeqId] = useState<string>(sequences[0] ? String(sequences[0].id) : '');
+  const [seqPick, setSeqId] = useState<string>('');
+  const seqId = seqPick || (sequences[0] ? String(sequences[0].id) : '');
   const [rows, setRows] = useState<{ original: string; asset: string }[]>([{ original: '', asset: '' }]);
   const [transcript, setTranscript] = useState('');
   const [engine, setEngine] = useState<'auto' | 'ai_video' | 'still_motion'>('auto');

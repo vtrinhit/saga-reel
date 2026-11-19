@@ -33,8 +33,8 @@ export function BibleItem({ item, evidence, expanded, onToggle, viewer, busy, on
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
         <div className="min-w-0">
           <p className={cn('text-sm font-semibold', item.status === 'rejected' && 'text-fg-3 line-through')}>{item.summary}</p>
-          <p className="text-xs text-fg-2">
-            {bibleMeta(item)} <span className="font-mono text-fg-3">{item.key}</span>
+          <p className="text-xs text-fg-2" title={item.key}>
+            {bibleMeta(item)}
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1">

@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, CheckCheck, Plus, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { callOp } from '../../api/ops';
@@ -74,7 +74,17 @@ export function BiblePanel({ projectId, viewer, seqNumber }: { projectId: number
     onError: (e) => toast({ message: errorMessage(e, 'Không khoá được mục bible.'), tone: 'error' }),
   });
 
-  const evidenceOf = (it: Item) => (it.evidence ? it.evidence : open === it.id ? detail.data?.evidence : undefined);
+  // Bằng chứng đầu tiên hiện ngay dưới mục: tải chi tiết cho tối đa 40 mục đang hiện có bằng chứng.
+  const need = shown.filter((i) => !i.evidence && i.evidence_count > 0).slice(0, 40);
+  const details = useQueries({
+    queries: need.map((i) => ({
+      queryKey: storyKeys.item(i.id),
+      queryFn: async () => (await callOp('bible.get', { id: i.id })) as unknown as Item,
+      staleTime: 60_000,
+    })),
+  });
+  const loaded = new Map(need.map((i, k) => [i.id, details[k]?.data?.evidence]));
+  const evidenceOf = (it: Item) => it.evidence ?? loaded.get(it.id) ?? (open === it.id ? detail.data?.evidence : undefined);
 
   return (
     <section aria-labelledby="bible-h" className="grid min-w-0 content-start rounded-md border border-line-2 bg-bg-1">
@@ -93,7 +103,7 @@ export function BiblePanel({ projectId, viewer, seqNumber }: { projectId: number
             ]}
           />
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_auto]">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 2xl:grid-cols-[minmax(0,1fr)_10rem_auto]">
           <Input
             id="bible-q"
             type="search"
@@ -109,7 +119,7 @@ export function BiblePanel({ projectId, viewer, seqNumber }: { projectId: number
             value={type}
             onChange={setType}
             options={[{ value: '', label: 'Mọi loại' }, ...BIBLE_TYPES.map((t) => ({ value: t.value, label: t.label }))]}
-            className="max-sm:hidden"
+            className="max-2xl:hidden"
           />
           {viewer ? null : (
             <Button icon={Plus} onClick={() => setAdding(true)}>

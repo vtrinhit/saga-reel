@@ -286,7 +286,7 @@ function HistoryRow({
         <div className="min-w-0">
           <p className="flex min-w-0 flex-wrap items-center gap-x-2">
             <ActorTag actor={cs.actor} />
-            <span className={cn('min-w-0 text-sm', undone ? 'text-fg-3 line-through' : 'text-fg-1')}>{cs.summary || cs.op_name}</span>
+            <span className={cn('min-w-0 text-sm [overflow-wrap:anywhere]', undone ? 'text-fg-3 line-through' : 'text-fg-1')}>{cs.summary || cs.op_name}</span>
           </p>
           <button
             type="button"

@@ -24,6 +24,7 @@ import {
   gateTitle,
   PIPELINE_ACTIVE,
   pipelineStatusText,
+  stepLabel,
   type Need,
 } from '../../lib/activity';
 import { cn, focusRing } from '../../lib/cn';
@@ -340,7 +341,7 @@ export function ActivityView({ projectId }: { projectId: number | null }) {
                         <span className="pt-0.5 font-mono text-xs text-fg-3 tnum">{at != null ? formatClock(at).slice(0, 5) : '—'}</span>
                         <div className="min-w-0">
                           <ActorTag actor={cs.actor} />
-                          <p className={cn('text-sm', undone ? 'text-fg-3 line-through' : 'text-fg-1')}>{cs.summary || cs.op_name}</p>
+                          <p className={cn('text-sm [overflow-wrap:anywhere]', undone ? 'text-fg-3 line-through' : 'text-fg-1')}>{cs.summary || cs.op_name}</p>
                         </div>
                         {undone ? (
                           <span className="pt-0.5 text-xs text-fg-3">Đã hoàn tác</span>
@@ -399,7 +400,7 @@ function PipelineSection({
     <Section title="Quy trình đang chạy" extra={<span className="text-xs text-fg-3 tnum">{nf.format(pipes.length)} tập</span>}>
       <ul>
         {pipes.map((p) => {
-          const step = p.steps.find((s) => s.name === p.current)?.label ?? p.current ?? '—';
+          const step = stepLabel(p.steps.find((s) => s.name === p.current), p.current ?? '—');
           const href = p.project_id != null ? `/p/${p.project_id}/s/${p.sequence_id}` : null;
           return (
             <li key={p.sequence_id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t border-line-1 px-3 py-2.5 first:border-t-0">
@@ -476,7 +477,7 @@ function JobList({ jobs, now, viewer }: { jobs: Job[]; now: number; viewer: bool
           <li key={j.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-t border-line-1 px-3 py-2.5 first:border-t-0">
             <Link to={`/jobs?job=${j.id}`} className={cn('min-w-0 rounded-sm', focusRing)}>
               <span className="block truncate py-px text-sm font-medium text-fg-1">
-                {jobTypeLabel(j.type)} · #{j.id}
+                {j.type === 'pipeline.run' ? 'Quy trình' : j.type === 'story.run' ? 'Viết AI' : jobTypeLabel(j.type)} · #{j.id}
                 {j.sequence_id != null ? <span className="font-normal text-fg-2"> · tập #{j.sequence_id}</span> : null}
               </span>
               <span className="flex min-w-0 items-center gap-2 py-px text-xs text-fg-2">

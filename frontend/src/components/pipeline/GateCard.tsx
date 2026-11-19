@@ -164,7 +164,7 @@ export function GateCard({
       {viewer ? (
         <p className="border-t border-line-1 pt-3 text-xs text-fg-2">Chỉ chủ dự án duyệt được gate.</p>
       ) : (
-        <footer className="grid grid-cols-2 gap-2 border-t border-line-1 pt-3 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
+        <footer className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-2 border-t border-line-1 pt-3 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
           {base && stage ? (
             <Link
               to={stageHref(base, summary.sequence_id, stage.key)}

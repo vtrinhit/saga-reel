@@ -179,6 +179,7 @@ export function nextCost(seg: NextSegment, plan: PipelinePlan['sequences'][numbe
     if (!seg.spends[kind]) continue;
     const n = plan[kind] ?? 0;
     const bk = budget?.[kind === 'images' ? 'image' : 'video'];
+    if (n === 0 && seg.spends.llm && plan.llm_calls > 0) continue;
     parts.push(`${nf.format(n)} ${kind === 'images' ? 'ảnh' : 'video'}`);
     if (bk?.enabled) {
       credits += n;
@@ -286,7 +287,10 @@ export function buildNeeds(
   }
 
   const budgetByProject = new Map<number | null, Job[]>();
+  const piped = new Set(pipelines.map((p) => p.sequence_id));
   for (const j of jobs) {
+    // Việc quy trình của tập đã có dòng "quy trình dừng vì lỗi" → không lặp lại.
+    if (j.type === 'pipeline.run' && j.sequence_id != null && piped.has(j.sequence_id)) continue;
     const at = parseServerTime(j.updated_at ?? j.created_at) ?? 0;
     const where = pname(j.project_id);
     const suffix = where ? ` · ${where}` : '';
@@ -350,6 +354,13 @@ const PIPE_STATUS: Record<string, string> = {
   cancelled: 'đã huỷ',
   done: 'xong',
 };
+
+/** Nhãn bước: gate dùng tên tiếng Việt ("Duyệt dàn ý"), bước khác giữ nhãn của server. */
+export function stepLabel(step: { name: string; label?: string } | null | undefined, fallback = '—'): string {
+  if (!step) return fallback;
+  if (step.name.startsWith('gate:')) return `Duyệt ${gateLabel(step.name)}`;
+  return step.label || step.name;
+}
 
 export function pipelineStatusText(s: string): string {
   return PIPE_STATUS[s] ?? s;
