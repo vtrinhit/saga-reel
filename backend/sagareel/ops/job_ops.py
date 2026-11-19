@@ -55,7 +55,7 @@ def job_list(ctx: OpContext, p: JobListParams) -> dict:
         rows, next_cursor = jobs.list_jobs(
             s, status=p.status, type=p.type, lane=p.lane, project_id=p.project_id, cursor=p.cursor, limit=p.limit
         )
-        items = [jobs.job_dict(j) for j in rows]
+        items = jobs.with_queue_position(s, list(rows))
     return {"items": items, "next_cursor": next_cursor, "paused": _paused(ctx)}
 
 
@@ -66,7 +66,7 @@ class JobIdParams(BaseModel):
 @op("job.get", summary="Chi tiết một job", params=JobIdParams, read_only=True, idempotent=True, mcp="tool")
 def job_get(ctx: OpContext, p: JobIdParams) -> dict:
     with ctx.services.db.session() as s:
-        return jobs.job_dict(jobs.get_job(s, p.id))
+        return jobs.with_queue_position(s, [jobs.get_job(s, p.id)])[0]
 
 
 class JobLogsParams(BaseModel):

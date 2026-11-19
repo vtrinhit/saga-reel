@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from sagareel.core.errors import AppError, Conflict, NotFound
@@ -225,6 +225,25 @@ def get_handler(type: str) -> HandlerSpec | None:  # noqa: A002
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
+
+
+def queue_positions(session: Session, rows: list[Job]) -> dict[int, int]:
+    """Vị trí trong hàng đợi của lane (1 = chạy kế tiếp) cho các job `queued`: cùng thứ tự worker giành job
+    (priority giảm dần, rồi id)."""
+    out: dict[int, int] = {}
+    for job in rows:
+        if job.status != "queued":
+            continue
+        ahead = session.scalar(select(func.count()).select_from(Job).where(
+            Job.status == "queued", Job.lane == job.lane,
+            or_(Job.priority > job.priority, and_(Job.priority == job.priority, Job.id < job.id)))) or 0
+        out[job.id] = int(ahead) + 1
+    return out
+
+
+def with_queue_position(session: Session, rows: list[Job]) -> list[dict[str, Any]]:
+    pos = queue_positions(session, rows)
+    return [{**job_dict(j), "queue_position": pos.get(j.id)} for j in rows]
 
 
 def job_dict(job: Job) -> dict[str, Any]:

@@ -109,3 +109,17 @@ def test_scene_list_meta_enums_asset_counts(owner_ctx, project, seq):
     items = _inv("asset.list", {"project_id": project}, owner_ctx)["items"]
     a = next(x for x in items if x["id"] == asset["id"])
     assert a["counts"] == {"looks": 1, "drift": 1} and a["looks"][0]["counts"] == {"drift": 1}
+
+
+def test_job_queue_position(owner_ctx):
+    from sagareel.services import jobs
+
+    with owner_ctx.services.db.session() as s:
+        a = jobs.enqueue(s, "test.x", {}, lane="L1")
+        b = jobs.enqueue(s, "test.x", {}, lane="L1")
+        c = jobs.enqueue(s, "test.x", {}, lane="L1", priority=5)
+        d = jobs.enqueue(s, "test.x", {}, lane="L2")
+        ids = (a.id, b.id, c.id, d.id)
+    out = {j["id"]: j["queue_position"] for j in _inv("job.list", {}, owner_ctx)["items"]}
+    assert (out[ids[2]], out[ids[0]], out[ids[1]], out[ids[3]]) == (1, 2, 3, 1)
+    assert _inv("job.get", {"id": ids[1]}, owner_ctx)["queue_position"] == 3
