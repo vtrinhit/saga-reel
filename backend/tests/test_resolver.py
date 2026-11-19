@@ -89,7 +89,7 @@ def test_explain_via_rest(client):
 def test_schema_has_m0_keys_with_exact_defaults():
     schema = load_schema(SCHEMA)
     assert SCHEMA_PATH == SCHEMA
-    assert set(schema) == set(M0_DEFAULTS)
+    assert set(schema) >= set(M0_DEFAULTS)  # task sau (W1+) chỉ thêm khoá ở cuối schema
     for key, (typ, default, choices) in M0_DEFAULTS.items():
         d = schema[key]
         assert (d.key, d.type, d.default, d.choices) == (key, typ, default, choices), key
@@ -317,7 +317,7 @@ def test_set_global_same_value_creates_no_change_set(ctx):
 def test_schema_op_via_rest(client):
     rows = client.post("/api/ops/settings.schema", json={}).json()
     by_key = {r["key"]: r for r in rows}
-    assert set(by_key) == set(M0_DEFAULTS)
+    assert set(by_key) >= set(M0_DEFAULTS)
     assert by_key["video.duration"] == {
         "key": "video.duration", "type": "enum", "default": 6, "choices": [6, 10, 15],
         "description": by_key["video.duration"]["description"], "secret": False,
