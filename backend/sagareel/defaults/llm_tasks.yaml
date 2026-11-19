@@ -111,3 +111,67 @@
   template_key: describe_asset
   needs_vision: true
   json_mode: true
+
+# --- task j ---
+- key: story_write_bible
+  label: Viết Story Bible
+  description: Từ ý tưởng + thể loại, viết bible có cấu trúc (nhân vật có nhãn nhân thiết, bối cảnh, đạo cụ, quan hệ, luật, câu hỏi mở).
+  template_key: story_write_bible
+  needs_vision: false
+  json_mode: true
+
+- key: story_outline
+  label: Lập dàn ý theo lô tập
+  description: Lập dàn ý một lô tập (hook đầu tập, điểm treo cuối tập) dựa trên bible và bộ nhớ truyện.
+  template_key: story_outline
+  needs_vision: false
+  json_mode: true
+
+- key: story_write_script
+  label: Viết kịch bản tập
+  description: Viết kịch bản một tập (thoại + hành động) theo dàn ý, số liệu thể loại và bộ nhớ truyện; chữ chạy dần.
+  template_key: story_write_script
+  needs_vision: false
+  json_mode: false
+
+- key: story_split_clips
+  label: Chia kịch bản thành clip có ngữ pháp shot
+  description: Chia kịch bản thành cảnh + clip theo mẫu phủ cảnh (establishing → master → shot/reverse → insert → reaction → button), điền trường shot và thoại.
+  template_key: story_split_clips
+  needs_vision: false
+  json_mode: true
+
+- key: story_image_prompts
+  label: Viết prompt ảnh hàng loạt
+  description: Viết prompt ảnh khung đầu cho các clip của tập (chỉ cảnh + hành động; khối nhân vật/phong cách do template synced ghép).
+  template_key: story_image_prompts
+  needs_vision: false
+  json_mode: true
+
+- key: story_motion_prompts
+  label: Viết prompt chuyển động hàng loạt
+  description: Viết prompt image-to-video cho các clip (một chuyển động camera, động từ cụ thể, không tả lại ảnh).
+  template_key: story_motion_prompts
+  needs_vision: false
+  json_mode: true
+
+- key: story_dialogue
+  label: Viết lời thoại hàng loạt
+  description: Viết/chỉnh lời thoại các clip vừa thời lượng (≤ (giây − 2) × 4,5 ký tự), đúng người nói.
+  template_key: story_dialogue
+  needs_vision: false
+  json_mode: true
+
+- key: story_adapt_novel
+  label: Chuyển thể một đoạn truyện thành tập
+  description: Đọc một đoạn truyện dài, đặt tên + tóm tắt tập, chọn câu kết làm điểm treo, rút nhân vật và sự thật cho bible.
+  template_key: story_adapt_novel
+  needs_vision: false
+  json_mode: true
+
+- key: story_memory_summarize
+  label: Ghi bộ nhớ truyện sau tập
+  description: Tóm tắt tập vừa viết và đề xuất mục Story Bible (sự kiện, trạng thái nhân vật, sự thật, câu hỏi mở) kèm trích dẫn.
+  template_key: story_memory_summarize
+  needs_vision: false
+  json_mode: true

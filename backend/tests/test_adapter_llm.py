@@ -328,7 +328,8 @@ EXPECTED_TASKS = {
 def test_default_tasks_yaml_has_14_tasks_with_flags():
     from sagareel.services import llm
 
-    tasks = llm.default_tasks()
+    # công việc `story_*` (Task J) có template riêng (biến có cấu trúc, tiếng Việt) — kiểm ở test_story_writer.py
+    tasks = [t for t in llm.default_tasks() if not t["key"].startswith("story_")]
     assert [t["key"] for t in tasks] == list(EXPECTED_TASKS)
     for t in tasks:
         assert set(t) >= {"key", "label", "description", "template_key", "needs_vision", "json_mode"}
@@ -340,6 +341,8 @@ def test_default_templates_render_with_input_only():
     from sagareel.services import llm
 
     for t in llm.default_tasks():
+        if t["key"].startswith("story_"):  # Task J: biến có cấu trúc — test_story_writer.py
+            continue
         body = llm.builtin_template(t["template_key"])
         assert body is not None, t["key"]
         msgs = templating.render_messages(body, {"input": "NỘI DUNG"})

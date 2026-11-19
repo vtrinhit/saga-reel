@@ -115,3 +115,52 @@ library.drift_threshold:
   type: int
   default: 70
   description: Điểm drift check (0–100) dưới ngưỡng này thì clip bị gắn cờ drift.
+
+# --- task j ---
+story.context_budget_tokens:
+  type: int
+  default: 12000
+  description: Ngân sách token (ước 4 ký tự/token) cho toàn bộ biến gửi LLM khi viết một tập (bible + tóm tắt + mục liên quan).
+story.novel_chars_per_second:
+  type: int
+  default: 40
+  description: Chuyển thể truyện — số ký tự truyện gốc ứng với 1 giây phim (độ dài đoạn mỗi tập = giây mục tiêu × số này).
+pipeline.poll_s:
+  type: float
+  default: 2.0
+  description: Chu kỳ (giây) job quy trình kiểm tra các job con (tạo ảnh/video, dựng, xuất).
+author.write_bible:
+  type: enum
+  default: llm
+  choices: [manual, llm, agent]
+  description: Ai viết Story Bible — người dùng (manual), LLM của app (llm), hay agent ngoài qua MCP (agent).
+author.outline:
+  type: enum
+  default: llm
+  choices: [manual, llm, agent]
+  description: Ai lập dàn ý tập (manual / llm / agent).
+author.write_script:
+  type: enum
+  default: llm
+  choices: [manual, llm, agent]
+  description: Ai viết kịch bản tập (manual / llm / agent).
+author.split_clips:
+  type: enum
+  default: llm
+  choices: [manual, llm, agent]
+  description: Ai chia kịch bản thành clip (manual / llm / agent).
+author.image_prompts:
+  type: enum
+  default: llm
+  choices: [manual, llm, agent]
+  description: Ai viết prompt ảnh của clip (manual / llm / agent).
+author.motion_prompts:
+  type: enum
+  default: llm
+  choices: [manual, llm, agent]
+  description: Ai viết prompt chuyển động của clip (manual / llm / agent).
+author.dialogue:
+  type: enum
+  default: llm
+  choices: [manual, llm, agent]
+  description: Ai viết lời thoại của clip (manual / llm / agent).
