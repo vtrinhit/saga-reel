@@ -121,6 +121,10 @@ def test_spine_project_to_tiktok_package(client, settings):
 
     # --- Tạo ảnh/video/âm thanh (B → A/E/D) -------------------------------------------------------------------------
     ids = [c1["id"], c2["id"], c3["id"]]
+    pre = ok(client, "sequence.estimate", {"id": sid, "overrides": {"connection": "fake-img",
+                                                                    "video_connection": "fake-vid"}})
+    assert pre["generation"]["clip_ids"] == ids and pre["render"]["clips"] == 3, pre
+    assert pre["generation"]["estimate"]["parts"]["image"]["jobs"] == 2  # clip continue không cần ảnh
     gen = ok(client, "clip.regenerate", {"ids": ids, "part": "all",
                                          "overrides": {"connection": "fake-img", "video_connection": "fake-vid"}})
     assert gen["estimate"]["parts"]["audio"]["lines"] == 2 and not gen["skipped"], gen
