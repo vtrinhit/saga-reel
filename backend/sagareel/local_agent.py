@@ -65,8 +65,9 @@ def _restrict_acl(path: Path) -> None:
     principal = f"{domain}\\{user}" if domain else user
     r = subprocess.run(
         ["icacls", str(path), "/inheritance:r", "/grant:r", f"{principal}:F"],
-        capture_output=True,
-        text=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         timeout=_ICACLS_TIMEOUT_S,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
@@ -80,21 +81,24 @@ def _restrict_acl(path: Path) -> None:
 
 
 def write_token_file(path: Path, raw: str) -> None:
-    """Ghi token vào file tạm (0600 / ACL riêng người dùng) rồi thay thế nguyên khối: không lúc nào token nằm trong
-    một file quyền mặc định. Thu quyền thất bại chỉ cảnh báo; ghi file thất bại thì ném `OSError`."""
+    """Tạo file tạm RỖNG (0600), thu quyền (ACL riêng người dùng), rồi mới ghi token và thay thế nguyên khối: token
+    không lúc nào nằm trong file quyền mặc định (trừ khi thu quyền thất bại — chỉ cảnh báo). Ghi file thất bại thì ném
+    `OSError`."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
+    binary = getattr(os, "O_BINARY", 0)
+    os.close(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | binary, 0o600))
     try:
-        try:
-            os.write(fd, (raw + "\n").encode("ascii"))
-        finally:
-            os.close(fd)
         try:
             _restrict_acl(tmp)
         except Exception as e:  # noqa: BLE001 — thu quyền là phụ, không được chặn việc tạo token
             logger.warning("Không giới hạn được quyền truy cập file token cục bộ %s (%s).", path, type(e).__name__)
+        fd = os.open(tmp, os.O_WRONLY | os.O_TRUNC | binary)
+        try:
+            os.write(fd, (raw + "\n").encode("ascii"))
+        finally:
+            os.close(fd)
         os.replace(tmp, path)
     except BaseException:
         try:

@@ -195,6 +195,21 @@ def test_token_file_write_failure_does_not_block_startup(settings, make_local_cl
     assert any(r.levelno == logging.WARNING for r in caplog.records)
 
 
+def test_acl_restricted_before_token_written(tmp_path, monkeypatch):
+    seen = []
+    real = local_agent._restrict_acl
+
+    def spy(p):
+        seen.append(p.read_bytes())  # lúc thu quyền, file tạm phải còn rỗng
+        real(p)
+
+    monkeypatch.setattr(local_agent, "_restrict_acl", spy)
+    p = tmp_path / "local-agent.token"
+    local_agent.write_token_file(p, "sr_" + "c" * 43)
+    assert seen == [b""]
+    assert p.read_text(encoding="utf-8").strip() == "sr_" + "c" * 43
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="ACL Windows")
 def test_icacls_nonzero_exit_only_warns(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(local_agent.subprocess, "run",

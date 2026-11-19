@@ -26,7 +26,8 @@ def _env(tmp_path, monkeypatch):
     monkeypatch.setenv("SAGAREEL_CACHE_DIR", str(tmp_path / "cli-cache"))
     monkeypatch.delenv("SAGAREEL_URL", raising=False)
     monkeypatch.delenv("SAGAREEL_TOKEN", raising=False)
-    monkeypatch.delenv("SAGAREEL_DATA_DIR", raising=False)
+    # Test quên --data-dir cũng không bao giờ đụng data/sagareel.db thật.
+    monkeypatch.setenv("SAGAREEL_DATA_DIR", str(tmp_path / "chua-dat-data-dir"))
 
 
 @pytest.fixture
