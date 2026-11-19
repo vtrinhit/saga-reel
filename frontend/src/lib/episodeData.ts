@@ -29,7 +29,7 @@ export async function fetchAllClips(seqId: number, filter?: Record<string, unkno
   for (let guard = 0; guard < 100; guard++) {
     const page = (await callOp('review.queue', {
       sequence_id: seqId,
-      filter: { review: ALL_REVIEW, no_scene: false, ...(filter ?? {}) },
+      filter: { review: ALL_REVIEW, no_scene: false, has_take: false, ...(filter ?? {}) },
       cursor,
       limit: PAGE,
     })) as unknown as ClipPageFull;

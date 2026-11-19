@@ -227,7 +227,7 @@ export function useAssetDrift(pid: number | null, assetId: number | null) {
         const page = (await callOp('clip.list', {
           sequence_id: s.id,
           limit: 500,
-          filter: { flags: ['drift'], asset_id: assetId!, no_scene: false },
+          filter: { flags: ['drift'], asset_id: assetId!, no_scene: false, has_take: false },
         })) as unknown as { items: DriftClip[] };
         clips.push(...(page.items ?? []).map((c) => ({ ...c, sequence_id: s.id })));
       }
