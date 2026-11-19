@@ -16,6 +16,8 @@ class ProjectCounts(BaseModel):
     assets: int
     sequences: int
     clips: int
+    takes_pending: int = Field(0, description="Clip chờ duyệt đã có take (= review.queue review=pending + has_take)")
+    drift: int = Field(0, description="Clip mang cờ drift")
 
 
 class ProjectOut(BaseModel):

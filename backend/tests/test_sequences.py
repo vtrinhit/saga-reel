@@ -18,7 +18,7 @@ def test_create_numbers_keys_and_list(owner_ctx, project):
     a = sequences.create(owner_ctx, project, "Tập một")
     b = sequences.create(owner_ctx, project, "Tập hai", key="tap-2")
     assert (a["number"], a["key"]) == (1, "ep001") and (b["number"], b["key"]) == (2, "tap-2")
-    assert a["counts"] == {"clips": 0, "scenes": 0, "duration_ms": 0}
+    assert {k: a["counts"][k] for k in ("clips", "scenes", "duration_ms")} == {"clips": 0, "scenes": 0, "duration_ms": 0}
     with pytest.raises(AppError) as e:
         sequences.create(owner_ctx, project, "x", key="tap-2")
     assert e.value.code == "key_taken"

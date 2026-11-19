@@ -25,36 +25,36 @@ from sagareel.services import confirm, entities, staleness
 
 # --- Enum ---------------------------------------------------------------------------------------------------------
 
-SHOT_ENUMS: dict[str, frozenset[str]] = {
-    "shot_size": frozenset({"ews", "ws", "fs", "mws", "ms", "mcu", "cu", "ecu", "insert"}),
-    "angle": frozenset({"eye", "low", "high", "dutch", "ots", "pov", "overhead"}),
-    "camera_move": frozenset({
+SHOT_ENUMS: dict[str, tuple[str, ...]] = {
+    "shot_size": ("ews", "ws", "fs", "mws", "ms", "mcu", "cu", "ecu", "insert"),
+    "angle": ("eye", "low", "high", "dutch", "ots", "pov", "overhead"),
+    "camera_move": (
         "static", "push_in", "pull_out", "pan_l", "pan_r", "tilt_u", "tilt_d", "truck_l", "truck_r", "track", "arc",
         "crane_up", "crane_down", "handheld", "whip_pan", "rack_focus",
-    }),
-    "lens": frozenset({"24mm", "35mm", "50mm", "85mm", "anamorphic"}),
-    "composition": frozenset({
+    ),
+    "lens": ("24mm", "35mm", "50mm", "85mm", "anamorphic"),
+    "composition": (
         "center", "thirds_l", "thirds_r", "symmetry", "leading_lines", "frame_in_frame", "negative_space",
         "headroom_tight",
-    }),
-    "eyeline": frozenset({"screen_left", "screen_right", "to_camera", "down", "up"}),
-    "screen_dir": frozenset({"L→R", "R→L", "toward_cam", "away_cam", "none"}),
+    ),
+    "eyeline": ("screen_left", "screen_right", "to_camera", "down", "up"),
+    "screen_dir": ("L→R", "R→L", "toward_cam", "away_cam", "none"),
 }
 # Bí danh ASCII cho hướng màn hình (gõ tay/CLI) → giá trị chuẩn.
 SCREEN_DIR_ALIASES = {"L>R": "L→R", "L->R": "L→R", "LR": "L→R", "R>L": "R→L", "R->L": "R→L", "RL": "R→L"}
-CUT_KINDS = frozenset({"cut", "match_action", "match_graphic", "j_cut", "l_cut", "smash", "cutaway", "dissolve"})
-CUT_ENUMS: dict[str, frozenset[str]] = {
-    "axis_side": frozenset({"A", "B"}),
+CUT_KINDS = ("cut", "match_action", "match_graphic", "j_cut", "l_cut", "smash", "cutaway", "dissolve")
+CUT_ENUMS: dict[str, tuple[str, ...]] = {
+    "axis_side": ("A", "B"),
     "cut_in": CUT_KINDS,
     "cut_out": CUT_KINDS,
 }
 CUSTOM_ENUMS = CUT_ENUMS  # tên cũ (W1)
-FIELD_ENUMS: dict[str, frozenset[str]] = {
-    "prompt_mode": frozenset({"verbatim", "synced"}),
-    "engine": frozenset({"ai_video", "still_motion", "code_anim"}),
-    "link": frozenset({"cut", "fade", "continue"}),
-    "grok_audio": frozenset({"keep", "mute", "ambient"}),
-    "review": frozenset({"pending", "approved", "rejected", "skipped"}),
+FIELD_ENUMS: dict[str, tuple[str, ...]] = {
+    "prompt_mode": ("verbatim", "synced"),
+    "engine": ("ai_video", "still_motion", "code_anim"),
+    "link": ("cut", "fade", "continue"),
+    "grok_audio": ("keep", "mute", "ambient"),
+    "review": ("pending", "approved", "rejected", "skipped"),
 }
 # Không sửa qua clip.update: thứ tự/tập (clip.move), take đang chọn (take.select).
 UPDATE_FORBIDDEN = {
@@ -172,7 +172,48 @@ def filtered_query(sequence_id: int, flt: dict[str, Any] | None):
         q = q.where(text(f"EXISTS (SELECT 1 FROM json_each(clip.assets) WHERE {cond})").bindparams(**params))
     if flt.get("ids"):
         q = q.where(Clip.id.in_([int(i) for i in flt["ids"]]))
+    if flt.get("has_take"):
+        q = q.where(or_(Clip.image_take_id.is_not(None), Clip.video_take_id.is_not(None)))
     return q
+
+
+# Hàng duyệt "take chờ duyệt": clip chưa duyệt đã có take đang chọn. Dùng chung cho đếm `takes_pending`
+# (project.get, sequence.list) và `review.queue(filter={review: pending, has_take: true})` → số khớp nhau.
+PENDING_FILTER: dict[str, Any] = {"review": ["pending"], "has_take": True}
+
+
+def count_pending(s: Session, sequence_ids: list[int]) -> dict[int, int]:
+    """Số clip chờ duyệt (có take) theo tập — cùng điều kiện với `PENDING_FILTER`."""
+    out = dict.fromkeys(sequence_ids, 0)
+    if not sequence_ids:
+        return out
+    for sid, n in s.execute(
+        select(Clip.sequence_id, func.count()).where(
+            Clip.sequence_id.in_(sequence_ids), Clip.deleted_at.is_(None), Clip.review == "pending",
+            or_(Clip.image_take_id.is_not(None), Clip.video_take_id.is_not(None)))
+        .group_by(Clip.sequence_id)
+    ):
+        out[sid] = int(n)
+    return out
+
+
+def count_flags(s: Session, sequence_ids: list[int]) -> dict[int, dict[str, int]]:
+    """Số clip có cờ `stale` (stale_image/stale_video/stale_*), `drift`, `failed` theo tập."""
+    out = {i: {"stale": 0, "drift": 0, "failed": 0} for i in sequence_ids}
+    if not sequence_ids:
+        return out
+    rows = s.execute(select(Clip.sequence_id, Clip.flags).where(
+        Clip.sequence_id.in_(sequence_ids), Clip.deleted_at.is_(None), Clip.flags.is_not(None),
+        text("clip.flags NOT IN ('{}', '', 'null')")))
+    for sid, flags in rows:
+        flags = flags or {}
+        if any(k.startswith("stale") and v for k, v in flags.items()):
+            out[sid]["stale"] += 1
+        if flags.get("drift"):
+            out[sid]["drift"] += 1
+        if flags.get("failed"):
+            out[sid]["failed"] += 1
+    return out
 
 
 def list_page(s: Session, sequence_id: int, cursor: str | None = None, limit: int = 100,

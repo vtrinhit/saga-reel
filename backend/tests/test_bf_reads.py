@@ -55,3 +55,57 @@ def test_pipeline_status_global_paginated_with_gate_preview(owner_ctx, project, 
     assert len(page["items"]) == 1 and page["next_cursor"] == page["items"][0]["sequence_id"]
     active = _inv("pipeline.status", {"active_only": True}, owner_ctx)
     assert [x["sequence_id"] for x in active["items"]] == [seq]
+
+
+def test_counts_pending_flags_and_review_queue_match(owner_ctx, project, seq):
+    from _fixtures_b import add_take
+    from sagareel.db.models import Clip
+
+    db = owner_ctx.services.db
+    s2 = sequences.create(owner_ctx, project, "Tập 2")["id"]
+    a = clips.create(owner_ctx, seq, {})
+    b = clips.create(owner_ctx, seq, {})
+    c = clips.create(owner_ctx, s2, {})
+    clips.create(owner_ctx, s2, {})  # chưa có take → không tính chờ duyệt
+    for cl in (a, b, c):
+        t = add_take(db, cl["id"], "image", media_id=1)
+        with db.session() as s:
+            s.get(Clip, cl["id"]).image_take_id = t
+    with db.session() as s:
+        s.get(Clip, b["id"]).flags = {"drift": {"score": 10}, "stale_video": True}
+        s.get(Clip, a["id"]).flags = {"failed": {"part": "video"}}
+    lst = _inv("sequence.list", {"project_id": project}, owner_ctx)["items"]
+    by = {x["id"]: x["counts"] for x in lst}
+    assert by[seq]["takes_pending"] == 2 and by[s2]["takes_pending"] == 1
+    assert by[seq]["flags"] == {"stale": 1, "drift": 1, "failed": 1}
+    pc = _inv("project.get", {"id": project}, owner_ctx)["counts"]
+    assert pc["takes_pending"] == 3 and pc["drift"] == 1
+    q = _inv("review.queue", {"sequence_ids": [s2, seq], "filter": {"has_take": True}, "limit": 2}, owner_ctx)
+    assert [x["id"] for x in q["items"]] == [a["id"], b["id"]] and q["next_cursor"]
+    q2 = _inv("review.queue", {"sequence_ids": [s2, seq], "filter": {"has_take": True}, "limit": 2,
+                               "cursor": q["next_cursor"]}, owner_ctx)
+    assert [x["id"] for x in q2["items"]] == [c["id"]] and q2["items"][0]["sequence_id"] == s2
+    cost = _inv("sequence.cost_summary", {"sequence_ids": [seq, s2]}, owner_ctx)
+    assert len(cost["items"]) == 2 and cost["takes"] == 3
+
+
+def test_scene_list_meta_enums_asset_counts(owner_ctx, project, seq):
+    from sagareel.db.models import Clip
+    from sagareel.services import library
+
+    sc = _inv("scene.create", {"sequence_id": seq, "title": "Mở"}, owner_ctx)
+    clips.create(owner_ctx, seq, {"duration_ms": 3000}, scene_id=sc["id"])
+    clips.create(owner_ctx, seq, {"duration_ms": 2000})
+    out = _inv("scene.list", {"sequence_id": seq}, owner_ctx)
+    assert out["items"][0]["counts"] == {"clips": 1, "duration_ms": 3000}
+    assert out["unassigned"] == {"clips": 1, "duration_ms": 2000}
+    en = _inv("meta.enums", {}, owner_ctx)
+    assert en["shot"]["shot_size"][0] == "ews" and "keep" in en["verdicts"] and "still_motion" in en["engines"]
+    asset = library.asset_create(owner_ctx, project, "character", "An")
+    look = asset["looks"][0]["id"]
+    cl = clips.create(owner_ctx, seq, {"assets": [{"asset_id": asset["id"], "variant_id": look}]})
+    with owner_ctx.services.db.session() as s:
+        s.get(Clip, cl["id"]).flags = {"drift": {"score": 5}}
+    items = _inv("asset.list", {"project_id": project}, owner_ctx)["items"]
+    a = next(x for x in items if x["id"] == asset["id"])
+    assert a["counts"] == {"looks": 1, "drift": 1} and a["looks"][0]["counts"] == {"drift": 1}

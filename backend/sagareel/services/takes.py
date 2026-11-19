@@ -252,22 +252,57 @@ def review_queue(ctx: OpContext, sequence_id: int, flt: dict[str, Any] | None, c
     flt.setdefault("review", ["pending"])
     with ctx.services.db.session() as s:
         page = clips.list_page(s, sequence_id, cursor, limit, flt)
-        ids = [c["id"] for c in page["items"]]
-        counts: dict[int, dict[str, int]] = {}
-        if ids:
-            for oid, part, n in s.execute(
-                select(Take.owner_id, Take.part, func.count()).where(Take.owner_type == "clip",
-                                                                     Take.owner_id.in_(ids))
-                .group_by(Take.owner_id, Take.part)
-            ):
-                counts.setdefault(oid, {})[part] = n
-            sel_ids = {i for c in page["items"] for i in (c["image_take_id"], c["video_take_id"]) if i}
-            sel = {t["id"]: t for t in _with_media(s, list(s.scalars(select(Take).where(Take.id.in_(sel_ids)))))} \
-                if sel_ids else {}
-        for c in page["items"]:
-            c["take_counts"] = counts.get(c["id"], {})
-            c["selected_takes"] = {"image": sel.get(c["image_take_id"]) if ids else None,
-                                   "video": sel.get(c["video_take_id"]) if ids else None}
+        return _decorate_queue(s, page)
+
+
+def review_queue_many(ctx: OpContext, sequence_ids: list[int], flt: dict[str, Any] | None, cursor: str | None,
+                      limit: int) -> dict[str, Any]:
+    """Hàng duyệt qua nhiều tập: theo thứ tự tập (number, id) rồi rank. Cursor `"<sequence_id>|<rank>:<id>"`."""
+    flt = dict(flt or {})
+    flt.setdefault("review", ["pending"])
+    with ctx.services.db.session() as s:
+        seqs = [clips.get_sequence(s, i) for i in dict.fromkeys(sequence_ids)]
+        order = [q.id for q in sorted(seqs, key=lambda q: (q.number, q.id))]
+        start, inner = 0, None
+        if cursor:
+            sid, sep, inner = cursor.partition("|")
+            if not sep or not sid.isdigit() or int(sid) not in order:
+                raise clips._bad_cursor()
+            start = order.index(int(sid))
+        items: list[dict[str, Any]] = []
+        next_cursor = None
+        for idx in range(start, len(order)):
+            sid = order[idx]
+            page = clips.list_page(s, sid, inner if idx == start else None, limit - len(items), flt)
+            for c in page["items"]:
+                c["sequence_id"] = sid
+            items.extend(page["items"])
+            if len(items) >= limit:
+                if page["next_cursor"]:
+                    next_cursor = f"{sid}|{page['next_cursor']}"
+                elif idx + 1 < len(order):
+                    next_cursor = f"{order[idx + 1]}|"
+                break
+        return _decorate_queue(s, {"items": items, "next_cursor": next_cursor})
+
+
+def _decorate_queue(s: Session, page: dict[str, Any]) -> dict[str, Any]:
+    """Kèm số take từng phần + take đang chọn (có media) cho mỗi clip của trang."""
+    ids = [c["id"] for c in page["items"]]
+    counts: dict[int, dict[str, int]] = {}
+    sel: dict[int, dict[str, Any]] = {}
+    if ids:
+        for oid, part, n in s.execute(
+            select(Take.owner_id, Take.part, func.count()).where(Take.owner_type == "clip", Take.owner_id.in_(ids))
+            .group_by(Take.owner_id, Take.part)
+        ):
+            counts.setdefault(oid, {})[part] = n
+        sel_ids = {i for c in page["items"] for i in (c["image_take_id"], c["video_take_id"]) if i}
+        if sel_ids:
+            sel = {t["id"]: t for t in _with_media(s, list(s.scalars(select(Take).where(Take.id.in_(sel_ids)))))}
+    for c in page["items"]:
+        c["take_counts"] = counts.get(c["id"], {})
+        c["selected_takes"] = {"image": sel.get(c["image_take_id"]), "video": sel.get(c["video_take_id"])}
     return page
 
 

@@ -27,6 +27,10 @@ from sagareel.services import history, projects
 ops_pkg.load_all()
 
 
+def _base(counts: dict) -> dict:
+    return {k: counts[k] for k in ("assets", "sequences", "clips")}
+
+
 @pytest.fixture
 def ctx(owner_ctx):
     return owner_ctx
@@ -40,7 +44,7 @@ def call(name, payload, ctx):
 
 def test_project_fixture(ctx, project):
     out = projects.get(ctx, project)
-    assert out["key"] == "demo" and out["counts"] == {"assets": 0, "sequences": 0, "clips": 0}
+    assert out["key"] == "demo" and _base(out["counts"]) == {"assets": 0, "sequences": 0, "clips": 0}
 
 
 def test_create_defaults_and_slug(ctx):
@@ -71,7 +75,7 @@ def test_get_list_with_counts(ctx, project):
         s.flush()
         s.add_all([Clip(sequence_id=seq.id, key="c1", rank="a0"), Clip(sequence_id=seq.id, key="c2", rank="a1")])
     out = call("project.get", {"id": project}, ctx)
-    assert out["counts"] == {"assets": 1, "sequences": 1, "clips": 2}
+    assert _base(out["counts"]) == {"assets": 1, "sequences": 1, "clips": 2}
     for i in range(3):
         call("project.create", {"name": f"P{i}"}, ctx)
     page = call("project.list", {"limit": 2}, ctx)
@@ -138,7 +142,7 @@ def test_duplicate_copies_library_not_takes(ctx, project):
     out = call("project.duplicate", {"id": project, "name": "Bản sao"}, ctx)
     new_id = out["id"]
     assert new_id != project and out["key"] == "ban-sao" and out["name"] == "Bản sao"
-    assert out["counts"] == {"assets": 1, "sequences": 0, "clips": 0}
+    assert _base(out["counts"]) == {"assets": 1, "sequences": 0, "clips": 0}
     with ctx.services.db.session() as s:
         new_asset = s.scalar(select(Asset).where(Asset.project_id == new_id))
         new_vp = s.scalar(select(VoiceProfile).where(VoiceProfile.project_id == new_id))
@@ -174,7 +178,7 @@ def test_rest_roundtrip(client):
     assert r.status_code == 200, r.text
     pid = r.json()["id"]
     r = client.post("/api/ops/project.get", json={"id": pid})
-    assert r.json()["counts"] == {"assets": 0, "sequences": 0, "clips": 0}
+    assert _base(r.json()["counts"]) == {"assets": 0, "sequences": 0, "clips": 0}
 
 
 def test_make_clip_tiny_fixture(ctx, project, make_clip_tiny):

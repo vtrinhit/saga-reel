@@ -106,13 +106,34 @@ def counts(s: Session, project_ids: list[int]) -> dict[int, dict[str, int]]:
     return out
 
 
+def review_counts(s: Session, project_ids: list[int]) -> dict[int, dict[str, int]]:
+    """Take chờ duyệt (cùng điều kiện `clips.PENDING_FILTER`) + clip có cờ drift, cộng theo project."""
+    from sagareel.services import clips as clips_svc
+
+    out: dict[int, dict[str, int]] = {pid: {} for pid in project_ids}
+    seq_rows = s.execute(select(Sequence.id, Sequence.project_id).where(
+        Sequence.project_id.in_(project_ids), Sequence.deleted_at.is_(None))).all()
+    seq_ids = [sid for sid, _ in seq_rows]
+    pending = clips_svc.count_pending(s, seq_ids)
+    flags = clips_svc.count_flags(s, seq_ids)
+    for pid in project_ids:
+        out[pid]["takes_pending"] = 0
+        out[pid]["drift"] = 0
+    for sid, pid in seq_rows:
+        out[pid]["takes_pending"] += pending[sid]
+        out[pid]["drift"] += flags[sid]["drift"]
+    return out
+
+
 def out(s: Session, p: Project) -> dict[str, Any]:
     return {**entities.to_dict(p), "counts": counts(s, [p.id])[p.id]}
 
 
 def get(ctx: OpContext, project_id: int) -> dict[str, Any]:
     with ctx.services.db.session() as s:
-        return out(s, entities.get(s, "project", project_id))
+        d = out(s, entities.get(s, "project", project_id))
+        d["counts"].update(review_counts(s, [project_id])[project_id])
+        return d
 
 
 def list_projects(ctx: OpContext, cursor: int | None = None, limit: int = 50) -> dict[str, Any]:
@@ -126,7 +147,8 @@ def list_projects(ctx: OpContext, cursor: int | None = None, limit: int = 50) ->
         more = len(rows) > limit
         rows = rows[:limit]
         c = counts(s, [r.id for r in rows])
-        items = [{**entities.to_dict(r), "counts": c[r.id]} for r in rows]
+        rc = review_counts(s, [r.id for r in rows])
+        items = [{**entities.to_dict(r), "counts": {**c[r.id], **rc[r.id]}} for r in rows]
     return {"items": items, "next_cursor": rows[-1].id if more else None}
 
 

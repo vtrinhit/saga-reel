@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -247,7 +247,38 @@ def asset_list(ctx: OpContext, project_id: int, kind: str | None = None, q: str 
         rows = s.scalars(stmt.order_by(Asset.id).limit(limit + 1)).all()
         more = len(rows) > limit
         rows = rows[:limit]
-        return {"items": [asset_out(s, a) for a in rows], "next_cursor": rows[-1].id if more else None}
+        drift_a, drift_v = drift_counts(s, project_id)
+        items = []
+        for a in rows:
+            d = asset_out(s, a)
+            for lk in d["looks"]:
+                lk["counts"] = {"drift": drift_v.get(lk["id"], 0)}
+            d["counts"] = {"looks": len(d["looks"]), "drift": drift_a.get(a.id, 0)}
+            items.append(d)
+        return {"items": items, "next_cursor": rows[-1].id if more else None}
+
+
+def drift_counts(s: Session, project_id: int) -> tuple[dict[int, int], dict[int, int]]:
+    """Số clip (chưa xoá) mang cờ `drift` theo tài sản và theo look (`clip.assets[].asset_id/variant_id`)."""
+    by_asset: dict[int, int] = {}
+    by_look: dict[int, int] = {}
+    rows = s.execute(
+        select(Clip.assets).join(Sequence, Sequence.id == Clip.sequence_id)
+        .where(Sequence.project_id == project_id, Sequence.deleted_at.is_(None), Clip.deleted_at.is_(None),
+               text("coalesce(json_extract(clip.flags, '$.drift'), 0) NOT IN (0, '', 'false')"))).scalars()
+    for assets in rows:
+        seen_a: set[int] = set()
+        seen_v: set[int] = set()
+        for ref in assets or []:
+            if not isinstance(ref, dict):
+                continue
+            if isinstance(ref.get("asset_id"), int) and ref["asset_id"] not in seen_a:
+                seen_a.add(ref["asset_id"])
+                by_asset[ref["asset_id"]] = by_asset.get(ref["asset_id"], 0) + 1
+            if isinstance(ref.get("variant_id"), int) and ref["variant_id"] not in seen_v:
+                seen_v.add(ref["variant_id"])
+                by_look[ref["variant_id"]] = by_look.get(ref["variant_id"], 0) + 1
+    return by_asset, by_look
 
 
 def asset_update(ctx: OpContext, asset_id: int, values: dict[str, Any],

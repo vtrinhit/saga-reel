@@ -29,9 +29,13 @@ class ClipFilter(BaseModel):
     no_scene: bool = False
     asset_id: int | None = Field(default=None, description="Clip dùng tài sản này")
     variant_id: int | None = Field(default=None, description="… với look này (kèm asset_id)")
+    has_take: bool = Field(default=False, description="Chỉ clip đã có take ảnh/video đang chọn (review=pending + "
+                           "has_take = đúng số `takes_pending`)")
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {}
+        if self.has_take:
+            out["has_take"] = True
         if self.flags:
             out["flags"] = self.flags
         if self.review:
@@ -145,8 +149,11 @@ class ClipRewriteParams(BaseModel):
 
 
 class ReviewQueueParams(BaseModel):
-    sequence_id: int
-    filter: ClipFilter | None = Field(default=None, description="Mặc định review=pending")
+    sequence_id: int | None = Field(default=None, description="Một tập (hoặc sequence_ids)")
+    sequence_ids: list[int] | None = Field(default=None, max_length=500,
+                                           description="Nhiều tập: theo thứ tự tập; mỗi item kèm sequence_id")
+    filter: ClipFilter | None = Field(default=None, description="Mặc định review=pending; thêm has_take=true để "
+                                      "khớp số takes_pending")
     cursor: str | None = None
     limit: int = Field(default=50, ge=1, le=clips.LIST_MAX)
 
@@ -269,4 +276,9 @@ async def clip_rewrite_prompt(ctx: OpContext, p: ClipRewriteParams) -> dict:
 @op("review.queue", summary="Hàng duyệt: clip cần duyệt theo thứ tự (mặc định pending) kèm take đang chọn",
     params=ReviewQueueParams, read_only=True, idempotent=True, mcp="tool")
 def review_queue(ctx: OpContext, p: ReviewQueueParams) -> dict:
-    return takes.review_queue(ctx, p.sequence_id, p.filter.as_dict() if p.filter else None, p.cursor, p.limit)
+    flt = p.filter.as_dict() if p.filter else None
+    if p.sequence_ids:
+        return takes.review_queue_many(ctx, p.sequence_ids, flt, p.cursor, p.limit)
+    if p.sequence_id is None:
+        raise ValidationFailed("Cần sequence_id hoặc sequence_ids.")
+    return takes.review_queue(ctx, p.sequence_id, flt, p.cursor, p.limit)
