@@ -1,0 +1,12 @@
+# SagaReel Studio
+
+> Studio dựng video AI chạy cục bộ (FastAPI + React). Mọi thao tác là một op trong sổ đăng ký; REST, CLI và MCP sinh từ cùng catalog.
+
+## Dành cho agent
+- [AGENTS.md](AGENTS.md): cách dùng REST/CLI/MCP, xác thực, quy tắc an toàn (dry_run, xoá hai bước, gate, ngân sách, hoàn tác)
+- [mcp_server/README.md](mcp_server/README.md): chạy MCP server (`sagareel mcp`), cấu hình Claude Code/Desktop, danh sách tool
+- Catalog op sống: `GET /api/ops` (JSON Schema params + cờ); OpenAPI: `/openapi.json`
+
+## Thiết kế
+- [Spec](docs/superpowers/specs/2026-11-19-sagareel-studio-design.md): kiến trúc, op registry (§5.2), agent (§17), MCP (§23.5)
+- [DESIGN.md](DESIGN.md): design system UI
