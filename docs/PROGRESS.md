@@ -36,7 +36,7 @@ Cập nhật sau mỗi mốc và sau mỗi lần gọi provider thật.
 | Nghiên cứu OSS | xong | | Đã có: `docs/research/raw/assembly-editor-clone.md`. Còn chờ 4 báo cáo agent (nền tảng phim ngắn; skill/planner; TTS; thông số nền tảng) + agent design system (ghi `DESIGN.md`, `docs/design/preview.html`). Báo cáo nào chưa lưu thành file thì chạy lại agent đó. Sau đó: viết `oss-study.md`, `platform-specs.md`, spec. |
 | Spec | xong bản 1 + rà soát người xây | | `docs/superpowers/specs/2026-11-19-sagareel-studio-design.md`; còn bổ sung preset nền tảng + prompt mặc định khi có nghiên cứu |
 | M0 | **xong** 2026-11-19 | gộp vào `main` | 18 task + T8b + sửa sau gộp + đợt sửa cuối; mỗi task có review độc lập; review toàn nhánh đạt. Backend 963 test, frontend 126 test, build sạch. Kiểm chứng thật: `docs/research/m0-provider-check.md`. Quyết định: `docs/superpowers/m0-rulings.md`. |
-| M1 | chưa | | |
+| M1–M8 | đang làm (2026-11-20) | main đã có W0, W1 A–F, L1 MCP, J (M5), K (M6), UX v2, G0 shell | Nhánh đang chạy: wt/s (nối + migration 0005 + e2e), wt/g, wt/h, wt/i, wt/m (UI), wt/l2 (spec plan/apply + skill). Kế hoạch: docs/superpowers/plans/2026-11-20-m1-m8-master.md, 2026-11-20-w2-w3.md. Còn: gộp các nhánh trên, test_pipeline xfail (S2), W3 N/O, cổng mốc + chạy thật. Đã dùng 4/60 ảnh; clip thật lưu ở data/research/bank. |
 | M2 | chưa | | |
 | M3 | chưa | | |
 | M4 | chưa | | |
