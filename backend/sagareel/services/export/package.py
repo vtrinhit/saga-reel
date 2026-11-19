@@ -350,10 +350,14 @@ async def collect_cues(services: Any, sequence_id: int, lang: str, extra: Mappin
         if not lines or not loaded.options.subtitles:
             return []
         w, h = platforms.target_size(dict(spec))
-        style = subs.load_style(dict(loaded.options.subtitle_style))
+        style = dict(loaded.options.subtitle_style)
         cues = list(subs.build_cues(lines, style, w, h, platforms.safe_zone(dict(spec), w, h)))
-        for c in cues:
-            c.box = cue_box(subs, style, c, w, h)  # Cue của D không có hộp chữ → tính cho kiểm vùng an toàn
+        try:  # Cue của D không có hộp chữ → tính cho kiểm vùng an toàn (thiếu hàm đo thì bỏ qua kiểm này)
+            st = subs.load_style(style)
+            for c in cues:
+                c.box = cue_box(subs, st, c, w, h)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Không tính được hộp chữ phụ đề: %s", e)
         return cues
 
     try:

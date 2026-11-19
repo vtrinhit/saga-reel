@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import ForeignKey, Index, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from sagareel.db.base import Base, JSONDict, JSONList, Tracked
+from sagareel.db.base import Base, JSONDict, JSONList, Tracked, new_key
 
 
 class Sequence(Tracked, Base):
     __tablename__ = "sequence"
-    __table_args__ = (UniqueConstraint("project_id", "key"),)
+    __table_args__ = (Index("ux_sequence_key", "project_id", "key", unique=True, sqlite_where=text("deleted_at IS NULL")),)
 
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), index=True)
     group_id: Mapped[int | None] = mapped_column(ForeignKey("group_node.id"), index=True)
@@ -32,7 +32,7 @@ class Sequence(Tracked, Base):
 class Scene(Tracked, Base):
     __tablename__ = "scene"
     __table_args__ = (
-        UniqueConstraint("sequence_id", "key"),
+        Index("ux_scene_key", "sequence_id", "key", unique=True, sqlite_where=text("deleted_at IS NULL")),
         Index("ix_scene_sequence_rank", "sequence_id", "rank"),
     )
 
@@ -50,7 +50,7 @@ class Scene(Tracked, Base):
 class Clip(Tracked, Base):
     __tablename__ = "clip"
     __table_args__ = (
-        UniqueConstraint("sequence_id", "key"),
+        Index("ux_clip_key", "sequence_id", "key", unique=True, sqlite_where=text("deleted_at IS NULL")),
         Index("ix_clip_sequence_rank", "sequence_id", "rank"),
     )
 
@@ -93,15 +93,24 @@ class Clip(Tracked, Base):
     last_frame_desc: Mapped[str] = mapped_column(Text, default="")
     sfx_desc: Mapped[str] = mapped_column(Text, default="")
     beats: Mapped[list[Any]] = mapped_column(JSONList, default=list)
+    axis_side: Mapped[str] = mapped_column(default="")  # left/right — phía trục 180°
+    cut_in: Mapped[str] = mapped_column(default="")  # kiểu cắt vào (match_action, cutaway…)
+    cut_out: Mapped[str] = mapped_column(default="")
+    connection: Mapped[str] = mapped_column(default="")  # kết nối provider riêng của clip (trống = cài đặt)
+    model: Mapped[str] = mapped_column(default="")
     custom: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)
     settings: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)
 
 
 class DialogueLine(Tracked, Base):
     __tablename__ = "dialogue_line"
-    __table_args__ = (Index("ix_dialogue_line_clip_rank", "clip_id", "rank"),)
+    __table_args__ = (
+        Index("ix_dialogue_line_clip_rank", "clip_id", "rank"),
+        Index("ux_dialogue_line_key", "clip_id", "key", unique=True, sqlite_where=text("deleted_at IS NULL")),
+    )
 
     clip_id: Mapped[int] = mapped_column(ForeignKey("clip.id"), index=True)
+    key: Mapped[str] = mapped_column(default=lambda: new_key("l"))  # ổn định cho plan/apply
     rank: Mapped[str]
     speaker_asset_id: Mapped[int | None] = mapped_column(ForeignKey("asset.id"), index=True)  # null = người kể
     text: Mapped[str] = mapped_column(Text)

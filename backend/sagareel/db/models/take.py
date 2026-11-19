@@ -28,6 +28,9 @@ class Take(Plain, Base):
     elapsed_ms: Mapped[int | None]
     rating: Mapped[int | None]
     verdict: Mapped[str] = mapped_column(default="")  # keep/trim/fix_post/regenerate/reject
+    verdict_reason: Mapped[str] = mapped_column(Text, default="")
+    seed: Mapped[int | None]  # seed tất định (project/tập/clip + biến thể) khi tạo
+    error_code: Mapped[str] = mapped_column(default="")  # mã lỗi khi status=failed
     notes: Mapped[str] = mapped_column(Text, default="")
     auto_score: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)
     lang: Mapped[str] = mapped_column(default="")

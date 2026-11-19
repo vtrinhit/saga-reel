@@ -16,10 +16,9 @@ import time
 from pathlib import Path
 
 from PIL import Image, ImageChops
-from sqlalchemy import select
-
 from sagareel.db.models import Job, Render, Take
 from sagareel.services.audio import mix
+from sqlalchemy import select
 
 FAKE_IMG = {"kind": "image", "adapter": "fake_image", "name": "fake-img", "options": {"short_side": 96}}
 FAKE_VID = {"kind": "video", "adapter": "fake_video", "name": "fake-vid", "options": {"short_side": 96}}

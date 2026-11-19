@@ -20,7 +20,13 @@ from sqlalchemy.types import TypeDecorator
 
 from sagareel.core import rank, secrets
 from sagareel.core.context import OpContext
-from sagareel.core.errors import AppError, ConfirmRequired, Conflict, NotFound, ValidationFailed
+from sagareel.core.errors import (
+    AppError,
+    ConfirmRequired,
+    Conflict,
+    NotFound,
+    ValidationFailed,
+)
 from sagareel.core.ops import current_op
 from sagareel.db.base import Base, JSONDictType, JSONListType, utcnow
 from sagareel.db.models import (
@@ -254,7 +260,7 @@ def integrity_error(type_: str, e: IntegrityError) -> AppError:
     msg = str(e.orig)
     if "UNIQUE" in msg:
         return Conflict(f"Mã (key) này đã được dùng cho {label_of(type_)} khác.", code="key_taken",
-                        hint="Chọn mã khác (mã là duy nhất trong phạm vi cha, kể cả bản đã xoá).")
+                        hint="Chọn mã khác (mã là duy nhất trong phạm vi cha, trong các bản chưa xoá).")
     if "FOREIGN KEY" in msg:
         return AppError("invalid_reference", f"{label_of(type_).capitalize()} trỏ tới thực thể không tồn tại.",
                         hint="Kiểm tra các trường id tham chiếu.", status=422)

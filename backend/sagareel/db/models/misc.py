@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import ForeignKey, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sagareel.db.base import Base, JSONDict, JSONList, Tracked
@@ -13,12 +13,14 @@ from sagareel.db.base import Base, JSONDict, JSONList, Tracked
 class Preset(Tracked, Base):
     """`kind`: genre/platform/subtitle_style/voice/transition/workflow/channel_brand/style_pack/motion.
 
-    `project_id` null = toàn cục. Như `asset_kind`: uq(kind, key, project_id) không chặn trùng ở dòng toàn cục (NULL)
-    — service phải tự kiểm tra.
+    `project_id` null = toàn cục. (kind, key) duy nhất trong các dòng chưa xoá của project; dòng toàn cục có index riêng.
     """
 
     __tablename__ = "preset"
-    __table_args__ = (UniqueConstraint("kind", "key", "project_id"),)
+    __table_args__ = (
+        Index("ux_preset_key", "kind", "key", "project_id", unique=True, sqlite_where=text("deleted_at IS NULL")),
+        Index("ux_preset_global_key", "kind", "key", unique=True, sqlite_where=text("project_id IS NULL AND deleted_at IS NULL")),
+    )
 
     project_id: Mapped[int | None] = mapped_column(ForeignKey("project.id"), index=True)
     kind: Mapped[str]

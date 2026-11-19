@@ -10,11 +10,17 @@ import logging
 import shutil
 
 import pytest
-from sqlalchemy import select
-
-from sagareel.db.models import ChangeSet, GlobalSettings, LlmTask, ProviderConnection, Revision, Template
+from sagareel.db.models import (
+    ChangeSet,
+    GlobalSettings,
+    LlmTask,
+    ProviderConnection,
+    Revision,
+    Template,
+)
 from sagareel.services import llm, seed, system_state
 from sagareel.services.seed import seed_defaults, seed_from_env
+from sqlalchemy import select
 
 FULL_ENV = (
     "MAIVIDEO_API_KEY=mk-123456\nLLM_BASE_URL=http://x/v1\nLLM_API_KEY=lk\nLLM_MODEL=gpt-6-luna\n"

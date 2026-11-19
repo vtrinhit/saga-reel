@@ -9,7 +9,7 @@ Hai bước, đều qua dữ liệu thuần để dễ kiểm thử:
 
 Quy ước dữ liệu: payload lưu hàng ở dạng "thô" (đã đổi tên cột về trường chuẩn, giá trị gốc); `normalize_row` luôn chạy lại
 trên dữ liệu thô + chỉnh sửa của người dùng, nên preview và apply cho cùng kết quả và sửa tay chỉ cần gửi giá trị thô.
-`clip` chưa có cột `connection`/`model`: lưu trong `clip.settings` (đề xuất cột riêng ở migration sau).
+`connection`/`model` của dòng nhập vào cột `clip.connection`/`clip.model`.
 """
 
 from __future__ import annotations
@@ -32,10 +32,18 @@ from sqlalchemy.orm import Session
 from sagareel.core import rank as rank_mod
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, NotFound
-from sagareel.db.models import Asset, AssetVariant, Clip, DialogueLine, Media, Scene, Sequence, SystemState
-from sagareel.services import entities
+from sagareel.db.models import (
+    Asset,
+    AssetVariant,
+    Clip,
+    DialogueLine,
+    Media,
+    Scene,
+    Sequence,
+    SystemState,
+)
+from sagareel.services import entities, uploads
 from sagareel.services import system_state as ss
-from sagareel.services import uploads
 
 TOKEN_TTL_S = 3600
 TOKEN_PREFIX = "import_preview:"
@@ -211,12 +219,12 @@ def fold_dur(t: str) -> str:
 def _scene_of(text: str) -> tuple[str, str]:
     """"Cảnh 1: Quán cà phê" → ("s1", "Quán cà phê"); không có số → (slug, nguyên văn)."""
     t = text.strip()
-    m = re.match(r"^(?:c[ảa]nh|canh|scene|sc)\s*#?\s*(\d+)\s*[:.\-–—)]?\s*(.*)$", t, re.I) or re.match(
+    m = re.match(r"^(?:c[ảa]nh|canh|scene|sc)\s*#?\s*(\d+)\s*[:.\-–—)]?\s*(.*)$", t, re.IGNORECASE) or re.match(
         r"^#?(\d+)\s*(?:[:.\-–—)]\s*(.*))?$", t)
     if m:
         n = int(m.group(1))
         return f"s{n}", (m.group(2) or "").strip() or f"Cảnh {n}"
-    m = re.match(r"^(?:c[ảa]nh|canh|scene)\s*:\s*(.+)$", t, re.I)
+    m = re.match(r"^(?:c[ảa]nh|canh|scene)\s*:\s*(.+)$", t, re.IGNORECASE)
     title = m.group(1).strip() if m else t
     return (_slug(title) or "scene"), title
 
@@ -224,7 +232,7 @@ def _scene_of(text: str) -> tuple[str, str]:
 _SPLIT_CHARS = re.compile(r"[,;\n|]")
 
 
-def _parse_characters(v: Any, lk: Lookup, row: "Row") -> list[dict]:
+def _parse_characters(v: Any, lk: Lookup, row: Row) -> list[dict]:
     items: list[tuple[str, str]] = []
     if isinstance(v, str):
         for tok in _SPLIT_CHARS.split(v):
@@ -241,7 +249,7 @@ def _parse_characters(v: Any, lk: Lookup, row: "Row") -> list[dict]:
                 items.append((_nfc(code), _nfc(look)))
             elif not _empty(it):
                 tok = _text(it)
-                code, sep, look = tok.partition(":") if ":" in tok else tok.partition("：")
+                code, _sep, look = tok.partition(":") if ":" in tok else tok.partition("：")
                 items.append((_nfc(code), _nfc(look)))
     else:
         row.errors.append("Cột nhân vật phải là chuỗi hoặc danh sách mã.")
@@ -276,7 +284,7 @@ def is_speaker_token(tok: str, lk: Lookup) -> bool:
     return any(c.isalpha() for c in tok) and tok.isupper()  # "AN", "MINH", "NV_1"
 
 
-def _parse_dialogue(v: Any, default_speaker: str, lk: Lookup, row: "Row") -> list[dict]:
+def _parse_dialogue(v: Any, default_speaker: str, lk: Lookup, row: Row) -> list[dict]:
     raw: list[tuple[str, str, str]] = []  # (speaker, emotion, text)
     seq = v if isinstance(v, list) else [v]
     for it in seq:
@@ -313,7 +321,7 @@ def _parse_dialogue(v: Any, default_speaker: str, lk: Lookup, row: "Row") -> lis
     return out
 
 
-def _enum(v: Any, table: dict[str, str], label: str, row: "Row") -> str | None:
+def _enum(v: Any, table: dict[str, str], label: str, row: Row) -> str | None:
     if _empty(v):
         return None
     out = table.get(fold(v))
@@ -440,7 +448,7 @@ def _grid_to_table(grid: list[tuple[int, list[Any]]], warnings: list[str]) -> Ta
     """`grid` = [(số hàng nguồn, ô…)] bỏ hàng trống; hàng đầu là tiêu đề."""
     if not grid:
         raise _fail("File không có dữ liệu.", "import_empty")
-    hrow, hcells = grid[0]
+    _hrow, hcells = grid[0]
     keep = [i for i, c in enumerate(hcells) if not _empty(c)]  # cột không có tiêu đề bị bỏ
     columns = _header([hcells[i] for i in keep])
     rows, srcs = [], []
@@ -541,7 +549,7 @@ def parse_structured(text: str, kind: str, warnings: list[str]) -> Table:
 
 
 _SCENE_HDR = re.compile(
-    r"^\s*#*\s*(?:c[ảa]nh|canh|scene)\s*(?:(\d+)(?:\s*[:.\-–—)]\s*|\s*$)|:\s*)(.*)$", re.I)
+    r"^\s*#*\s*(?:c[ảa]nh|canh|scene)\s*(?:(\d+)(?:\s*[:.\-–—)]\s*|\s*$)|:\s*)(.*)$", re.IGNORECASE)
 _BULLET = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
 
 
@@ -653,9 +661,8 @@ def _source_table(services, source: dict[str, Any], lk: Lookup, warnings: list[s
         if len(ids) > MAX_ROWS:
             raise _fail(f"Quá nhiều ảnh (tối đa {MAX_ROWS}).", "import_too_many_rows")
         return parse_folder(ids, lk, warnings)
-    name = ""
     if source.get("upload_id"):
-        data, name = uploads.read_bytes(services, source["upload_id"], max_bytes=MAX_FILE)
+        data, _name = uploads.read_bytes(services, source["upload_id"], max_bytes=MAX_FILE)
     elif source.get("text") is not None:
         data = None
     else:
@@ -922,9 +929,9 @@ def apply(
                              ("duration_ms", "duration_ms"), ("input_media_id", "input_media_id")):
                 if f[fld] is not None:
                     vals[col] = f[fld]
-            cfg = {k: f[k] for k in ("connection", "model") if f[k]}
-            if cfg:
-                vals["settings"] = cfg
+            for k in ("connection", "model"):  # cột riêng (migration 0005)
+                if f[k]:
+                    vals[k] = f[k]
             clips.append(Clip(**vals))
         s.add_all(clips)
         s.flush()

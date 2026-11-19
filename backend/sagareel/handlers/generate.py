@@ -101,7 +101,7 @@ async def _take_guard(run, part: str) -> AsyncIterator[None]:
         code = getattr(e, "code", None) or type(e).__name__
         with contextlib.suppress(Exception):
             await anyio.to_thread.run_sync(functools.partial(
-                _set_take, run.services, take_id, status="failed", inputs_update={"error_code": code}))
+                _set_take, run.services, take_id, status="failed", error_code=str(code)))
             await anyio.to_thread.run_sync(_mark_failed_clip, run.services, p["clip_id"], part, code)
             await anyio.to_thread.run_sync(_cancel_chain, run.services, p.get("then") or [],
                                            f"Job cha #{run.job_id} thất bại ({code}).")
@@ -185,7 +185,7 @@ def _take_media(services, take_id: int) -> tuple[str, int, dict]:
 
 async def _last_frame(run, video_take_id: int) -> int:
     """Media ảnh = khung cuối của take video (cache ở `take.inputs.last_frame_media_id`)."""
-    part, media_id, inputs = await anyio.to_thread.run_sync(_take_media, run.services, video_take_id)
+    _part, media_id, inputs = await anyio.to_thread.run_sync(_take_media, run.services, video_take_id)
     if inputs.get("last_frame_media_id"):
         return int(inputs["last_frame_media_id"])
     src = await anyio.to_thread.run_sync(_media_file, run.services, media_id, "video")

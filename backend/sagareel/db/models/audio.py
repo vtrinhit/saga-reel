@@ -4,16 +4,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, Index, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from sagareel.db.base import Base, JSONDict, JSONList, Tracked
+from sagareel.db.base import Base, JSONDict, JSONList, Tracked, new_key
 
 
 class TimelineItem(Tracked, Base):
     __tablename__ = "timeline_item"
+    __table_args__ = (Index("ux_timeline_item_key", "sequence_id", "key", unique=True, sqlite_where=text("deleted_at IS NULL")),)
 
     sequence_id: Mapped[int] = mapped_column(ForeignKey("sequence.id"), index=True)
+    key: Mapped[str] = mapped_column(default=lambda: new_key("t"))  # ổn định cho plan/apply
     track: Mapped[str]  # music/sfx/title
     anchor_clip_id: Mapped[int | None] = mapped_column(ForeignKey("clip.id"), index=True)
     offset_ms: Mapped[int] = mapped_column(default=0)
@@ -26,8 +28,13 @@ class TimelineItem(Tracked, Base):
 
 class Sound(Tracked, Base):
     __tablename__ = "sound"
+    __table_args__ = (
+        Index("ux_sound_key", "project_id", "key", unique=True, sqlite_where=text("deleted_at IS NULL")),
+        Index("ux_sound_global_key", "key", unique=True, sqlite_where=text("project_id IS NULL AND deleted_at IS NULL")),
+    )
 
     project_id: Mapped[int | None] = mapped_column(ForeignKey("project.id"), index=True)
+    key: Mapped[str] = mapped_column(default=lambda: new_key("s"))  # ổn định cho plan/apply
     media_id: Mapped[int] = mapped_column(index=True)
     kind: Mapped[str]  # music/sfx/ambience
     title: Mapped[str]

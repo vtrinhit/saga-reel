@@ -159,7 +159,7 @@ def asset_kind_create(ctx: OpContext, key: str, label: str, project_id: int | No
     with _uow(ctx, f"Thêm loại tài sản {key}", "asset_kind.create", project_id) as s:
         if project_id is not None:
             _get_project(s, project_id)
-        taken = s.scalars(select(AssetKind).where(AssetKind.key == key, or_(
+        taken = s.scalars(select(AssetKind).where(AssetKind.key == key, AssetKind.deleted_at.is_(None), or_(
             AssetKind.project_id.is_(None), AssetKind.project_id == project_id))).first()
         if taken is not None:
             raise Conflict(f"Đã có loại tài sản '{key}'.", code="key_taken", hint="Chọn mã khác.")
@@ -214,7 +214,7 @@ def asset_create(ctx: OpContext, project_id: int, kind: str, name: str, key: str
                 raise AppError("asset_kind_unknown", f"Không có loại tài sản '{kind}'.",
                                hint="Gọi asset_kind.list để xem các loại; asset_kind.create để thêm.", status=422)
             existing = set(s.scalars(select(Asset.key).where(Asset.project_id == project_id)).all())
-            if key is not None and key in existing:
+            if key is not None and key in _alive_keys(s, Asset, Asset.project_id == project_id):
                 raise Conflict(f"Mã '{key}' đã được dùng trong dự án.", code="key_taken", hint="Chọn mã khác.")
             a = Asset(project_id=project_id, kind=kind, key=key or _free(existing, initials_key(name)), name=name,
                       description=description, tags=list(tags or []))
@@ -338,7 +338,7 @@ def asset_duplicate(ctx: OpContext, asset_id: int, name: str | None = None, key:
             src = entities.get(s, "asset", asset_id)
             u.project_id = src.project_id
             existing = set(s.scalars(select(Asset.key).where(Asset.project_id == src.project_id)).all())
-            if key is not None and key in existing:
+            if key is not None and key in _alive_keys(s, Asset, Asset.project_id == src.project_id):
                 raise Conflict(f"Mã '{key}' đã được dùng trong dự án.", code="key_taken", hint="Chọn mã khác.")
             new_name = name or f"{src.name} (bản sao)"
             c = _clone(src, key=key or _free(existing, src.key), name=new_name)
@@ -386,11 +386,17 @@ def look_create(ctx: OpContext, asset_id: int, name: str, description_delta: str
         raise entities.integrity_error("asset_variant", e) from None
 
 
+def _alive_keys(s: Session, model: Any, scope: Any) -> set[str]:
+    """Mã đang dùng bởi dòng chưa xoá (mã người dùng đặt được trùng bản đã xoá mềm — migration 0005); mã tự sinh vẫn
+    tránh mọi dòng để hoàn tác xoá không vướng."""
+    return set(s.scalars(select(model.key).where(scope, model.deleted_at.is_(None))).all())
+
+
 def _new_look(s: Session, a: Asset, name: str, *, description_delta: str = "", keep_features: list | None = None,
               lock_word: str = "", valid_from: int | None = None, valid_to: int | None = None,
               is_default: bool = False, key: str | None = None) -> AssetVariant:
     existing = set(s.scalars(select(AssetVariant.key).where(AssetVariant.asset_id == a.id)).all())
-    if key is not None and key in existing:
+    if key is not None and key in _alive_keys(s, AssetVariant, AssetVariant.asset_id == a.id):
         raise Conflict(f"Mã look '{key}' đã có trong tài sản này.", code="key_taken", hint="Chọn mã khác.")
     first = not _looks(s, a.id)
     lk = AssetVariant(asset_id=a.id, key=key or _free(existing, slugify(name, "look")), name=name,

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import copy
+import itertools
 
 import pytest
-
 from sagareel.core.errors import AppError, Forbidden, ValidationFailed
 from sagareel.db.models import Preset
 from sagareel.services import presets
@@ -201,7 +201,7 @@ def test_project_scoped_preset_overrides_global(client):
     mine = call(client, "preset.duplicate", {"id": tid, "key": "tiktok", "to_project": True, "project_id": pid}).json()
     assert mine["project_id"] == pid
     lst = call(client, "preset.list", {"kind": "platform", "project_id": pid}).json()
-    assert [p for p in lst if p["key"] == "tiktok"][0]["id"] == mine["id"] and len(lst) == 5
+    assert next(p for p in lst if p["key"] == "tiktok")["id"] == mine["id"] and len(lst) == 5
     assert len(call(client, "preset.list", {"kind": "platform"}).json()) == 5
 
 
@@ -240,7 +240,7 @@ def test_plan_parts():
     assert platforms.plan_parts(60_000, 90) == [(0, 60_000)]
     parts = platforms.plan_parts(200_000, 90)
     assert len(parts) == 3 and parts[0][0] == 0 and parts[-1][1] == 200_000
-    assert all(b - a <= 90_000 for a, b in parts) and all(x[1] == y[0] for x, y in zip(parts, parts[1:], strict=False))
+    assert all(b - a <= 90_000 for a, b in parts) and all(x[1] == y[0] for x, y in itertools.pairwise(parts))
     snapped = platforms.plan_parts(200_000, 90, boundaries_ms=[70_000, 130_000, 50_000])
     assert snapped[0][1] in (70_000, 130_000, 50_000) and all(b - a <= 90_000 for a, b in snapped)
     assert platforms.part_label(1, 3) == "Phần 1/3"
@@ -291,7 +291,7 @@ def test_check_subtitle_boxes_outside_safe_zone():
 def test_check_metadata_limits_per_platform():
     yt = spec_of("yt-shorts")
     md = {"title": "a" * 101, "description": "x", "hashtags": ["#a"] * 4, "keywords": ["k" * 300, "m" * 300]}
-    e, w = codes({"errors": checks.check_metadata(yt, md), "warnings": []})
+    e, _w = codes({"errors": checks.check_metadata(yt, md), "warnings": []})
     assert {"title_too_long", "keywords_too_long"} <= set(e)
     assert [i["code"] for i in checks.check_metadata(yt, {"title": "ok", "hashtags": ["#a"] * 4})] == ["hashtags_hidden"]
     assert [i["code"] for i in checks.check_metadata(yt, {"title": "a<b"})] == ["title_forbidden_chars"]

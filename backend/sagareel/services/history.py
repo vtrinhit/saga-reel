@@ -29,7 +29,12 @@ from sqlalchemy.types import TypeDecorator
 from sagareel.core import secrets
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, Conflict, NotFound
-from sagareel.core.uow import UnitOfWork, bookkeeping_columns, entity_type_of, read_snapshot
+from sagareel.core.uow import (
+    UnitOfWork,
+    bookkeeping_columns,
+    entity_type_of,
+    read_snapshot,
+)
 from sagareel.db.base import Base, utcnow
 from sagareel.db.models import ChangeSet, Revision
 
@@ -93,7 +98,7 @@ def get(ctx: OpContext, change_set_id: int) -> ChangeSetOut:
         return _outs(s, [_get_change_set(s, change_set_id)])[0]
 
 
-def list(  # noqa: A001 — tên theo interface `history.list`
+def list(
     ctx: OpContext,
     entity_type: str | None = None,
     entity_id: int | None = None,
@@ -127,6 +132,26 @@ def list(  # noqa: A001 — tên theo interface `history.list`
 # --- Hoàn tác / làm lại / khôi phục -----------------------------------------------------------------------------
 
 
+def _key_conflict(fn):
+    """Khôi phục dòng đã xoá mềm khi đã có dòng chưa xoá cùng key (unique một phần, migration 0005) → 409 rõ ràng."""
+    import functools
+
+    from sqlalchemy.exc import IntegrityError
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except IntegrityError as e:
+            if "UNIQUE" not in str(e.orig):
+                raise
+            raise Conflict("Không khôi phục được: mã (key) đã được dùng cho một mục khác đang tồn tại.",
+                           code="key_taken", hint="Đổi mã của mục đang dùng (hoặc xoá nó) rồi thử lại.") from None
+
+    return wrapper
+
+
+@_key_conflict
 def undo(ctx: OpContext, change_set_id: int | None = None) -> ChangeSetOut:
     """Hoàn tác change set (mặc định: mới nhất của `ctx.actor` trong `ctx.project_id` chưa hoàn tác).
 
@@ -163,6 +188,7 @@ def undo(ctx: OpContext, change_set_id: int | None = None) -> ChangeSetOut:
     return get(ctx, target_id)
 
 
+@_key_conflict
 def redo(ctx: OpContext, change_set_id: int | None = None) -> ChangeSetOut:
     """Làm lại change set đã hoàn tác (mặc định: cái được `ctx.actor` hoàn tác gần nhất trong project)."""
     u = UnitOfWork(ctx.services.db, actor=ctx.actor, op_name=OP_REDO, project_id=ctx.project_id)
@@ -193,6 +219,7 @@ def redo(ctx: OpContext, change_set_id: int | None = None) -> ChangeSetOut:
     return get(ctx, target_id)
 
 
+@_key_conflict
 def restore(ctx: OpContext, entity_type: str, entity_id: int, revision_id: int) -> ChangeSetOut:
     """Đưa một thực thể về phiên bản ngay sau revision `revision_id` (giải quyết xung đột thủ công).
 

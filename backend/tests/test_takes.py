@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from _fixtures_b import add_take
 from sagareel.core.errors import AppError
 from sagareel.db.models import Clip
@@ -67,14 +66,14 @@ def test_rate_note_verdict_suggest_change(owner_ctx, seq):
         takes.rate(owner_ctx, t1, 9)
     assert takes.note(owner_ctx, t1, "mặt hơi lệch")["notes"] == "mặt hơi lệch"
     out = takes.verdict(owner_ctx, t1, "regenerate", "Tay lỗi")
-    assert out["verdict"] == "regenerate" and out["inputs"]["verdict_reason"] == "Tay lỗi"
+    assert out["verdict"] == "regenerate" and out["verdict_reason"] == "Tay lỗi"
     assert out["suggest_change"] is None
     takes.verdict(owner_ctx, t3, "regenerate", "tay lỗi")  # khác phần → không tính
     out = takes.verdict(owner_ctx, t2, "regenerate", "  tay   LỖI ")
     sc = out["suggest_change"]
     assert sc is not None and sc["count"] == 2 and sc["take_ids"] == [t1, t2] and sc["suggestions"]
     out = takes.verdict(owner_ctx, t2, "keep")
-    assert out["verdict"] == "keep" and "verdict_reason" not in out["inputs"]
+    assert out["verdict"] == "keep" and out["verdict_reason"] == ""
     with pytest.raises(AppError):
         takes.verdict(owner_ctx, t2, "maybe")
 
@@ -82,8 +81,8 @@ def test_rate_note_verdict_suggest_change(owner_ctx, seq):
 def test_compare_reports_differing_inputs(owner_ctx, seq):
     db = owner_ctx.services.db
     a = clips.create(owner_ctx, seq, {})
-    t1 = add_take(db, a["id"], "image", media_id=1, inputs={"prompt": "x", "seed": 1, "model": "m"})
-    t2 = add_take(db, a["id"], "image", media_id=2, inputs={"prompt": "y", "seed": 1, "model": "m"})
+    t1 = add_take(db, a["id"], "image", media_id=1, inputs={"prompt": "x", "model": "m"}, seed=1)
+    t2 = add_take(db, a["id"], "image", media_id=2, inputs={"prompt": "y", "model": "m"}, seed=1)
     out = takes.compare(owner_ctx, [t1, t2])
     assert [t["id"] for t in out["items"]] == [t1, t2] and out["diff_keys"] == ["prompt"]
 

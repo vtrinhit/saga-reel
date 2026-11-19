@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta, timezone
+import secrets
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import DateTime, MetaData, Text, event, inspect
@@ -22,7 +23,7 @@ NAMING_CONVENTION = {
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class UTCDateTime(TypeDecorator):
@@ -39,15 +40,15 @@ class UTCDateTime(TypeDecorator):
         if value is None:
             return None
         if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            value = value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     def process_result_value(self, value: datetime | None, dialect) -> datetime | None:
         if value is None:
             return None
         if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
 
 class _JSONText(TypeDecorator):
@@ -130,6 +131,12 @@ class Tracked:
 
 
 _TICK = timedelta(microseconds=1)
+
+
+def new_key(prefix: str) -> str:
+    """Khoá ngẫu nhiên ngắn, không đổi về sau, cho dòng không có khoá người dùng đặt (thoại, item timeline, âm
+    thanh) — `<tiền tố>-<8 hex>`; dòng có trước migration 0005 mang `<tiền tố><id>`."""
+    return f"{prefix}-{secrets.token_hex(4)}"
 
 
 @event.listens_for(Tracked, "before_update", propagate=True)

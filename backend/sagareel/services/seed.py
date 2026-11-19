@@ -131,19 +131,19 @@ def _connection_specs(env: dict[str, str]) -> list[dict[str, Any]]:
 
     if need("maivideo", "MAIVIDEO_API_KEY"):
         model = env.get("MAIVIDEO_MODEL", "")
-        specs.append(dict(name="maivideo", kind="image", adapter="maivideo", base_url=env.get("MAIVIDEO_BASE_URL", ""),
-                          api_key=env["MAIVIDEO_API_KEY"], default_model=model, options={"timeout_s": 1800},
-                          concurrency=2))
+        specs.append({"name": "maivideo", "kind": "image", "adapter": "maivideo", "base_url": env.get("MAIVIDEO_BASE_URL", ""),
+                          "api_key": env["MAIVIDEO_API_KEY"], "default_model": model, "options": {"timeout_s": 1800},
+                          "concurrency": 2})
     if need("groktele", "MULTIKIT_URL"):
-        specs.append(dict(name="groktele", kind="video", adapter="multikit", base_url=env["MULTIKIT_URL"],
-                          api_key=env.get("MULTIKIT_API_KEY", ""), default_model="", options={}, concurrency=4))
+        specs.append({"name": "groktele", "kind": "video", "adapter": "multikit", "base_url": env["MULTIKIT_URL"],
+                          "api_key": env.get("MULTIKIT_API_KEY", ""), "default_model": "", "options": {}, "concurrency": 4})
     if need(LLM_CONNECTION, "LLM_BASE_URL", "LLM_MODEL"):
-        specs.append(dict(name=LLM_CONNECTION, kind="llm", adapter="openai_compat", base_url=env["LLM_BASE_URL"],
-                          api_key=env.get("LLM_API_KEY", ""), default_model=env["LLM_MODEL"],
-                          options={"vision": True}, concurrency=4))
+        specs.append({"name": LLM_CONNECTION, "kind": "llm", "adapter": "openai_compat", "base_url": env["LLM_BASE_URL"],
+                          "api_key": env.get("LLM_API_KEY", ""), "default_model": env["LLM_MODEL"],
+                          "options": {"vision": True}, "concurrency": 4})
     # Adapter `edge_tts` không cần khoá/địa chỉ.
-    specs.append(dict(name="edge-tts", kind="tts", adapter="edge_tts", base_url="", api_key="", default_model="",
-                      options={}, concurrency=2))
+    specs.append({"name": "edge-tts", "kind": "tts", "adapter": "edge_tts", "base_url": "", "api_key": "", "default_model": "",
+                      "options": {}, "concurrency": 2})
     return specs
 
 

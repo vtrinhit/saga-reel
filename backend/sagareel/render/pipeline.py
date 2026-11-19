@@ -358,8 +358,16 @@ def _record_chunk(services, sequence_id: int, variant: str, spec: chunks.ChunkSp
                                  meta={"render_chunk": spec.fingerprint})
     with services.db.session(immediate=True) as s:
         m = media_svc.record(s, prepared)
-        s.add(RenderChunk(sequence_id=sequence_id, variant=variant, index=spec.index, fingerprint=spec.fingerprint,
-                          media_id=m.id, duration_ms=spec.dur_ms))
+        meta = {"start_ms": spec.start_ms, "clips": len(spec.clips)}
+        # unique (sequence_id, variant, fingerprint): dựng lại sau khi cache bị dọn → cập nhật dòng cũ
+        row = s.scalars(select(RenderChunk).where(RenderChunk.sequence_id == sequence_id,
+                                                  RenderChunk.variant == variant,
+                                                  RenderChunk.fingerprint == spec.fingerprint)).first()
+        if row is None:
+            s.add(RenderChunk(sequence_id=sequence_id, variant=variant, index=spec.index,
+                              fingerprint=spec.fingerprint, media_id=m.id, duration_ms=spec.dur_ms, meta=meta))
+        else:
+            row.index, row.media_id, row.duration_ms, row.meta = spec.index, m.id, spec.dur_ms, meta
         s.commit()
         mid = m.id
         mp = m.path
@@ -370,12 +378,16 @@ def _record_chunk(services, sequence_id: int, variant: str, spec: chunks.ChunkSp
 def _link_chunk(services, sequence_id: int, variant: str, spec: chunks.ChunkSpec, row: RenderChunk) -> None:
     """Khối dùng lại từ tập khác/biến thể khác: thêm dòng cho tập này nếu chưa có."""
     with services.db.session(immediate=True) as s:
-        exists = s.scalars(select(RenderChunk.id).where(RenderChunk.sequence_id == sequence_id,
-                                                        RenderChunk.fingerprint == spec.fingerprint)).first()
+        exists = s.scalars(select(RenderChunk).where(RenderChunk.sequence_id == sequence_id,
+                                                     RenderChunk.variant == variant,
+                                                     RenderChunk.fingerprint == spec.fingerprint)).first()
         if exists is None:
             s.add(RenderChunk(sequence_id=sequence_id, variant=variant, index=spec.index,
-                              fingerprint=spec.fingerprint, media_id=row.media_id, duration_ms=spec.dur_ms))
-            s.commit()
+                              fingerprint=spec.fingerprint, media_id=row.media_id, duration_ms=spec.dur_ms,
+                              meta={"start_ms": spec.start_ms, "clips": len(spec.clips), "linked_from": row.id}))
+        elif exists.media_id != row.media_id:
+            exists.media_id = row.media_id  # khối cũ của chính tập này mất file → trỏ sang bản còn file
+        s.commit()
 
 
 # --- Segment --------------------------------------------------------------------------------------------------------

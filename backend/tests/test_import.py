@@ -9,7 +9,16 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from sagareel.core.errors import AppError
-from sagareel.db.models import Asset, AssetVariant, ChangeSet, Clip, DialogueLine, Scene, Sequence, SystemState
+from sagareel.db.models import (
+    Asset,
+    AssetVariant,
+    ChangeSet,
+    Clip,
+    DialogueLine,
+    Scene,
+    Sequence,
+    SystemState,
+)
 from sagareel.services import importer, media
 from sqlalchemy import func, select
 
@@ -55,7 +64,7 @@ def _prev(ctx, seq_id, kind, text=None, **kw):
 
 
 def _apply(ctx, seq_id, token, **kw):
-    args = dict(edits=None, create_assets=False, after_clip_id=None, skip_rows=None, skip_errors=False)
+    args = {"edits": None, "create_assets": False, "after_clip_id": None, "skip_rows": None, "skip_errors": False}
     args.update(kw)
     return importer.apply(ctx, sequence_id=seq_id, preview_token=token, **args)
 
@@ -220,7 +229,7 @@ def test_alias_and_enum_values(ctx, seq):
     with ctx.services.db.session() as s:
         c = s.get(Clip, r["clip_ids"][0])
         assert (c.link, c.engine, c.prompt_mode) == ("continue", "still_motion", "verbatim")
-        assert c.settings == {"connection": "grok", "model": "m1"}
+        assert (c.connection, c.model, c.settings) == ("grok", "m1", {})
 
 
 def test_explicit_mapping_overrides_guess(ctx, seq):
@@ -237,7 +246,6 @@ def test_explicit_mapping_overrides_guess(ctx, seq):
 
 def test_xlsx_via_upload(ctx, seq, cast, settings):
     from openpyxl import Workbook
-
     from sagareel.services import uploads
 
     wb = Workbook()

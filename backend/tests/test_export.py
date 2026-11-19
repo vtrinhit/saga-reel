@@ -18,7 +18,6 @@ from types import SimpleNamespace
 
 import pytest
 from PIL import Image
-
 from sagareel.core.errors import Forbidden
 from sagareel.db.models import Clip, Render, Scene, Sequence, Sound, TimelineItem
 from sagareel.media import probe
@@ -455,7 +454,6 @@ def test_ffprobe_available_for_tests():
 
 def test_package_folder_rejects_traversal(services):
     import pytest as _pytest
-
     from sagareel.core.errors import AppError
     from sagareel.services.export import package
 

@@ -11,7 +11,6 @@ from pathlib import Path
 
 import anyio
 import pytest
-
 from _fixtures_b import add_take
 from sagareel.compile import contracts
 from sagareel.compile.contracts import CompiledPrompt, RefItem
@@ -131,7 +130,7 @@ async def test_image_regenerate_creates_new_takes_never_overwrites(client, conns
     inputs = t2.inputs
     assert inputs["prompt"] == "IMG[c0001] Linh bên cửa sổ" and inputs["prompt_source"] == "compiled"
     assert inputs["connection"] == "fake-img" and inputs["warnings"] == ["w-img"]
-    assert inputs["seed"] == takes.seed_for("demo", "ep001", "c0001") == t1.inputs["seed"]
+    assert t2.seed == takes.seed_for("demo", "ep001", "c0001") == t1.seed and "seed" not in inputs
     assert compiler[0][:3] == ("image", c["id"], "fake-img")
 
 
@@ -145,7 +144,7 @@ async def test_overrides_prompt_refs_and_takes_n(client, conns, compiler, wait_t
                                        "takes": 2, "feedback": "sáng hơn"}})
     assert len(out["take_ids"]) == 2 and len(out["job_ids"]) == 2
     rows = await wait_takes(out["take_ids"])
-    seeds = sorted(t.inputs["seed"] for t in rows.values())
+    seeds = sorted(t.seed for t in rows.values())
     assert seeds[1] == seeds[0] + 1
     for t in rows.values():
         assert t.status == "succeeded"
@@ -210,7 +209,7 @@ async def test_failure_marks_take_failed_and_cancels_chain(client, conns, wait_t
                          "overrides": {"connection": "fake-img", "video_connection": "fake-vid"}})
     rows = await wait_takes(out["take_ids"])
     img, vid = (rows[i] for i in out["take_ids"])
-    assert img.status == "failed" and img.inputs["error_code"] == "not_implemented"
+    assert img.status == "failed" and img.error_code == "not_implemented"
     assert vid.status == "cancelled" and vid.job_id is None
     with _db(client).session() as s:
         assert s.get(Clip, a["id"]).flags == {"failed": {"part": "image", "code": "not_implemented"}}
@@ -220,7 +219,7 @@ async def test_video_without_image_fails_clearly(client, conns, compiler, wait_t
     a = clips.create(owner_ctx, seq, {})
     out = regen(client, {"ids": [a["id"]], "part": "video", "overrides": {"connection": "fake-vid"}})
     t = (await wait_takes(out["take_ids"]))[out["take_ids"][0]]
-    assert t.status == "failed" and t.inputs["error_code"] == "no_source_image"
+    assert t.status == "failed" and t.error_code == "no_source_image"
 
 
 async def test_still_motion_calls_render_module(client, conns, compiler, wait_takes, owner_ctx, seq, monkeypatch,
@@ -250,7 +249,7 @@ async def test_still_motion_calls_render_module(client, conns, compiler, wait_ta
     out = regen(client, {"ids": [a["id"]], "part": "all", "overrides": {"connection": "fake-img"}})
     assert "still_motion" in out["estimate"]["parts"] and "video" not in out["estimate"]["parts"]
     rows = await wait_takes(out["take_ids"])
-    img, vid = (rows[i] for i in out["take_ids"])
+    _img, vid = (rows[i] for i in out["take_ids"])
     assert vid.status == "succeeded" and vid.cost == 0
     assert calls == [(".png", "ken_burns_diag", 4000, {"aspect": "9:16", "resolution": "1080p", "fps": 30})]
     with db.session() as s:
@@ -272,7 +271,7 @@ async def test_still_motion_failure_marks_take_failed(client, conns, compiler, w
     rows = await wait_takes(out["take_ids"])
     img, vid = (rows[i] for i in out["take_ids"])
     assert img.status == "succeeded"
-    assert vid.status == "failed" and vid.inputs["error_code"] == "render_ffmpeg_failed"
+    assert vid.status == "failed" and vid.error_code == "render_ffmpeg_failed"
     with _db(client).session() as s:
         assert s.get(Clip, a["id"]).flags == {"failed": {"part": "video", "code": "render_ffmpeg_failed"}}
 

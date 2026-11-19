@@ -19,7 +19,15 @@ from sagareel.core import rank
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, ConfirmRequired, ValidationFailed
 from sagareel.db.base import utcnow
-from sagareel.db.models import Asset, Clip, DialogueLine, Scene, Sequence, Take, TimelineItem
+from sagareel.db.models import (
+    Asset,
+    Clip,
+    DialogueLine,
+    Scene,
+    Sequence,
+    Take,
+    TimelineItem,
+)
 from sagareel.services import clips, confirm, entities, media
 
 KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
@@ -119,7 +127,8 @@ def create(ctx: OpContext, project_id: int, title: str, *, key: str | None = Non
             if key is None:
                 key = _free_key(s, project_id, f"ep{number:03d}")
             elif s.scalar(select(func.count()).select_from(Sequence).where(Sequence.project_id == project_id,
-                                                                          Sequence.key == key)):
+                                                                          Sequence.key == key,
+                                                                          Sequence.deleted_at.is_(None))):
                 raise AppError("key_taken", f"Mã tập '{key}' đã được dùng.", hint="Chọn mã khác hoặc bỏ trống.",
                                status=409)
             seq = Sequence(project_id=project_id, group_id=group_id, key=key, number=number, title=title,
@@ -278,6 +287,8 @@ def scene_create(ctx: OpContext, sequence_id: int, title: str = "", *, key: str 
                 if a.project_id != seq.project_id:
                     raise ValidationFailed("Bối cảnh không thuộc dự án của tập.")
             used = set(s.scalars(select(Scene.key).where(Scene.sequence_id == sequence_id)))
+            alive = set(s.scalars(select(Scene.key).where(Scene.sequence_id == sequence_id,
+                                                          Scene.deleted_at.is_(None))))
             if key is None:
                 n = len(used)
                 while True:
@@ -285,7 +296,7 @@ def scene_create(ctx: OpContext, sequence_id: int, title: str = "", *, key: str 
                     key = f"s{n:02d}"
                     if key not in used:
                         break
-            elif key in used:
+            elif key in alive:
                 raise AppError("key_taken", f"Mã cảnh '{key}' đã có trong tập.", status=409)
             sc = Scene(sequence_id=sequence_id, key=key, rank=_scene_rank(s, sequence_id, after_scene_id),
                        title=title, location_asset_id=location_asset_id, summary=summary, state=dict(state or {}))
@@ -395,12 +406,10 @@ def lint(ctx: OpContext, sequence_id: int) -> dict[str, Any]:
     chain = 0
     prev: Clip | None = None
     for c in rows:
-        cu = dict(c.custom or {})
-        cut_in = cu.get("cut_in") or ""
+        cut_in = c.cut_in or ""
         neutral = cut_in == "cutaway" or c.eyeline == "to_camera"
         if prev is not None and prev.scene_id == c.scene_id:
-            pu = dict(prev.custom or {})
-            a1, a2 = pu.get("axis_side") or "", cu.get("axis_side") or ""
+            a1, a2 = prev.axis_side or "", c.axis_side or ""
             if a1 and a2 and a1 != a2 and not neutral:
                 warn("axis_flip", c, f"Clip {c.key} vượt trục 180° (phía {a1} → {a2}) so với clip {prev.key}; "
                      "chèn cutaway/shot trung tính hoặc giữ cùng phía.", prev)
@@ -517,7 +526,6 @@ def shotlist_rows(s: Session, sequence_id: int) -> list[dict[str, Any]]:
                                                      .scalar_subquery())).group_by(Take.owner_id)).all())
     out = []
     for i, c in enumerate(rows, start=1):
-        cu = dict(c.custom or {})
         chars = []
         for a in c.assets or []:
             if isinstance(a, dict) and a.get("asset_id") is not None:
@@ -526,8 +534,8 @@ def shotlist_rows(s: Session, sequence_id: int) -> list[dict[str, Any]]:
             "index": i, "key": c.key, "scene": scenes.get(c.scene_id, "") if c.scene_id else "", "title": c.title,
             "duration_s": round(c.duration_ms / 1000, 3), "shot_size": c.shot_size, "angle": c.angle,
             "camera_move": c.camera_move, "lens": c.lens, "composition": c.composition, "eyeline": c.eyeline,
-            "screen_dir": c.screen_dir, "axis_side": cu.get("axis_side", ""), "cut_in": cu.get("cut_in", ""),
-            "cut_out": cu.get("cut_out", ""), "link": c.link, "engine": c.engine, "characters": ", ".join(chars),
+            "screen_dir": c.screen_dir, "axis_side": c.axis_side, "cut_in": c.cut_in,
+            "cut_out": c.cut_out, "link": c.link, "engine": c.engine, "characters": ", ".join(chars),
             "image_prompt": c.image_prompt, "motion_prompt": c.motion_prompt,
             "dialogue": "\n".join(lines.get(c.id, [])), "sfx_desc": c.sfx_desc, "review": c.review,
             "flags": ", ".join(sorted(k for k, v in (c.flags or {}).items() if v)),

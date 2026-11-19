@@ -4,7 +4,7 @@ Thứ tự theo `rank` (fractional index, `core.rank`): chèn hay di chuyển k 
 số lại cả tập (trừ khi khoá trùng nhau, khi đó `_rebalance` chạy một lần). Danh sách phân trang cursor `"<rank>:<id>"`.
 
 Trường shot dùng enum của `docs/research/film-craft/craft-and-prompts.md` §1 (chuỗi rỗng = chưa đặt). `axis_side`,
-`cut_in`, `cut_out` chưa có cột → nằm trong `clip.custom` (đề xuất đưa thành cột ở migration sau).
+`cut_in`, `cut_out` là cột (migration 0005); giá trị cũ gửi trong `custom{...}` vẫn được nhận và chuyển lên cột.
 """
 
 from __future__ import annotations
@@ -43,11 +43,12 @@ SHOT_ENUMS: dict[str, frozenset[str]] = {
 # Bí danh ASCII cho hướng màn hình (gõ tay/CLI) → giá trị chuẩn.
 SCREEN_DIR_ALIASES = {"L>R": "L→R", "L->R": "L→R", "LR": "L→R", "R>L": "R→L", "R->L": "R→L", "RL": "R→L"}
 CUT_KINDS = frozenset({"cut", "match_action", "match_graphic", "j_cut", "l_cut", "smash", "cutaway", "dissolve"})
-CUSTOM_ENUMS: dict[str, frozenset[str]] = {
+CUT_ENUMS: dict[str, frozenset[str]] = {
     "axis_side": frozenset({"A", "B"}),
     "cut_in": CUT_KINDS,
     "cut_out": CUT_KINDS,
 }
+CUSTOM_ENUMS = CUT_ENUMS  # tên cũ (W1)
 FIELD_ENUMS: dict[str, frozenset[str]] = {
     "prompt_mode": frozenset({"verbatim", "synced"}),
     "engine": frozenset({"ai_video", "still_motion", "code_anim"}),
@@ -72,9 +73,18 @@ def _enum_error(field: str, value: Any, allowed: frozenset[str], loc: str = "val
 
 
 def normalize_fields(values: dict[str, Any]) -> dict[str, Any]:
-    """Kiểm enum (shot + engine/link/…) và `custom.axis_side/cut_in/cut_out`; chuẩn hoá bí danh screen_dir."""
+    """Kiểm enum (shot + engine/link/… + axis_side/cut_in/cut_out); chuẩn hoá bí danh screen_dir. `custom` kiểu cũ
+    chứa axis_side/cut_in/cut_out → chuyển lên cột."""
     out = dict(values)
     errors = []
+    custom = out.get("custom")
+    if isinstance(custom, dict) and any(k in custom for k in CUT_ENUMS):
+        custom = dict(custom)
+        for field in CUT_ENUMS:
+            if field in custom:
+                v = custom.pop(field)
+                out.setdefault(field, "" if v is None else v)
+        out["custom"] = custom
     if isinstance(out.get("screen_dir"), str):
         out["screen_dir"] = SCREEN_DIR_ALIASES.get(out["screen_dir"].strip(), out["screen_dir"].strip())
     for field, allowed in SHOT_ENUMS.items():
@@ -86,12 +96,10 @@ def normalize_fields(values: dict[str, Any]) -> dict[str, Any]:
         if v is not None and isinstance(v, str) and v not in allowed:
             errors.append({"loc": ["values", field], "msg": f"Giá trị '{v}' của {field} không hợp lệ; chọn một trong:"
                            f" {', '.join(sorted(allowed))}.", "type": "enum"})
-    custom = out.get("custom")
-    if isinstance(custom, dict):
-        for field, allowed in CUSTOM_ENUMS.items():
-            v = custom.get(field)
-            if v not in (None, "") and v not in allowed:
-                errors.append(_enum_error(field, v, allowed, loc="custom"))
+    for field, allowed in CUT_ENUMS.items():
+        v = out.get(field)
+        if v not in (None, "") and v not in allowed:
+            errors.append(_enum_error(field, v, allowed))
     if isinstance(out.get("duration_ms"), int) and not isinstance(out["duration_ms"], bool) and out["duration_ms"] <= 0:
         errors.append({"loc": ["values", "duration_ms"], "msg": "Thời lượng phải lớn hơn 0.", "type": "range"})
     if errors:
@@ -262,24 +270,29 @@ def new_ranks(s: Session, sequence_id: int, after_clip_id: int | None, n: int,
 
 
 class KeyAllocator:
-    """Cấp mã `c0001`, `c0002`… chưa dùng trong tập (kể cả clip đã xoá mềm — ràng buộc uq trên cả bảng)."""
+    """Cấp mã `c0001`, `c0002`… chưa dùng trong tập (tránh cả clip đã xoá mềm để hoàn tác xoá không vướng). Mã người
+    dùng đặt chỉ cần khác các clip chưa xoá (unique một phần, migration 0005)."""
 
     def __init__(self, s: Session, sequence_id: int) -> None:
-        self.used = set(s.scalars(select(Clip.key).where(Clip.sequence_id == sequence_id)))
+        rows = s.execute(select(Clip.key, Clip.deleted_at).where(Clip.sequence_id == sequence_id)).all()
+        self.used = {k for k, _ in rows}
+        self.alive = {k for k, d in rows if d is None}
         self.n = len(self.used)
 
     def take(self, wanted: str | None = None) -> str:
         if wanted:
-            if wanted in self.used:
+            if wanted in self.alive:
                 raise AppError("key_taken", f"Mã clip '{wanted}' đã có trong tập.", hint="Chọn mã khác hoặc bỏ trống.",
                                status=409)
             self.used.add(wanted)
+            self.alive.add(wanted)
             return wanted
         while True:
             self.n += 1
             key = f"c{self.n:04d}"
             if key not in self.used:
                 self.used.add(key)
+                self.alive.add(key)
                 return key
 
 
@@ -557,7 +570,7 @@ def require_clip_ids(s: Session, ids: list[int]) -> list[Clip]:
 
 
 __all__ = [
-    "CUSTOM_ENUMS", "FIELD_ENUMS", "SHOT_ENUMS", "KeyAllocator", "bulk_create", "bulk_update", "create", "delete",
+    "CUSTOM_ENUMS", "CUT_ENUMS", "FIELD_ENUMS", "SHOT_ENUMS", "KeyAllocator", "bulk_create", "bulk_update", "create", "delete",
     "delete_preview", "duplicate", "filtered_query", "get", "list_clips", "list_page", "move", "new_ranks",
     "normalize_fields", "ordered", "split", "update",
 ]

@@ -52,7 +52,7 @@ class ClipCreateParams(BaseModel):
     after_clip_id: int | None = Field(default=None, description="Chèn sau clip này; bỏ trống = cuối, 0 = đầu")
     scene_id: int | None = None
     fields: dict[str, Any] = Field(default_factory=dict, description="Cột clip, vd. image_prompt, duration_ms, "
-                                   "shot_size, assets, custom{axis_side,cut_in,cut_out}")
+                                   "shot_size, assets, axis_side, cut_in, cut_out")
 
 
 class ClipBulkCreateParams(BaseModel):
