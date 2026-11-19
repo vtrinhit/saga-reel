@@ -25,8 +25,7 @@ DEFAULT_VOICES = ["alloy", "ash", "coral", "echo", "fable", "nova", "onyx", "sag
 
 
 def _finish(out: Path, audio: bytes) -> int:
-    audio_util.write_atomic(out, audio)
-    return audio_util.duration_ms(out)
+    return audio_util.write_measured(out, audio)  # bad_audio → file kết quả đã bị xoá
 
 
 @register_adapter
@@ -44,6 +43,8 @@ class OpenAITTSAdapter(OpenAIAudioMixin, TTSAdapter):
         HEALTH_SPEECH_FIELD,
     ]
     default_capabilities: ClassVar[dict] = {"word_timings": False}
+    # Đọc đoạn dài có thể mất vài phút trước khi máy chủ trả byte đầu tiên.
+    http_timeout: ClassVar = httpx.Timeout(300.0, connect=30.0)
 
     def _model(self) -> str:
         return self.conn.default_model or DEFAULT_MODEL

@@ -59,6 +59,17 @@ def duration_ms(path: Path) -> int:
     return info.duration_ms
 
 
+def write_measured(path: Path, data: bytes) -> int:
+    """Ghi nguyên tử rồi đo thời lượng; âm thanh không đọc được (`bad_audio`) → xoá file vừa ghi rồi ném lại."""
+    write_atomic(path, data)
+    try:
+        return duration_ms(path)
+    except ProviderJobError:
+        with contextlib.suppress(OSError):
+            Path(path).unlink()
+        raise
+
+
 def nfc(text: str) -> str:
     """Chuẩn hoá NFC — chỉ cho chữ **đầu ra** (từ, lời nhận dạng); không bao giờ cho chữ gửi đi."""
     return unicodedata.normalize("NFC", text)

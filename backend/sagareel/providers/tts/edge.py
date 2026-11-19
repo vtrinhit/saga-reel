@@ -6,6 +6,7 @@
   hoá NFC); `duration_ms` đo bằng ffprobe.
 - Cache: khoá sha256 của mọi tham số làm đổi âm thanh → `cache_dir/tts/<khoá>.mp3` + `.json` (thời lượng, từ). Trúng
   cache thì không gọi dịch vụ; file kết quả luôn là **bản chép** ra `req.out_path` (người gọi được phép chuyển nó đi).
+  Chép từ cache lỗi (`OSError`) → coi như trượt cache. Âm thanh không đọc được (`bad_audio`) → xoá file kết quả.
 - Lỗi: `NoAudioReceived` (vi-VN chập chờn phía máy chủ, rany2/edge-tts#512), lỗi WebSocket/mạng →
   `TransientError(retry_after=20·2^attempt, tối đa 300 s)`. Miễn phí nên không cần dấu "submitting".
 - Sức khoẻ: `list_voices()` có giọng `vi-VN` → `alive`; lỗi mạng → `dead`.
@@ -120,7 +121,11 @@ def _load_cached(tts_dir: Path, key: str, out: Path) -> tuple[int, list[tuple[st
         words = [(str(w), int(s), int(e)) for w, s, e in meta["words"]]
     except (KeyError, TypeError, ValueError):
         return None
-    audio_util.copy_atomic(mp3, out)
+    try:
+        audio_util.copy_atomic(mp3, out)
+    except OSError as e:  # file cache bị khoá/hỏng, ổ đầy… → coi như trượt cache, đọc lại
+        logger.warning("Không chép được âm thanh từ cache edge-tts %s: %s", key[:12], e)
+        return None
     return duration, words
 
 
@@ -132,8 +137,7 @@ def _store_cached(tts_dir: Path, key: str, src: Path, duration: int, words: list
 
 def _finish(out: Path, audio: bytes, tts_dir: Path | None, key: str,
             words: list[tuple[str, int, int]]) -> int:
-    audio_util.write_atomic(out, audio)
-    duration = audio_util.duration_ms(out)
+    duration = audio_util.write_measured(out, audio)  # bad_audio → file kết quả đã bị xoá
     if tts_dir is not None:
         try:
             _store_cached(tts_dir, key, out, duration, words)

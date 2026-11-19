@@ -1,12 +1,12 @@
 """Phần chung của adapter âm thanh qua API tương thích OpenAI (`openai_tts`, `openai_stt`).
 
 - URL: `{base_url}/<đường dẫn>` (base_url thường kết thúc bằng `/v1`).
-- Sức khoẻ: `GET {base}/models`, rồi (tuỳ chọn `health_speech`, **mặc định bật**) một yêu cầu thật cực ngắn — TTS 1 ký
+- Sức khoẻ: `GET {base}/models` (404 vẫn đi tiếp tới yêu cầu thử; 429/5xx → `unknown`; 401/403 → `dead`), rồi (tuỳ chọn `health_speech`, **mặc định bật**) một yêu cầu thật cực ngắn — TTS 1 ký
   tự, STT một WAV im lặng tự tạo — vì `/models` của LLM proxy vẫn trả 200 khi chưa có backend TTS/STT. Máy chủ trả
   "No credentials" → `not_configured` (không bao giờ `alive`, không phải `dead`). Chủ máy tắt tuỳ chọn được nếu không
   muốn tốn tiền cho mỗi lần kiểm tra.
 - Gửi yêu cầu tính tiền trong job: ghi dấu `state="submitting"` ngay trước POST; provider chắc chắn **không** nhận
-  (không kết nối được, 429/502/503/52x, 4xx) → xoá dấu rồi ném lỗi; không rõ (mất kết nối sau khi gửi, 500/504) →
+  (không kết nối được, 408/429/502/503/52x, 4xx) → xoá dấu rồi ném lỗi; không rõ (mất kết nối sau khi gửi, 500/504) →
   giữ dấu và ném `JobUnknown` (`<adapter>_job_unknown`) để người dùng quyết định. Lần chạy sau thấy dấu → không gửi lại.
 """
 
@@ -33,8 +33,9 @@ if TYPE_CHECKING:
 
 NO_CREDENTIALS = "No credentials"
 SUBMITTING = "submitting"
-# Gateway trả các mã này khi yêu cầu chưa tới được máy chủ thật → chắc chắn chưa xử lý (cùng 429 "bận").
-NOT_ACCEPTED = frozenset({429, 502, 503, 521, 522, 523, 525, 526, 530})
+# Gateway trả các mã này khi yêu cầu chưa tới được máy chủ thật → chắc chắn chưa xử lý (cùng 429 "bận" và 408
+# "Request Timeout": máy chủ bỏ yêu cầu trước khi nhận đủ, chưa xử lý).
+NOT_ACCEPTED = frozenset({408, 429, 502, 503, 521, 522, 523, 525, 526, 530})
 # Lỗi truyền tải xảy ra trước khi yêu cầu được gửi đủ → máy chủ chưa xử lý.
 NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout, httpx.WriteError, httpx.WriteTimeout,
             httpx.UnsupportedProtocol)
@@ -67,6 +68,11 @@ def error_message(r: httpx.Response) -> str:
         if body.get("message"):
             return str(body["message"])[:300]
     return r.text[:300]
+
+
+def health_status_for(status_code: int) -> str:
+    """HTTP lỗi khi kiểm tra sức khoẻ: 429 và 5xx/cổng → `unknown` (có thể tạm thời); còn lại → `dead`."""
+    return "unknown" if status_code == 429 or status_code >= 500 else "dead"
 
 
 def no_credentials(r: httpx.Response) -> bool:
@@ -106,10 +112,15 @@ class OpenAIAudioMixin(Adapter):
                 r = await c.get(self._url("models"), headers=self._headers())
                 if r.status_code in (401, 403):
                     return Health(status="dead", detail=f"Máy chủ từ chối khoá API (HTTP {r.status_code}).")
-                if not r.is_success:
-                    return Health(status="dead",
+                # 404: máy chủ không có /models (nhiều máy chủ chỉ có TTS/STT) — yêu cầu thử mới quyết định.
+                if not r.is_success and r.status_code != 404:
+                    return Health(status=health_status_for(r.status_code),
                                   detail=f"Máy chủ trả lỗi HTTP {r.status_code}: {self._msg(r)}")
                 if not health_speech(self.conn.options):
+                    if r.status_code == 404:
+                        return Health(status="unknown",
+                                      detail="Máy chủ không có /models (HTTP 404); bật “Kiểm tra bằng một yêu cầu "
+                                             "thật” để biết máy chủ có dùng được không.")
                     return Health(status="alive", detail="Máy chủ trả lời (chưa thử gửi yêu cầu thật).",
                                   capabilities=self.capabilities())
                 p = await self._probe_request(c)
@@ -119,7 +130,8 @@ class OpenAIAudioMixin(Adapter):
             return Health(status="not_configured",
                           detail=f"Máy chủ chưa cấu hình dịch vụ {self.service_label}: {self._msg(p)}")
         if not p.is_success:
-            return Health(status="dead", detail=f"Yêu cầu thử lỗi HTTP {p.status_code}: {self._msg(p)}")
+            return Health(status=health_status_for(p.status_code),
+                          detail=f"Yêu cầu thử lỗi HTTP {p.status_code}: {self._msg(p)}")
         return Health(status="alive", detail=f"Đã thử {self.service_label} thành công.",
                       capabilities=self.capabilities())
 

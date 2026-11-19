@@ -590,3 +590,112 @@ async def test_service_built_edge_adapter_uses_voice_cache(client, monkeypatch):
     # Adapter không nhận cache_dir vẫn dựng bình thường.
     assert call(client, "provider.create", {"kind": "llm", "adapter": "fake_llm", "name": "llm"}).status_code == 200
     assert (await anyio.to_thread.run_sync(ps.adapter, "llm")).adapter_id == "fake_llm"
+
+
+# --- Sửa sau khi gộp (post-merge B) -----------------------------------------------------------------------------------
+
+
+async def test_edge_cache_hit_copy_error_is_cache_miss(run_ctx, mp3_bytes, monkeypatch, tmp_path):
+    from sagareel.providers.tts import edge
+
+    calls = make_fake_communicate(monkeypatch, audio=mp3_bytes)
+    adapter = edge_adapter()
+    await adapter.synthesize(tts_req(tmp_path / "1.mp3"), run_ctx)
+    assert len(calls) == 1
+
+    def broken_copy(src, dest):
+        raise PermissionError(13, "file đang bị khoá")
+
+    monkeypatch.setattr(edge.audio_util, "copy_atomic", broken_copy)
+    out = tmp_path / "2.mp3"
+    res = await adapter.synthesize(tts_req(out), run_ctx)
+    assert len(calls) == 2  # chép từ cache hỏng → đọc lại
+    assert res.path == out and out.read_bytes() == mp3_bytes and abs(res.duration_ms - 1000) < 80
+
+
+async def test_edge_bad_audio_removes_output(run_ctx, monkeypatch, tmp_path):
+    make_fake_communicate(monkeypatch, audio=b"khong-phai-mp3" * 50)
+    out = tmp_path / "o" / "a.mp3"
+    with pytest.raises(ProviderJobError) as ei:
+        await edge_adapter().synthesize(tts_req(out), run_ctx)
+    assert ei.value.code == "provider_bad_audio"
+    assert not out.exists() and not list(out.parent.iterdir())
+    tts_cache = run_ctx.services.settings.cache_dir / "tts"
+    assert not tts_cache.exists() or not list(tts_cache.iterdir())
+
+
+@respx.mock
+async def test_openai_tts_bad_audio_removes_output(adapter, run_ctx, tmp_path):
+    respx.post(f"{BASE}/audio/speech").respond(200, content=b"khong-phai-mp3" * 50)
+    out = tmp_path / "o" / "a.mp3"
+    with pytest.raises(ProviderJobError) as ei:
+        await adapter.synthesize(tts_req(out), run_ctx)
+    assert ei.value.code == "provider_bad_audio"
+    assert not out.exists() and not list(out.parent.iterdir())
+
+
+@respx.mock
+async def test_openai_audio_408_is_transient_and_clears_marker(run_ctx, mp3_bytes, tmp_path):
+    tts = registry.get("openai_tts")(conn("openai_tts", "tts", base_url=BASE, api_key=KEY))
+    respx.post(f"{BASE}/audio/speech").respond(408, json={"error": {"message": "Request Timeout"}})
+    with pytest.raises(TransientError):
+        await tts.synthesize(tts_req(tmp_path / "a.mp3"), run_ctx)
+    assert run_ctx.external["state"] is None
+
+    audio = tmp_path / "in.mp3"
+    audio.write_bytes(mp3_bytes)
+    stt = registry.get("openai_stt")(conn("openai_stt", "stt", base_url=BASE, api_key=KEY))
+    run2 = FakeRun(tmp_path)
+    respx.post(f"{BASE}/audio/transcriptions").respond(408)
+    with pytest.raises(TransientError):
+        await stt.transcribe(STTRequest(audio=audio, lang="vi"), run2)
+    assert run2.external["state"] is None
+
+
+@respx.mock
+async def test_openai_tts_read_timeout_is_300s(adapter, run_ctx, mp3_bytes, tmp_path):
+    route = respx.post(f"{BASE}/audio/speech").respond(200, content=mp3_bytes)
+    await adapter.synthesize(tts_req(tmp_path / "a.mp3"), run_ctx)
+    assert route.calls.last.request.extensions["timeout"]["read"] == 300.0
+
+
+@respx.mock
+@pytest.mark.parametrize(("adapter_id", "kind", "path"), [("openai_tts", "tts", "audio/speech"),
+                                                          ("openai_stt", "stt", "audio/transcriptions")])
+async def test_openai_audio_health_models_404_still_probes(adapter_id, kind, path):
+    a = registry.get(adapter_id)(conn(adapter_id, kind, base_url=BASE, api_key=KEY))
+    respx.get(f"{BASE}/models").respond(404, json={"error": {"message": "Not Found"}})
+    probe = respx.post(f"{BASE}/{path}").respond(200, content=b"x", json={"text": ""})
+    h = await a.check_health()
+    assert h.status == "alive" and probe.called
+    probe.respond(400, json=NO_CREDS)
+    assert (await a.check_health()).status == "not_configured"
+
+
+@respx.mock
+async def test_openai_audio_health_models_404_without_probe_is_unknown():
+    a = registry.get("openai_tts")(conn("openai_tts", "tts", base_url=BASE, api_key=KEY, health_speech=False))
+    respx.get(f"{BASE}/models").respond(404)
+    probe = respx.post(f"{BASE}/audio/speech").respond(200, content=b"x")
+    h = await a.check_health()
+    assert h.status == "unknown" and not probe.called
+
+
+@respx.mock
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+@pytest.mark.parametrize(("adapter_id", "kind", "path"), [("openai_tts", "tts", "audio/speech"),
+                                                          ("openai_stt", "stt", "audio/transcriptions")])
+async def test_openai_audio_health_rate_limit_or_server_error_is_unknown(adapter_id, kind, path, status):
+    a = registry.get(adapter_id)(conn(adapter_id, kind, base_url=BASE, api_key=KEY))
+    models = respx.get(f"{BASE}/models").respond(status, json={"error": {"message": f"lỗi {KEY}"}})
+    probe = respx.post(f"{BASE}/{path}").respond(200, json={"text": ""})
+    h = await a.check_health()
+    assert h.status == "unknown" and str(status) in h.detail and KEY not in h.detail and not probe.called
+    models.respond(200, json={"data": []})
+    probe.respond(status, json={"error": {"message": "bận"}})
+    h = await a.check_health()
+    assert h.status == "unknown" and str(status) in h.detail
+    probe.respond(401, json={"error": {"message": "bad key"}})
+    assert (await a.check_health()).status == "dead"
+    models.respond(403)
+    assert (await a.check_health()).status == "dead"
