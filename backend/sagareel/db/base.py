@@ -73,6 +73,10 @@ class JSONDictType(_JSONText):
     Theo dõi thay đổi tại chỗ chỉ ở mức nông (`MutableDict`): `obj.options["x"] = 1` được lưu,
     nhưng sửa lồng (`obj.options["a"]["b"] = 1`) thì phải gán lại cả giá trị hoặc gọi
     `sqlalchemy.orm.attributes.flag_modified(obj, "options")`.
+
+    Cảnh báo: session chỉ giữ tham chiếu yếu tới object đã nạp. Sửa tại chỗ trên object không có biến nào giữ
+    (vd. `s.scalar(select(M)).options["x"] = 1`) bị mất vì object bị thu gom trước khi flush — gán object vào biến
+    trước rồi mới sửa.
     """
 
 
@@ -81,6 +85,9 @@ class JSONListType(_JSONText):
 
     Theo dõi thay đổi tại chỗ chỉ ở mức nông (`MutableList`): `append`, `obj.items[0] = …` được lưu,
     nhưng sửa phần tử lồng (`obj.items[0]["k"] = 1`) thì phải gán lại hoặc gọi `flag_modified`.
+
+    Cảnh báo: như `JSONDictType` — sửa tại chỗ trên object không có biến nào giữ (session chỉ giữ tham chiếu yếu) có
+    thể bị mất; gán object vào biến trước rồi mới sửa.
     """
 
 
