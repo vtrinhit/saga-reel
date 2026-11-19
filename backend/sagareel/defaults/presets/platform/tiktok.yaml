@@ -1,0 +1,55 @@
+# Preset nền tảng: TikTok. Ngày tra: 2026-11-19.
+# Nguồn: docs/research/platform-specs.md §5.
+#   - https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide (MP4/H.264, 23-60 fps, 360-4096 px, <= 4 GB; chính thức)
+#   - https://developers.tiktok.com/doc/content-posting-api-reference-direct-post (title <= 2200 UTF-16, video_cover_timestamp_ms, is_aigc; chính thức)
+#   - https://ads.tiktok.com/resources/help/article/tiktok-auction-in-feed-ads (9:16 >= 540x960; ads)
+#   - https://www.tiktok.com/community-guidelines/en/integrity-authenticity (nhãn nội dung AI; chính thức)
+# Độ dài: mọi creator đăng được 3 phút; một số 5/10 phút (đọc max_video_post_duration_sec từ creator_info).
+key: tiktok
+name: TikTok
+data:
+  label: TikTok (9:16)
+  aspect: "9:16"
+  width: 1080
+  height: 1920
+  min_width: 540
+  min_height: 960
+  fps: 30              # 23-60 fps (chính thức)
+  fps_range: [23, 60]
+  encode:
+    container: mp4
+    video_codec: libx264        # H.264 khuyến nghị (chính thức)
+    profile: high
+    pix_fmt: yuv420p
+    preset: slow
+    crf: 18                     # unverified (post-production.md §5.3)
+    maxrate_kbps: 10000
+    bufsize_kbps: 20000
+    gop_s: 2
+    bframes: 2
+    audio_codec: aac
+    audio_bitrate_kbps: 192     # unverified
+    sample_rate: 48000
+    channels: 2
+    colorspace: bt709
+    faststart: true
+  loudness: {target_lufs: -14, true_peak_db: -1.0, tolerance_lu: 1.5}   # unverified: TikTok không công bố
+  max_size_mb: 4096              # API <= 4 GB (chính thức)
+  duration_s: {min: 1, max: 180, recommended: [15, 60]}   # 180 s mặc định; API <= 600 s; recommended unverified
+  safe_zone_px: {top: 160, bottom: 480, left: 60, right: 140}   # unverified: ước lượng; nên đo lại bằng template TikTok Ads
+  safe_zone_ref: {width: 1080, height: 1920}
+  title: {max_chars: null, max_bytes: null}       # không có tiêu đề riêng: dùng caption
+  caption: {max_chars: null, max_bytes: null, max_utf16: 2200}   # API title <= 2200 UTF-16 runes (chính thức)
+  hashtags: {max: 5, max_shown: null}             # unverified
+  tags: {max_chars: null}
+  cover: {supported: false, method: timestamp, width: 1080, height: 1920, format: jpg, max_mb: 10}   # API chọn khung qua video_cover_timestamp_ms
+  chapters: {supported: false}
+  subtitles: {upload: false, formats: []}         # unverified: phụ đề thường tạo tự động trong app
+  ai_label: {required: true, mechanism: "API is_aigc=true / nhãn nội dung AI trong app"}   # chính thức
+  checked_at: "2026-11-19"
+  sources:
+    - {url: "https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide", official: true}
+    - {url: "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post", official: true}
+    - {url: "https://ads.tiktok.com/resources/help/article/tiktok-auction-in-feed-ads", official: true}
+    - {url: "https://www.tiktok.com/community-guidelines/en/integrity-authenticity", official: true}
+  unverified: [encode.crf, encode.audio_bitrate_kbps, loudness, duration_s.recommended, safe_zone_px, hashtags, subtitles]

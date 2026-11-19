@@ -1,0 +1,17 @@
+# Preset thể loại: montage (dựng nhịp theo nhạc, kết vòng lặp). Số liệu: docs/research/film-craft/craft-and-prompts.md §7.4.
+key: montage
+name: Montage
+data:
+  label: Montage - cắt nhanh theo nhạc
+  description: Chuỗi cảnh ngắn cắt theo nhịp nhạc, ít hoặc không thoại; kết nối lại đầu video để lặp.
+  episode_s: [20, 45]
+  clip_s: [3, 4]
+  clips: [8, 14]
+  transition: cut
+  beat_sync: true
+  end: loop
+  hook: {window_s: 3, visual_in_s: 1.5}
+  structure: {groups: false, scenes: false}
+  dialogue_style: none
+  script_template: write_script
+  default_platforms: [tiktok, fb-reels, yt-shorts]

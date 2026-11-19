@@ -1,0 +1,53 @@
+# Preset nền tảng: Facebook feed video (API /{page-id}/videos). Ngày tra: 2026-11-19.
+# Nguồn: docs/research/platform-specs.md §2.
+#   - https://www.facebook.com/business/help/1197310377458196 (từ 06/2025 mọi video FB phân phối như reel; chính thức)
+#   - https://www.facebook.com/business/ads-guide/update/video/facebook-feed (4:5 1440x1800, H.264, AAC >= 128 kbps; ads)
+#   - https://developers.facebook.com/docs/graph-api/reference/video/thumbnails (thumbnail <= 10 MB; chính thức)
+# Giá trị ads (4 GB / 241 phút) dùng làm trần; trần organic (240 phút / 10 GB) chưa xác minh.
+key: fb-video
+name: Facebook Video (feed 4:5)
+data:
+  label: Facebook feed video (4:5)
+  aspect: "4:5"
+  width: 1080          # đề xuất mặc định (ước lượng); ads feed khuyến nghị 1440x1800, tối thiểu 120x120
+  height: 1350
+  min_width: 120
+  min_height: 120
+  fps: 30
+  fps_range: [24, 60]
+  encode:
+    container: mp4
+    video_codec: libx264        # ads: H.264, square pixels, fps cố định, progressive, không edit list
+    profile: high
+    pix_fmt: yuv420p
+    preset: slow
+    crf: 18                     # unverified (như Reels)
+    maxrate_kbps: 10000
+    bufsize_kbps: 20000
+    gop_s: 2
+    bframes: 2
+    audio_codec: aac            # stereo AAC >= 128 kbps (ads)
+    audio_bitrate_kbps: 192
+    sample_rate: 48000
+    channels: 2
+    colorspace: bt709
+    faststart: true
+  loudness: {target_lufs: -14, true_peak_db: -1.0, tolerance_lu: 1.5}   # unverified
+  max_size_mb: 4096              # ads <= 4 GB; organic unverified
+  duration_s: {min: 1, max: 14400, recommended: [30, 180]}   # 240 phút (unverified organic; ads 1 s - 241 phút)
+  safe_zone_px: null             # N/A cho feed video
+  safe_zone_ref: {width: 1080, height: 1350}
+  title: {max_chars: null, max_bytes: null}       # không công bố (unverified)
+  caption: {max_chars: 2200, max_bytes: null}     # organic ~63.206 ký tự (unverified); dùng 2200 cho dễ đọc
+  hashtags: {max: 5, max_shown: null}             # unverified
+  tags: {max_chars: null}
+  cover: {supported: true, method: upload, width: 1080, height: 1350, format: jpg, max_mb: 10}   # chính thức
+  chapters: {supported: false}
+  subtitles: {upload: true, formats: [srt, vtt]}  # unverified (memory)
+  ai_label: {required: true, mechanism: "Công cụ tự khai báo khi đăng (nhãn AI info)"}
+  checked_at: "2026-11-19"
+  sources:
+    - {url: "https://www.facebook.com/business/help/1197310377458196", official: true}
+    - {url: "https://www.facebook.com/business/ads-guide/update/video/facebook-feed", official: true}
+    - {url: "https://developers.facebook.com/docs/graph-api/reference/video/thumbnails", official: true}
+  unverified: [width, height, encode.crf, encode.maxrate_kbps, loudness, max_size_mb, duration_s, title, caption, hashtags, subtitles]
