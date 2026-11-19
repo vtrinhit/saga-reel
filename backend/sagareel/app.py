@@ -27,6 +27,7 @@ from sagareel.core.errors import AppError, internal_error, payload, validation_f
 from sagareel.core.resolver import SCHEMA_PATH, Resolver, load_schema
 from sagareel.core.events import EventBus
 from sagareel.db.session import Database
+from sagareel.services import auth
 from sagareel.services.worker import Worker
 from sagareel.services.providers import ProviderService
 
@@ -103,6 +104,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         try:
             # Truy cập DB từ code async luôn qua thread (không chặn event loop).
             await anyio.to_thread.run_sync(services.db.migrate)
+            # Token agent cục bộ cho CLI/MCP trên máy này (`data/local-agent.token`); lỗi chỉ cảnh báo.
+            await anyio.to_thread.run_sync(auth.ensure_local_agent_token_safe, services)
             # Job `running` sót từ lần trước → queued (nối lại được) hoặc interrupted; rồi mới chạy worker.
             await anyio.to_thread.run_sync(services.worker.recover)
             await services.worker.start()

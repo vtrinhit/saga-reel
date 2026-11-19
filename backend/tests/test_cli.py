@@ -72,6 +72,8 @@ def _cli_env(tmp_path, monkeypatch):
     monkeypatch.setenv("SAGAREEL_CACHE_DIR", str(tmp_path / "cli-cache"))
     monkeypatch.delenv("SAGAREEL_URL", raising=False)
     monkeypatch.delenv("SAGAREEL_TOKEN", raising=False)
+    # Thư mục data của app test (fixture `settings`): không bao giờ đọc `data/local-agent.token` thật của máy.
+    monkeypatch.setenv("SAGAREEL_DATA_DIR", str(tmp_path / "data"))
 
 
 @dataclass
@@ -595,12 +597,14 @@ def test_cli_requests_are_local(cli, requests_seen):
         assert "authorization" not in req.headers  # không có SAGAREEL_TOKEN → không gửi Bearer
 
 
-def test_cli_needs_token_once_owner_password_set(app_client, transport, capsys, monkeypatch):
+def test_cli_needs_token_once_owner_password_set(app_client, transport, capsys, monkeypatch, settings):
     run = _runner(capsys, monkeypatch, transport)
     tok = app_client.post("/api/ops/token.create", json={"name": "cli", "role": "owner"}).json()["token"]
     r = app_client.post("/api/ops/auth.set_password", json={"role": "owner", "password": "mat-khau-cli-123"})
     assert r.status_code == 200, r.text
-    # `remote.require_login_local` mặc định bật: có mật khẩu chủ rồi thì cục bộ cũng phải xác thực.
+    # `remote.require_login_local` mặc định bật: có mật khẩu chủ rồi thì cục bộ cũng phải xác thực. Không có
+    # SAGAREEL_TOKEN và không có file token cục bộ → bị từ chối.
+    (settings.data_dir / "local-agent.token").unlink()
     out = run(["call", "system.info", "--json"])
     assert out.code == 2 and out.stderr.startswith("auth_required:")
     monkeypatch.setenv("SAGAREEL_TOKEN", tok)
@@ -609,3 +613,119 @@ def test_cli_needs_token_once_owner_password_set(app_client, transport, capsys, 
     assert json.loads(out.stdout)["app"]
     out = run(["test", "cli-create", "--name", "qua token", "--json"])
     assert out.code == 0 and json.loads(out.stdout)["name"] == "qua token"
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Task 8b: token agent cục bộ (`data/local-agent.token`)
+
+
+def _local_token(settings) -> str:
+    return (settings.data_dir / "local-agent.token").read_text(encoding="utf-8").strip()
+
+
+def test_cli_uses_local_token_when_owner_password_set(app_client, transport, requests_seen, capsys, monkeypatch,
+                                                      settings):
+    run = _runner(capsys, monkeypatch, transport)
+    r = app_client.post("/api/ops/auth.set_password", json={"role": "owner", "password": "mat-khau-cli-123"})
+    assert r.status_code == 200, r.text
+    out = run(["call", "system.info", "--json"])  # không có SAGAREEL_TOKEN
+    assert out.code == 0, out.stderr
+    assert json.loads(out.stdout)["app"]
+    raw = _local_token(settings)
+    assert raw not in out.stdout + out.stderr
+    sent = [req.headers.get("authorization") for req in requests_seen]
+    assert f"Bearer {raw}" in sent
+    out = run(["test", "cli-create", "--name", "qua token cục bộ", "--json"])
+    assert out.code == 0 and json.loads(out.stdout)["name"] == "qua token cục bộ"
+
+
+def test_cli_without_password_stays_local_and_can_set_first_password(app_client, transport, requests_seen, capsys,
+                                                                     monkeypatch, settings):
+    # File token có sẵn nhưng chưa có mật khẩu: CLI vẫn là client cục bộ (không gửi Bearer) → đặt được mật khẩu đầu.
+    assert _local_token(settings).startswith("sr_")
+    answers = iter(["mat-khau-dau-123", "mat-khau-dau-123"])
+    monkeypatch.setattr("getpass.getpass", lambda prompt="": next(answers))
+    run = _runner(capsys, monkeypatch, transport)
+    out = run(["auth", "set-password", "--json"])
+    assert out.code == 0, out.stderr
+    assert json.loads(out.stdout)["role"] == "owner"
+    assert all("authorization" not in req.headers for req in requests_seen)
+    out = run(["call", "system.info", "--json"])  # sau đó: tự dùng token cục bộ
+    assert out.code == 0, out.stderr
+
+
+def test_cli_env_token_wins_over_local_file(app_client, transport, requests_seen, capsys, monkeypatch, settings):
+    r = app_client.post("/api/ops/auth.set_password", json={"role": "owner", "password": "mat-khau-cli-123"})
+    assert r.status_code == 200
+    monkeypatch.setenv("SAGAREEL_TOKEN", "sr_sai_token_moi_truong")
+    out = _runner(capsys, monkeypatch, transport)(["call", "system.info", "--json"])
+    assert out.code == 2 and out.stderr.startswith("auth_required:")
+    raw = _local_token(settings)
+    assert all(req.headers.get("authorization") != f"Bearer {raw}" for req in requests_seen)
+
+
+def test_cli_never_reads_local_token_for_remote_host(capsys, monkeypatch, tmp_path):
+    monkeypatch.setenv("SAGAREEL_URL", "https://studio.example.com")
+    data = tmp_path / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "local-agent.token").write_text("sr_" + "z" * 43, encoding="utf-8")
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path == "/api/health":
+            return httpx.Response(200, json={"ok": True, "boot_id": "d" * 32})
+        return httpx.Response(401, json={"ok": False, "error_code": "auth_required", "detail": "Cần đăng nhập.",
+                                         "hint": None, "status": 401, "extra": {}})
+
+    assert cli_main.main(["ops"], transport=httpx.MockTransport(handler)) == 2
+    assert all("authorization" not in r.headers for r in seen)
+    assert "z" * 43 not in capsys.readouterr().err
+
+
+def test_cli_stale_local_token_reports_auth_required(app_client, transport, capsys, monkeypatch, settings):
+    r = app_client.post("/api/ops/auth.set_password", json={"role": "owner", "password": "mat-khau-cli-123"})
+    assert r.status_code == 200
+    (settings.data_dir / "local-agent.token").write_text("sr_" + "q" * 43, encoding="utf-8")
+    out = _runner(capsys, monkeypatch, transport)(["call", "system.info", "--json"])
+    assert out.code == 2 and out.stderr.startswith("auth_required:")
+    assert "q" * 43 not in out.stderr
+
+
+def test_cli_help_mentions_local_token(capsys):
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    assert cli_main.main(["--help"], transport=httpx.MockTransport(refuse)) == 0
+    out = capsys.readouterr().out
+    assert "local-agent.token" in out and "reset-password" in out
+
+
+@pytest.mark.parametrize("url,sent", [
+    ("http://127.0.0.1.attacker.com:8990", False),
+    ("http://localhost@evil.com:8990", False),
+    ("http://[::1]:8990", True),
+    ("http://localhost:8990", True),
+])
+def test_local_token_only_for_real_loopback_urls(capsys, monkeypatch, tmp_path, url, sent):
+    raw = "sr_" + "L" * 43
+    data = tmp_path / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "local-agent.token").write_text(raw, encoding="utf-8")
+    monkeypatch.setenv("SAGAREEL_URL", url)
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        if request.url.path == "/api/health":
+            return httpx.Response(200, json={"ok": True, "boot_id": "e" * 32})
+        if request.headers.get("authorization") == f"Bearer {raw}":
+            return httpx.Response(200, json=[])
+        return httpx.Response(401, json={"ok": False, "error_code": "auth_required", "detail": "Cần đăng nhập.",
+                                         "hint": None, "status": 401, "extra": {}})
+
+    code = cli_main.main(["ops", "--json"], transport=httpx.MockTransport(handler))
+    err = capsys.readouterr().err
+    assert (f"Bearer {raw}" in seen) is sent
+    assert code == (0 if sent else 2), err
+    assert raw not in err

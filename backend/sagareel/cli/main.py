@@ -2,7 +2,14 @@
 
 Lệnh sinh: `sagareel <group> <action> [--<field> value …] [--json-input FILE|-] [--json]`, với `action` là phần tên op
 sau dấu chấm đầu tiên (`_` → `-`). Lệnh cố định: `serve`, `ops [group]`, `call <op> [json|-]`,
-`job wait <id…> [--timeout 600]`, `auth set-password [--role owner|viewer]`.
+`job wait <id…> [--timeout 600]`, `auth set-password [--role owner|viewer]`, và lệnh ngoại tuyến
+`reset-password [--role owner|viewer] [--data-dir PATH] [--password-stdin] [--clear]` (không qua app, xem
+`cli/reset_password.py`).
+
+Xác thực: `SAGAREEL_TOKEN` (Bearer) nếu đặt — cần khi app ở máy khác. Không đặt và URL là loopback: CLI gọi như client
+cục bộ (chưa có mật khẩu chủ thì không cần gì); app đòi đăng nhập (401, đã đặt mật khẩu chủ) thì CLI gửi lại một lần
+bằng token agent cục bộ trong `<data>/local-agent.token` (app tạo lúc khởi động; thư mục data theo
+`SAGAREEL_DATA_DIR` hoặc `data/` mặc định) và dùng nó cho các request còn lại. Token không bao giờ được in ra.
 
 Catalog tải qua `GET /api/ops`, cache ở `%LOCALAPPDATA%/sagareel/ops-<host>_<port>.json` (ghi đè thư mục bằng
 `SAGAREEL_CACHE_DIR`) kèm `boot_id` của app; `boot_id` khác (app khởi động lại) → tải lại.
@@ -278,7 +285,9 @@ def _build_parser(catalog: list[dict]) -> argparse.ArgumentParser:
     parser = _Parser(
         prog="sagareel",
         description="Điều khiển SagaReel Studio từ dòng lệnh. Lệnh sinh từ danh mục thao tác của app đang chạy.",
-        epilog=f"Biến môi trường: {URL_ENV} (mặc định {DEFAULT_URL}), {TOKEN_ENV} (Bearer token). "
+        epilog=f"Biến môi trường: {URL_ENV} (mặc định {DEFAULT_URL}), {TOKEN_ENV} (Bearer token; chỉ cần khi "
+        "app ở máy khác — app trên máy này thì CLI tự dùng data/local-agent.token khi app đòi đăng nhập, thư mục "
+        "data theo SAGAREEL_DATA_DIR). Quên mật khẩu: tắt app rồi chạy `sagareel reset-password` (ngoại tuyến). "
         "Mã thoát: 0 thành công; 1 lỗi của chính CLI; 2 app từ chối yêu cầu hoặc lệnh sai (4xx, cú pháp); "
         "3 app chưa chạy; 4 job wait hết giờ (kết quả vẫn in ra); "
         "5 lỗi phía app có thể thử lại (5xx, hết giờ chờ, mất kết nối giữa chừng).",
@@ -290,6 +299,12 @@ def _build_parser(catalog: list[dict]) -> argparse.ArgumentParser:
     serve = top.add_parser("serve", help="Chạy máy chủ SagaReel Studio", add_help=False, allow_abbrev=False)
     serve.add_argument("rest", nargs=argparse.REMAINDER)
     serve.set_defaults(handler=_cmd_serve)
+
+    # Chỉ để hiện trong trợ giúp: `main` chuyển `reset-password` sang `cli/reset_password.py` trước khi tải catalog.
+    reset = top.add_parser("reset-password", help="Đặt lại mật khẩu ngoại tuyến (tắt app trước; xem --help riêng)",
+                           add_help=False, allow_abbrev=False)
+    reset.add_argument("rest", nargs=argparse.REMAINDER)
+    reset.set_defaults(handler=_cmd_reset_password)
 
     ops_cmd = top.add_parser("ops", help="Liệt kê thao tác (lọc theo nhóm)", parents=[json_parent],
                              allow_abbrev=False)
@@ -383,6 +398,8 @@ class _Ctx:
     client: httpx.Client
     url: str
     catalog: list[dict] = field(default_factory=list)
+    # Được thử token agent cục bộ khi app đòi xác thực (không có SAGAREEL_TOKEN, URL loopback); dùng tối đa một lần.
+    local_token_allowed: bool = False
 
     @property
     def op_names(self) -> set[str]:
@@ -412,6 +429,25 @@ def _is_loopback(host: str) -> bool:
         return False
 
 
+def _local_token_allowed(url: str) -> bool:
+    """Token agent cục bộ chỉ dùng khi không có SAGAREEL_TOKEN và app ở chính máy này (host loopback)."""
+    return not os.environ.get(TOKEN_ENV) and _is_loopback(urlsplit(url).hostname or "")
+
+
+def _use_local_token(ctx: _Ctx) -> bool:
+    """Gắn token trong `data/local-agent.token` làm Bearer cho các request còn lại; không có token hợp lệ → False."""
+    if not ctx.local_token_allowed:
+        return False
+    ctx.local_token_allowed = False
+    from sagareel import local_agent  # chỉ stdlib
+
+    token = local_agent.read_local_token()
+    if token is None:
+        return False
+    ctx.client.headers["Authorization"] = f"Bearer {token}"
+    return True
+
+
 def _make_client(url: str, transport: httpx.BaseTransport | None) -> httpx.Client:
     headers = {"Accept": "application/json", "User-Agent": "sagareel-cli"}
     token = os.environ.get(TOKEN_ENV)
@@ -433,8 +469,18 @@ def _request(ctx: _Ctx, method: str, path: str, *, body: Any = None, read_timeou
         kwargs["json"] = body
     if read_timeout is not None:
         kwargs["timeout"] = httpx.Timeout(CONNECT_TIMEOUT_S, read=read_timeout)
+    r = _send(ctx, method, path, kwargs)
+    if r.status_code == 401 and _use_local_token(ctx):
+        # App đòi xác thực (đã đặt mật khẩu chủ): gửi lại một lần bằng token agent cục bộ. 401 do middleware trả nên
+        # request đầu chưa chạm tới op — gửi lại an toàn. Chưa đặt mật khẩu thì CLI vẫn là client cục bộ, không Bearer
+        # (giữ quyền chỉ-cục-bộ như đặt mật khẩu lần đầu).
+        r = _send(ctx, method, path, kwargs)
+    return _result(r, method, path)
+
+
+def _send(ctx: _Ctx, method: str, path: str, kwargs: dict[str, Any]) -> httpx.Response:
     try:
-        r = ctx.client.request(method, path, **kwargs)
+        return ctx.client.request(method, path, **kwargs)
     except (httpx.ConnectError, httpx.ConnectTimeout):
         raise CliError("app_not_running", f"Không kết nối được SagaReel Studio tại {ctx.url}.",
                        hint=f"Chạy `sagareel serve` hoặc đặt {URL_ENV} đúng địa chỉ app.",
@@ -450,6 +496,8 @@ def _request(ctx: _Ctx, method: str, path: str, *, body: Any = None, read_timeou
         raise CliError("connection_failed", f"Mất kết nối tới SagaReel Studio tại {ctx.url}: {type(e).__name__}.",
                        hint="Kiểm tra app còn chạy không rồi thử lại.", exit_code=EXIT_RETRYABLE) from None
 
+
+def _result(r: httpx.Response, method: str, path: str) -> Any:
     if r.status_code >= 400:
         # 5xx: lỗi phía app, thử lại có thể được; 4xx: app từ chối yêu cầu, thử lại y nguyên vẫn lỗi.
         exit_code = EXIT_RETRYABLE if r.status_code >= 500 else EXIT_USER
@@ -599,6 +647,12 @@ def _cmd_serve(ctx: _Ctx, args: argparse.Namespace) -> Any:  # chỉ tới đây
     raise SystemExit(entry._serve(args.rest))
 
 
+def _cmd_reset_password(ctx: _Ctx, args: argparse.Namespace) -> Any:  # chỉ tới đây khi không đứng đầu argv
+    from sagareel.cli import reset_password
+
+    raise SystemExit(reset_password.main(args.rest))
+
+
 def _cmd_op(ctx: _Ctx, args: argparse.Namespace) -> Any:
     return _call_op(ctx, args.op, collect_params(args))
 
@@ -705,11 +759,15 @@ def main(argv: list[str] | None = None, *, transport: httpx.BaseTransport | None
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] == ["serve"]:
         return entry._serve(argv[1:])  # không cần mạng, không tải catalog
+    if argv[:1] == ["reset-password"]:
+        from sagareel.cli import reset_password
+
+        return reset_password.main(argv[1:])  # ngoại tuyến, thẳng trên DB
 
     try:
         url = _base_url()
         with _make_client(url, transport) as client:
-            ctx = _Ctx(client=client, url=url)
+            ctx = _Ctx(client=client, url=url, local_token_allowed=_local_token_allowed(url))
             try:
                 ctx.catalog = load_catalog(ctx)
             except CliError as e:

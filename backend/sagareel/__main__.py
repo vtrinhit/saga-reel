@@ -1,4 +1,5 @@
-"""`python -m sagareel serve [--host HOST] [--port PORT]`; lệnh khác chuyển cho CLI (`sagareel.cli.main`)."""
+"""`python -m sagareel serve [--host HOST] [--port PORT]`; `python -m sagareel reset-password …` (ngoại tuyến, xem
+`sagareel.cli.reset_password`); lệnh khác chuyển cho CLI (`sagareel.cli.main`)."""
 
 from __future__ import annotations
 
@@ -38,6 +39,10 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "serve":
         return _serve(argv[1:])
+    if argv and argv[0] == "reset-password":  # ngoại tuyến, không cần app chạy
+        from sagareel.cli import reset_password
+
+        return reset_password.main(argv[1:])
     from sagareel.cli import main as cli
 
     return cli.main(argv)
