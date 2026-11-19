@@ -110,6 +110,8 @@ class EventBus:
         """Phát sự kiện; an toàn gọi từ thread bất kỳ, không bao giờ ném lỗi."""
         loop = self._loop
         try:
+            # Chụp bản sao ngay (trên thread gọi): caller có thể sửa/tái dùng dict sau khi publish trả về.
+            data = dict(data)
             if loop is None or self._on_loop(loop):
                 self._apply(type, data, project_id, fanout=True)
                 return
@@ -146,14 +148,23 @@ class EventBus:
             return False
 
     def _apply(self, type: str, data: dict, project_id: int | None, fanout: bool) -> None:
-        with self._lock:
-            self._seq += 1
-            ev = Event(self._seq, type, project_id, dict(data), time.time())
-            self._buffer.append(ev)
-            subs = list(self._subs) if fanout else []
+        """Gán seq + ghi buffer + phát. Có thể chạy như callback trên loop → không bao giờ ném lỗi ra ngoài."""
+        try:
+            with self._lock:
+                # Dựng xong sự kiện rồi mới tăng seq: dựng lỗi thì không để lại lỗ seq.
+                ev = Event(self._seq + 1, type, project_id, data, time.time())
+                self._buffer.append(ev)
+                self._seq = ev.seq
+                subs = list(self._subs) if fanout else []
+        except Exception:
+            logger.exception("Không phát được sự kiện %s", type)
+            return
         for sub in subs:
-            if sub.wants(ev):
-                sub._deliver(ev)
+            try:
+                if sub.wants(ev):
+                    sub._deliver(ev)
+            except Exception:
+                logger.exception("Không giao được sự kiện %s (seq %s) cho subscriber", type, ev.seq)
 
     def _replay(self, last_seq: int | None) -> list[Event]:
         if last_seq is None:

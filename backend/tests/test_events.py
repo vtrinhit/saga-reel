@@ -110,6 +110,60 @@ async def test_thread_and_loop_publishes_keep_seq_order():
     assert [e.data["i"] for e in evs if e.type == "t"] == list(range(50))
 
 
+async def test_thread_publish_snapshots_data_before_scheduling():
+    bus = EventBus()
+    bus.bind_loop(asyncio.get_running_loop())
+    sub = bus.subscribe(None, None)
+
+    def worker():
+        progress = {"pct": 10}
+        bus.publish("job.progress", progress)
+        progress["pct"] = 99  # worker tái dùng dict ngay sau publish
+        progress["extra"] = True
+
+    # join đồng bộ chặn loop → callback của publish chắc chắn chạy SAU khi worker đã sửa dict
+    th = threading.Thread(target=worker)
+    th.start()
+    th.join()
+    evs = [e async for e in take(sub, 1)]
+    assert evs[0].data == {"pct": 10}
+
+
+async def test_apply_failure_is_logged_and_keeps_seq_contiguous(monkeypatch, caplog):
+    import sagareel.core.events as events_mod
+
+    loop = asyncio.get_running_loop()
+    loop_errors = []
+    loop.set_exception_handler(lambda lp, context: loop_errors.append(context))
+    bus = EventBus()
+    bus.bind_loop(loop)
+    sub = bus.subscribe(None, None)
+    real_event = events_mod.Event
+
+    def flaky_event(seq, type, *rest):
+        if type == "bad":
+            raise RuntimeError("dựng sự kiện hỏng")
+        return real_event(seq, type, *rest)
+
+    monkeypatch.setattr(events_mod, "Event", flaky_event)
+    await asyncio.to_thread(bus.publish, "bad", {"i": 0})  # hỏng bên trong callback trên loop
+    await asyncio.to_thread(bus.publish, "good", {"i": 1})
+    bus.publish("good2", {"i": 2})
+    evs = [e async for e in take(sub, 2)]
+    assert [(e.type, e.seq) for e in evs] == [("good", 1), ("good2", 2)]
+    assert bus.last_seq == 2
+    assert loop_errors == []
+    assert any("bad" in r.getMessage() for r in caplog.records if r.levelname == "ERROR")
+
+
+def test_publish_with_non_mapping_data_is_logged_not_raised(caplog):
+    bus = EventBus()
+    bus.publish("x", None)  # type: ignore[arg-type]
+    bus.publish("y", {})
+    assert bus.last_seq == 1
+    assert any(r.levelname == "ERROR" for r in caplog.records)
+
+
 async def test_slow_subscriber_overflow_becomes_resync():
     bus = EventBus(buffer_size=3)
     bus.bind_loop(asyncio.get_running_loop())
@@ -305,6 +359,22 @@ async def test_history_op_publishes_with_uow_project(ctx, tpl_ops):
     ev = [e async for e in take(sub, 1)][0]
     assert ev.type == "entity.changed" and ev.project_id == 7
     assert ev.data["entities"] == [["template", out["id"]]]
+
+
+class _BrokenBus:
+    def publish(self, *a, **kw):
+        raise RuntimeError("bus hỏng")
+
+
+async def test_entity_changed_failure_never_masks_op_result_or_error(ctx, tpl_ops, caplog):
+    ctx.services.bus = _BrokenBus()
+    # handler lỗi sau khi commit: lỗi gốc vẫn được ném ra, không bị lỗi phát sự kiện che mất
+    with pytest.raises(RuntimeError, match="hỏng sau khi đã commit"):
+        await ops.invoke("test.tpl_create", {"body": "g", "fail_after": True}, ctx)
+    # handler thành công: kết quả vẫn trả về bình thường
+    out = await ops.invoke("test.tpl_create", {"body": "k"}, ctx)
+    assert len(out["ids"]) == 2
+    assert sum("entity.changed" in r.getMessage() for r in caplog.records if r.levelname == "ERROR") == 2
 
 
 def test_uow_outside_op_does_not_collect(ctx):

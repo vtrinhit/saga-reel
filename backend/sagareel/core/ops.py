@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import logging
 import re
 from collections.abc import Callable
 from contextvars import ContextVar
@@ -25,6 +26,8 @@ from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, Forbidden, validation_failed
 
 McpKind = Literal["tool", "call"]
+
+logger = logging.getLogger("sagareel.ops")
 
 # Tên op đang chạy trong ngữ cảnh hiện tại (UnitOfWork dùng để đặt tên change set). Được chép sang thread worker.
 current_op: ContextVar[str | None] = ContextVar("sagareel_current_op", default=None)
@@ -183,16 +186,22 @@ async def execute(spec: OpSpec, params: BaseModel, ctx: OpContext) -> dict | lis
 
 
 def _publish_entity_changed(ctx: OpContext, changes: list[CommittedChange]) -> None:
-    """Một `entity.changed` cho cả op: `change_set` là id (một UoW) hoặc list id; project lấy từ các UoW."""
-    ids = [c.change_set_id for c in changes]
-    entities = list(dict.fromkeys(e for c in changes for e in c.entities))
-    projects = {c.project_id for c in changes}
-    project_id = projects.pop() if len(projects) == 1 else None
-    ctx.services.bus.publish(
-        "entity.changed",
-        {"change_set": ids[0] if len(ids) == 1 else ids, "entities": [list(e) for e in entities]},
-        project_id=project_id,
-    )
+    """Một `entity.changed` cho cả op: `change_set` là id (một UoW) hoặc list id; project lấy từ các UoW.
+
+    Chạy trong `finally` của `execute` → không bao giờ ném lỗi (không được che kết quả/lỗi gốc của handler).
+    """
+    try:
+        ids = [c.change_set_id for c in changes]
+        entities = list(dict.fromkeys(e for c in changes for e in c.entities))
+        projects = {c.project_id for c in changes}
+        project_id = projects.pop() if len(projects) == 1 else None
+        ctx.services.bus.publish(
+            "entity.changed",
+            {"change_set": ids[0] if len(ids) == 1 else ids, "entities": [list(e) for e in entities]},
+            project_id=project_id,
+        )
+    except Exception:
+        logger.exception("Không phát được entity.changed cho change set %s", [c.change_set_id for c in changes])
 
 
 async def invoke(name: str, payload: dict, ctx: OpContext) -> dict | list | None:
