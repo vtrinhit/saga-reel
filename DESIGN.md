@@ -1,31 +1,60 @@
-# SagaReel Studio · Hệ thiết kế
+# SagaReel Studio · Hệ thiết kế v2
 
-> Bản chốt cho v1. Mọi màu, cỡ chữ, khoảng cách trong code đều lấy từ token ở §3, không viết hex/px rời trong component.
-> Trang minh hoạ: `docs/design/preview.html` (mở thẳng từ ổ đĩa, không cần mạng).
+> v2 (2026-11-20) thay v1. Mọi màu, cỡ chữ, khoảng cách trong code đều lấy từ token ở §3; không viết hex/px rời trong
+> component. Kiến trúc điều hướng và luồng: `docs/design/ux-architecture.md`. Prototype bấm được:
+> `docs/design/prototype/index.html` (dựng lại bằng `python docs/design/prototype/_src/build.py`). Trang minh hoạ
+> component v1 `docs/design/preview.html` vẫn đúng cho các component cơ bản (§5). Hướng dẫn cho người làm: 
+> `docs/design/ui-implementation-brief.md`.
+
+**Đổi gì so với v1**
+
+| Mục | v1 | v2 | Lý do |
+|---|---|---|---|
+| Điều hướng | tab theo công cụ (Thư viện · Tập · Studio · Việc · Xuất) | dây chuyền hai tầng + Cần bạn (§4) | trả lời "tập nào ở đâu, cái gì chờ tôi" cho 200 tập |
+| Bản sắc | vàng sáp = quyết định của bạn | thêm **vòng khoanh đứt** = đang chờ bạn quyết; agent không bao giờ có vàng (§1) | gate và agent là khái niệm mới |
+| Token | — | giữ toàn bộ tên + giá trị; **đổi** `--w-rail` 64→76; **thêm** 10 token (§3.6) | nhãn rail 2 chữ không được xuống dòng |
+| Pattern | ClipCard, TakeCompare, Studio | thêm StageSpine, ProductionMatrix, GateCard, NeedItem, AgentFeed, CostMeter, ReviewQueue (§6) | |
+| Phím duyệt | §6.1 v1 | chuẩn theo hợp đồng Task H (§7.1) | ba nguồn từng mâu thuẫn |
 
 ## 1. Bản sắc: "Take Khoanh"
 
-Trên báo cáo máy quay, đạo diễn khoanh tròn những take được dùng bằng bút sáp vàng. SagaReel Studio là cái bàn dựng nơi người làm phim duyệt hàng nghìn take do AI tạo ra, nên giao diện mượn đúng hai thứ đó: một cái bàn xám trung tính để màu của footage không bị ám, và một nét bút sáp vàng duy nhất để đánh dấu những gì *bạn* quyết định. Mọi thứ khác (trạng thái, track, thông tin) được giữ dịu, có chữ và icon đi kèm, để sau sáu tiếng duyệt clip mắt vẫn không mỏi.
+Trên báo cáo máy quay, đạo diễn khoanh tròn những take được dùng bằng bút sáp vàng. SagaReel là cái bàn dựng nơi một
+người cùng vài agent duyệt hàng nghìn take AI tạo ra. Giao diện mượn hai thứ: một mặt bàn xám trung tính để màu footage
+không bị ám, và **một nét bút sáp vàng** chỉ dành cho quyết định của con người.
+
+- **Vòng khoanh đặc (vàng)** = bạn đã quyết: take đã chọn, gate đã duyệt bởi bạn, giá trị bạn đè ở cấp đang sửa.
+- **Vòng khoanh đứt (vàng)** = đang chờ bạn quyết: gate mở, chip "Cần bạn", số đếm ở thanh dưới điện thoại.
+- **Vòng khoanh đứt (xám)** = agent đã chọn, chờ bạn xác nhận. Agent không bao giờ có vàng.
+- Dấu SagaReel là chính nét khoanh: một vòng bút sáp hở một đoạn quanh nút phát.
 
 **Nguyên tắc**
 
-1. **Footage là thứ có màu nhất trên màn hình.** Chrome dùng xám trung tính tuyệt đối (chroma 0) để không làm lệch cảm nhận màu của clip. Không gradient trang trí, không kính mờ.
-2. **Vàng sáp = quyết định của bạn.** Accent chỉ dùng cho: nút chính, vòng focus, playhead, take đã chọn, giá trị bạn đè ở cấp đang sửa. Không dùng để trang trí hay để báo trạng thái hệ thống.
-3. **Trạng thái nói bằng chữ.** Mỗi trạng thái có icon + nhãn + màu; bỏ màu đi vẫn đọc được. Mọi chờ đợi đều có con số: vị trí hàng đợi, %, công đoạn, thời gian còn lại.
-4. **Rẻ để vẽ một nghìn lần.** Card trong danh sách ảo hoá không có shadow, không blur, không filter; kích thước cố định theo tỉ lệ khung hình nên không bao giờ nhảy layout.
-5. **Bàn phím trước, ngón cái vẫn đủ.** Duyệt take làm được hoàn toàn bằng phím; trên điện thoại mọi thao tác chính có vùng chạm ≥ 44px.
-6. **Cái gì tốn tiền thì báo giá trước, cái gì phá huỷ thì cho hoàn tác.** Ước tính trước khi chạy việc trả phí; xoá hai bước; mọi thao tác hàng loạt có nút Hoàn tác.
-7. **Một mặt phẳng, không lồng hộp.** Phân cấp bằng nền (elevation) và đường kẻ, không đặt card trong card.
+1. **Footage là thứ có màu nhất trên màn hình.** Chrome xám trung tính tuyệt đối (chroma 0). Không gradient trang trí,
+   không kính mờ. `stage` đen tuyệt đối chỉ cho vùng phát/letterbox.
+2. **Vàng sáp = quyết định của người.** Nút chính, vòng focus, playhead, take đã chọn, gate chờ bạn. Không dùng để trang
+   trí, không dùng cho trạng thái hệ thống, không dùng cho agent.
+3. **Cho thấy dây chuyền.** Mỗi màn trong một tập có thanh chặng; mỗi tập có một hàng trong ma trận. Người dùng không phải
+   nhớ tập nào đang ở đâu.
+4. **Trạng thái nói bằng chữ.** Icon + nhãn + màu; bỏ màu vẫn đọc được. Mọi chờ đợi có con số: vị trí hàng đợi, %, ETA.
+5. **Cái gì tốn tiền thì báo giá trước** — kể cả duyệt gate (vì duyệt gate là cho phép bước tốn tiền kế tiếp). Cái gì phá
+   huỷ thì cho hoàn tác.
+6. **Agent hiện hình.** Mọi thay đổi có actor; agent có tên, có việc đang làm, có nút tạm dừng.
+7. **Rẻ để vẽ một nghìn lần.** Card trong danh sách ảo hoá không shadow, blur, filter; kích thước cố định.
+8. **Bàn phím trước, ngón cái vẫn đủ.** Duyệt làm hết bằng phím; điện thoại vùng chạm ≥ 44px, nút quyết định 48px ở đáy.
+9. **Một mặt phẳng, không lồng hộp.** Phân cấp bằng nền và đường kẻ, không card trong card.
 
 ## 2. Nguồn tham chiếu
 
 | Skill | Đã áp dụng | Cố ý không theo (lý do) |
 |---|---|---|
-| `hallmark` | Khoá token (component chỉ dùng `var(--…)`); tiêu đề không nghiêng, không eyebrow viết hoa; luật mobile (`minmax(0,1fr)`, `min-width:0`, không cuộn ngang, nút một dòng); mỗi control có đủ 8 trạng thái (default · hover · focus · active · disabled · loading · error · success); không bịa số liệu; tự chấm điểm trước khi giao (stamp đầu preview). | Không hỏi 3 câu (chủ dự án đã giao toàn quyền); không dùng catalog theme / `.hallmark/log.json` / `tokens.css` (chỉ được ghi 2 file); token lưu dạng kênh RGB thay vì OKLCH vì Tailwind 3.4 cần `<alpha-value>`; khung điện thoại vẫn vẽ vì brief yêu cầu (chỉ là viền phẳng, không tai thỏ). |
-| `frontend-design` | Bản sắc lấy từ nghề dựng phim (báo cáo máy quay, bút sáp khoanh take); dồn sự táo bạo vào một chỗ (vàng sáp + dấu khoanh), phần còn lại im lặng; tránh các mặc định của AI (nền kem + đất nung, đen + xanh axit, bộ card bo tròn + bóng xám, nhãn caps có giãn chữ, mũi tên "→" sau nút); microcopy chủ động, sentence case, một hành động giữ một tên suốt luồng. | Mono chỉ dùng cho timecode, log, ID/seed (nội dung thật sự là mono), không dùng cho nhãn trang trí. |
-| `ui-ux-pro-max` | Đã chạy `search.py "video editor creative production tool dashboard dark" --design-system`, `--domain typography "vietnamese"`, `--domain ux "loading skeleton virtualize reduced motion"`. Lấy: cặp **Be Vietnam Pro** cho tiếng Việt; phong cách dark cho phiên dài; checklist (chạm 44px, tương phản 4.5:1, `prefers-reduced-motion`, ảo hoá danh sách > 50 mục, giữ chỗ chống CLS, số tabular, toast `aria-live`, hoàn tác thay hộp xác nhận, thang z-index có tên). | Bảng màu hồng #EC4899 + xanh #2563EB (mùi template, tranh màu với footage); cặp Fira Code/Fira Sans; nhập font từ Google Fonts (ta tự host); mẫu "Video-First Hero" (đây là app, không phải landing); hiệu ứng glow `text-shadow`. |
+| `frontend-design` | bản sắc lấy từ nghề dựng phim; táo bạo một chỗ (vòng khoanh), còn lại im; copy động từ, sentence case; không eyebrow caps, không "→" | không đổi accent dù được phép: vàng sáp đã nhất quán và đã có trong component M0 |
+| `hallmark` | khoá token (kể cả lớp phủ safe-zone, phụ đề); không header nghiêng; luật mobile (`minmax(0,1fr)`, không cuộn ngang, nhãn bấm được không xuống dòng); không khung máy vẽ tay (trang điện thoại là trang thật ở 375px); audit — tóm tắt ở `ux-architecture.md` §11 | không hỏi 3 câu (chủ dự án giao toàn quyền); không OKLCH/tint neutral (Tailwind 3.4 cần kênh RGB và footage cần xám chroma 0); không `overflow-x: clip` trên `html/body` (theo modern-web-guidance — sửa phần tử tràn thay vì cắt); không `.hallmark/log.json`, `tokens.css` gốc |
+| `modern-web-guidance` | `dialog` + `showModal()` cho modal (không `role=dialog`, không bẫy focus tự viết), `overscroll-behavior: contain` trên `dialog:modal` và `::backdrop`; panel Hoạt động = `<dialog popover>` (không chặn trang); menu/tooltip = `popover`; `env(safe-area-inset-*)` + `scroll-padding-bottom` cho thanh dưới; vùng cuộn hai chiều có `role=region` + tên + `tabindex=0`; `text-wrap: balance` cho tiêu đề | Invoker Commands (`command`/`commandfor`) chưa Baseline rộng → mở dialog bằng `showModal()` |
+| `ui-ux-pro-max` | (từ v1) Be Vietnam Pro, checklist chạm 44px, tương phản, ảo hoá > 50 mục, toast `aria-live`, hoàn tác thay hộp xác nhận | bảng màu hồng/xanh template |
 
 ## 3. Token
+
+Tên và cách lưu (kênh RGB cho `rgb(var(--c-x) / <alpha-value>)`) giữ nguyên v1; danh sách thay đổi ở §3.9.
 
 ### 3.1 Bề mặt, đường kẻ, chữ
 
@@ -64,6 +93,14 @@ Trên báo cáo máy quay, đạo diễn khoanh tròn những take được dùn
 
 Pill trạng thái = nền màu trạng thái 16% trên bg-2 + chữ màu trạng thái: mọi cặp ≥ 4,5:1 (thấp nhất là failed 4,58:1).
 Accent vàng tách khỏi warn cam cả về sắc lẫn độ sáng; vàng không bao giờ xuất hiện trong track hay trạng thái hệ thống.
+
+**Trạng thái chặng (dây chuyền)** dùng lại các màu trên: xong = fg-2 + `Check`; đang chạy = running + %; chờ bạn = accent
+viền đứt + `Diamond`; lỗi = failed + số; đã cũ = stale + số; chưa tới = fg-3 chữ / fg-4 icon; bỏ qua = fg-3 gạch.
+**Gate** = hình thoi (`Diamond` lucide): đặc fg-2 = đã duyệt; viền đứt accent = chờ bạn; không vẽ = workflow không có gate ở đó.
+
+**Agent không có màu riêng**: icon `Bot` + tên mono. (Quyết định có chủ ý — thêm một sắc nữa làm loãng hệ 7 trạng thái và
+cạnh tranh với footage.)
+
 
 ### 3.3 Màu track (5)
 
@@ -108,8 +145,9 @@ Luật tiếng Việt: line-height không dưới 1,4× cỡ chữ (chữ hoa c�
 
 ### 3.5 Khoảng cách, bo góc, độ nổi, lớp, chuyển động, breakpoint
 
+
 - **Khoảng cách:** thang 4px mặc định của Tailwind (1 = 4px). Mật độ desktop: gap 8/12, padding panel 12/16. Điện thoại: gutter 16, gap 12.
-- **Kích thước:** control 32px desktop (`--h-control`), 44px khi `pointer: coarse`; hàng bảng 40px; track 48px (video 64px); topbar 48px; rail 64px (1920: 200px có nhãn); inspector 360px (1920: 400px).
+- **Kích thước:** control 32px desktop (`--h-control`), 44px khi `pointer: coarse`; hàng bảng 40px; track 48px (video 64px); topbar 48px; **thanh chặng 44px**; rail **76px** (1920: 200px có nhãn); inspector 360px (1920: 400px); **panel Hoạt động 360px**; **cột hàng đợi duyệt 280px**; **thanh dưới điện thoại 56px** + safe-area.
 - **Bo góc theo cấp:** `xs` 2px item timeline · `sm` 4px pill, input, checkbox · `md` 6px nút, card · `lg` 10px modal, drawer, khung điện thoại. Không có "một bo góc cho mọi thứ".
 - **Độ nổi:** e0 = không gì (card, hàng) · e1 = viền `line-2` (panel) · e2 = viền + `--shadow-pop` (menu, popover, thanh lô nổi) · e3 = `--shadow-modal` + scrim 60% đen (modal, drawer). Card trong lưới không bao giờ có shadow.
 - **Lớp z:** base 0 · sticky 10 (thước, header bảng) · playhead 20 · dropdown 30 · drawer 40 · thanh lô nổi 45 · modal 50 · toast 60 · bảng lệnh 70 · banner mất kết nối 80 · tooltip 90.
@@ -117,7 +155,27 @@ Luật tiếng Việt: line-height không dưới 1,4× cỡ chữ (chữ hoa c�
 - **Giảm chuyển động:** `prefers-reduced-motion: reduce` → mọi duration về 0 trừ `image` (120ms cross-fade); spinner thay bằng icon tĩnh + %; drawer/modal xuất hiện tức thì; cuộn timeline theo playhead nhảy theo trang thay vì trượt.
 - **Breakpoint (Tailwind `theme.screens` khai báo đầy đủ, không `extend`):** `sm` 480 · `md` 768 · `lg` 1024 · `xl` 1280 · `2xl` 1600 · `3xl` 1920. Bốn mốc thiết kế: 375 (mặc định, không tiền tố) · 768 (`md`) · 1280 (`xl`) · 1920 (`3xl`).
 
-### 3.6 `:root` (nguyên văn — dán vào `src/styles/tokens.css`)
+
+**Bổ sung v2 cho §3.5**
+
+
+- **Khoảng cách (nhắc lại):** thang 4px của Tailwind (cho phép nửa bước 2/6/10px của Tailwind trong control dày). Gap 8/12/16; padding
+  panel 12; trang 16 (điện thoại) / 20×24 (≥ 768).
+- **Kích thước:** control 32 (cảm ứng 44); hàng 40; track 48 (video 64); topbar 48; **thanh chặng 44**; **rail 76** (1920:
+  200 có nhãn ngang); inspector 360 (1920: 400); **panel Hoạt động 360**; **cột hàng đợi duyệt 280**; **thanh dưới 56** +
+  safe-area.
+- **Bo góc:** `xs` 2 item timeline · `sm` 4 pill/input · `md` 6 nút/card · `lg` 10 modal. Vòng khoanh = 999px.
+- **Độ nổi:** e0 card/hàng · e1 viền `line-2` (panel) · e2 viền + `shadow-pop` (menu, popover, thanh lô, panel Hoạt động) ·
+  e3 `shadow-modal` + scrim (modal).
+- **Lớp z:** sticky 10 (topbar, thanh chặng, tab 768, thanh dưới, header bảng) · playhead 20 · dropdown 30 · drawer 40 ·
+  batchbar 45 · modal 50 · toast 60 · palette 70 · banner 80 · tooltip 90. Mọi sticky phụ có `top` = tổng chiều cao các
+  sticky phía trên (`--h-topbar` + `--h-spine` + …), không bao giờ `top: 0` dưới topbar.
+- **Chuyển động:** như v1 (`fast` 120, `base` 180, `slow` 260, `exit` 180, `image` 320; easing out/in/inout). Focus không
+  animate. Reduced-motion: mọi duration 0 trừ `image` 120ms; spinner thành icon tĩnh + %; con trỏ chữ chạy dần đứng yên.
+- **Breakpoint:** `sm` 480 · `md` 768 · `lg` 1024 · `xl` 1280 · `2xl` 1600 · `3xl` 1920. Mốc thiết kế 375/768/1280/1920;
+  thêm 1600: ô tìm kiếm topbar mở rộng, Tổng quan đặt "Cần bạn" thành cột phải, Duyệt hiện 3 ô so sánh.
+
+### 3.6 `:root` v2 (nguyên văn — dán vào `src/styles/tokens.css`)
 
 ```css
 :root {
@@ -158,6 +216,9 @@ Luật tiếng Việt: line-height không dưới 1,4× cỡ chữ (chữ hoa c�
   --c-track-music: 146 119 189;
   --c-track-sfx: 192 123 82;
   --scrim: rgb(0 0 0 / 0.6);
+  /* v2 — lớp phủ trên footage (safe-zone, phụ đề xem trước); chỉ dùng trên nền stage/footage */
+  --overlay-dim: rgb(0 0 0 / 0.35); --overlay-line: rgb(255 255 255 / 0.6); --overlay-label: rgb(0 0 0 / 0.6);
+  --sub-fg: rgb(255 255 255); --sub-halo: 0 0 3px rgb(0 0 0), 0 1px 2px rgb(0 0 0);
   /* chữ */
   --font-ui: "Be Vietnam Pro", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
@@ -177,7 +238,10 @@ Luật tiếng Việt: line-height không dưới 1,4× cỡ chữ (chữ hoa c�
   --focus-w: 2px; --focus-offset: 2px; /* focus = outline accent, không dùng box-shadow */
   /* kích thước */
   --h-control: 32px; --h-touch: 44px; --h-row: 40px; --h-track: 48px;
-  --w-rail: 64px; --w-inspector: 360px; --h-topbar: 48px; --h-meta: 52px;
+  --w-rail: 76px; --w-inspector: 360px; --h-topbar: 48px; --h-meta: 52px;
+  /* v2 */
+  --h-spine: 44px; --h-bottomnav: 56px; --w-activity: 360px; --w-queue: 280px;
+  --ring-w: 2px; --ring-dash: 3px 3px; /* vòng khoanh: đặc = đã quyết, đứt = chờ quyết */
   /* lớp */
   --z-sticky: 10; --z-playhead: 20; --z-dropdown: 30; --z-drawer: 40; --z-batchbar: 45;
   --z-modal: 50; --z-toast: 60; --z-palette: 70; --z-banner: 80; --z-tooltip: 90;
@@ -236,9 +300,10 @@ export default {
       boxShadow: { pop: 'var(--shadow-pop)', modal: 'var(--shadow-modal)' },
       outlineWidth: { focus: 'var(--focus-w)' },
       outlineOffset: { focus: 'var(--focus-offset)' },
-      height: { control: 'var(--h-control)', touch: 'var(--h-touch)', row: 'var(--h-row)', track: 'var(--h-track)', topbar: 'var(--h-topbar)', meta: 'var(--h-meta)' },
+      height: { control: 'var(--h-control)', touch: 'var(--h-touch)', row: 'var(--h-row)', track: 'var(--h-track)', topbar: 'var(--h-topbar)', meta: 'var(--h-meta)', spine: 'var(--h-spine)', bottomnav: 'var(--h-bottomnav)' },
       minHeight: { touch: 'var(--h-touch)' },
-      width: { rail: 'var(--w-rail)', inspector: 'var(--w-inspector)' },
+      width: { rail: 'var(--w-rail)', inspector: 'var(--w-inspector)', activity: 'var(--w-activity)', queue: 'var(--w-queue)' },
+      borderWidth: { ring: 'var(--ring-w)' },
       zIndex: {
         sticky: 'var(--z-sticky)', playhead: 'var(--z-playhead)', dropdown: 'var(--z-dropdown)', drawer: 'var(--z-drawer)',
         batchbar: 'var(--z-batchbar)', modal: 'var(--z-modal)', toast: 'var(--z-toast)', palette: 'var(--z-palette)',
@@ -255,27 +320,58 @@ export default {
 
 Ghi chú: `fontSize.base` đè cỡ mặc định 16px của Tailwind thành 14px (desktop); trên điện thoại `body` dùng `text-md`. Lớp focus chung: `focus-visible:outline focus-visible:outline-focus focus-visible:outline-offset-focus focus-visible:outline-accent` — outline nằm ngoài phần tử, trên nền bg, nên đọc được dù card chứa footage màu gì.
 
-### 3.8 Có chủ đề sáng không? — Không, ở v1
+### 3.8 Có chủ đề sáng không? — Không, ở v2
 
 Chỉ có chủ đề tối. Lý do: (a) việc chính là đánh giá màu và nhất quán của footage, cần xung quanh tối, trung tính như phòng dựng; (b) chỉ một người dùng, phiên dài, thường vào buổi tối; (c) mỗi chủ đề thêm là gấp đôi việc kiểm tra tương phản cho 7 trạng thái và 5 track. Bù lại: khi xem ngoài trời trên điện thoại, `@media (prefers-contrast: more)` nâng `fg-2 → fg-1`, `line-2 → line-3`. Token đã tách theo vai trò nên thêm `[data-theme="light"]` sau này không đụng component.
 
-## 4. Bố cục theo breakpoint
+### 3.9 Di chuyển token từ v1
 
-### 4.1 Điều hướng
+Không token nào đổi tên. Chỉ `--w-rail` đổi giá trị 64→76 (nhãn rail "Câu chuyện", "Hoạt động" không xuống dòng ở 11px). Thêm: `--h-spine`, `--h-bottomnav`, `--w-activity`, `--w-queue`, `--ring-w`, `--ring-dash`, `--overlay-dim`, `--overlay-line`, `--overlay-label`, `--sub-fg`, `--sub-halo`; Tailwind thêm `h-spine`, `h-bottomnav`, `w-activity`, `w-queue`, `border-ring`. Việc dán vào `frontend/src/styles/tokens.css` + `tailwind.config.ts` thuộc task G0.
 
-| Mốc | Toàn cục | Trong dự án | Việc (Jobs) | Máy nhà / Từ xa |
-|---|---|---|---|---|
-| 1920 / 1280 | Topbar 48px: chọn dự án ▾ · Mẫu · Cài đặt · `Ctrl K` | Rail trái: Thư viện · Tập · Studio · Việc · Xuất (1280: icon + nhãn nhỏ 64px; 1920: 200px có nhãn) | Chip ở topbar "12 đang chạy" → popover; thanh lô nổi | Chip topbar cạnh Việc |
-| 768 | Topbar 48px, mục toàn cục vào menu ☰ | Rail biến thành thanh tab ngang dưới topbar (cuộn trong chính nó nếu chật) | Chip topbar | Chip topbar (chỉ icon + tooltip) |
-| 375 | Topbar 48px: tên dự án ▾ + chip mạng + avatar menu (Mẫu, Cài đặt, Đăng xuất) | Thanh dưới 56px + safe-area: **Duyệt · Tập · Việc · Xem · Thêm** (Thêm = Nhập hàng loạt, Thư viện, Xuất) | Tab "Việc" có badge số lỗi | Chip topbar |
+## 4. Điều hướng và bố cục
 
-Studio đầy đủ không có trên điện thoại; mục Tập → chọn clip mở "Sửa cảnh" (§4.4).
+Lý do, route và luồng ở `docs/design/ux-architecture.md`. v2 thay toàn bộ điều hướng của v1 §4.1 (tab công cụ) bằng dây chuyền hai tầng; bố cục từng vùng (Studio, tablet, điện thoại, lưới) giữ v1.
 
-### 4.2 Studio desktop (1280 · 1920)
+### 4.1 Khung
+
+```
+1280 ───────────────────────────────────────────────────────────────────────────────
+│◯ SagaReel / Kiếp Hồ Ly ▾ / Tập 12 ▾      🔍  │MaiVideo 412/1.236 ▬│🤖 2●│(5) Cần bạn│▤ 12│⌂│  topbar 48
+├────┬──────────────────────────────────────────────────────────────────────────────┤
+│Tổng│ Tập 12 · Đêm trăng máu  ✓Kịch bản ◆ ✓Phân cảnh ◆ ↺Khung hình 3 ◆ ◇Animatic[chờ bạn] ◇ …│  thanh chặng 44
+│Câu │──────────────────────────────────────────────────────────────────────────────│
+│Thư │  nội dung công cụ (bảng clip / duyệt / studio / âm thanh / xuất)   │ inspector 360 │
+│Duyệt│                                                                    │               │
+│Xuất│                                                                                  │
+│────│                                                                                  │
+│Hoạt│                                                                                  │
+│Lịch│                                                                                  │
+│Cài │                                                                                  │
+└────┴──────────────────────────────────────────────────────────────────────────────┘
+ rail 76
+```
+
+| Mốc | Topbar | Trong dự án | Panel Hoạt động |
+|---|---|---|---|
+| 1920 | ô tìm đầy đủ + mọi chip có chữ | rail 200 có nhãn ngang | popover phải 360; có thể ghim |
+| 1600 | ô tìm đầy đủ | rail 76 | popover |
+| 1280 | ô tìm thu thành icon; đồng hồ chi phí, chip agent/Cần bạn/Việc có chữ | rail 76 | popover |
+| 768 | chữ phụ của chip ẩn | rail → thanh tab ngang dính dưới topbar; inspector thành drawer | popover |
+| 375 | dấu · Dự án ▾ · tìm · Cần bạn (vòng) · mạng | thanh dưới: **Cần bạn · Duyệt · Tập · Việc · Thêm**; thanh chặng chỉ hiện icon, chặng hiện tại có chữ, tự cuộn tới giữa | toàn màn |
+
+### 4.2 Ma trận, lưới, bảng
+
+- Lưới clip (§4.6): 9:16 `repeat(auto-fill, minmax(132px, 1fr))`, 375: 2 cột `minmax(0,1fr)`; ảo hoá theo hàng.
+- **Ma trận Tổng quan:** bảng `border-collapse: separate`, hàng 40, cột Tập dính trái (200), header dính trên, 8 cột chặng
+  + cột gate 18 + Chi phí + Sửa gần nhất; nằm trong `role=region` cuộn ngang. Hàng arc 32 thu gọn được. < 768: thay bằng
+  danh sách tập hai dòng (tên + pill trạng thái / chặng hiện tại).
+- Bảng clip: hàng 40, ô prompt sửa tại chỗ 2 dòng, header dính, tiêu đề cảnh là hàng nhóm.
+
+### 4.3 Studio desktop (1280 · 1920)
 
 ```
 1280 ─────────────────────────────────────────────────────────────────────────────
-│Topbar: Dự án ▾ Hồ Ly · Tập 12 ▾ │Storyboard|Timeline|Kịch bản│ ↶ ↷ │⌘K│◉Máy nhà│Việc 12│
+│Topbar v2 (§4.1) · thanh chặng 44 · toolbar: Storyboard|Timeline|Kịch bản · ↶ ↷              │
 ├──┬──────────────────────────────────────────────────┬──────────────────────────┤
 │R │ PLAYER (stage đen, khung 9:16 hoặc 16:9 vừa ô)   │ INSPECTOR 360            │
 │a │   ┌──────────┐   lớp safe-zone: TikTok ▾  [G]    │ Cảnh 12 · Clip 3         │
@@ -298,7 +394,7 @@ Studio đầy đủ không có trên điện thoại; mục Tập → chọn cli
 - Kịch bản: thay vùng player + timeline bằng trình soạn kịch bản một cột (tối đa 72 ký tự/dòng), inspector giữ nguyên.
 - Storyboard: thay player + timeline bằng lưới ClipCard; chọn card → inspector.
 
-### 4.3 Studio tablet (768)
+### 4.4 Studio tablet (768)
 
 ```
 │Topbar ☰ Hồ Ly · Tập 12 ▾ │Storyboard|Timeline|Kịch bản│ ↶ ↷ │ ⓘ │
@@ -313,7 +409,7 @@ Studio đầy đủ không có trên điện thoại; mục Tập → chọn cli
 
 Inspector là drawer phủ (scrim 60%), mở bằng nút ⓘ, chạm đúp clip, hoặc phím `]`. Trang không bao giờ cuộn ngang; chỉ vùng timeline có `overflow-x: auto`.
 
-### 4.4 Điện thoại (375)
+### 4.5 Điện thoại (375)
 
 ```
 Duyệt take                     Sửa cảnh                      Việc
@@ -326,7 +422,7 @@ Duyệt take                     Sửa cảnh                      Việc
 │ └───────┘└───────┘    │      │ textarea 16px         │     │◷ Clip 30  Chờ #4       │
 │ [Tạo lại][Bỏ qua][Chọn]│     │ [Ước tính] [Tạo lại]  │     │                       │
 ├───────────────────────┤      ├───────────────────────┤     ├───────────────────────┤
-│Duyệt Tập Việc Xem Thêm │      │ (thanh dưới 56px)     │     │ (+ safe-area đáy)     │
+│Cần bạn Duyệt Tập Việc ⋯│      │ (thanh dưới 56px)     │     │ (+ safe-area đáy)     │
 └───────────────────────┘      └───────────────────────┘     └───────────────────────┘
 ```
 
@@ -335,7 +431,7 @@ Duyệt take                     Sửa cảnh                      Việc
 - Xem: danh sách video đã xuất, player toàn màn hình native.
 - Nhập hàng loạt: chọn file/ dán kịch bản → bảng xem trước → Ước tính → Chạy.
 
-### 4.5 Lưới storyboard
+### 4.6 Lưới storyboard
 
 | Khung | Ô (`grid-template-columns`) | 375 | 768 | 1280 (vùng giữa ~880px) | 1920 |
 |---|---|---|---|---|---|
@@ -346,15 +442,15 @@ Duyệt take                     Sửa cảnh                      Việc
 - Trộn khung trong một sequence: card giữ tỉ lệ của chính clip trong ô theo tỉ lệ của sequence (letterbox `stage`), không đổi chiều cao hàng.
 - Nhóm theo cảnh: tiêu đề cảnh dính (sticky) 32px, không bọc card trong hộp cảnh.
 
-### 4.6 Màn khác
+### 4.7 Màn khác
 
-- **Tập (Sequences — tập phim / video):** bảng ảo hoá hàng 40px (điện thoại: hàng 64px hai dòng). Nhóm Series › Season › Arc là hàng tiêu đề thu gọn được, không lồng bảng. Cột: # · Tên · Trạng thái (mini bar 7 trạng thái) · Thời lượng · Sửa lần cuối · Xuất.
+- **Tập:** v2 thay bảng tập bằng ma trận Tổng quan (§4.2, §6.2); hàng 40px (điện thoại: danh sách 64px hai dòng), nhóm Series › Season › Arc là hàng tiêu đề thu gọn được.
 - **Thư viện:** lưới AssetCard 1:1 (`minmax(160px,1fr)`), lọc theo loại (Nhân vật · Bối cảnh · Đạo cụ · loại tự tạo) bằng SegmentedControl; chi tiết tài sản là trang riêng: mô tả khoá, sheet nhiều góc, ảnh tham chiếu, biến thể trang phục, giọng.
 - **Cài đặt:** cột trái mục, phải là form; provider có đèn sức khoẻ sống (`ok`/`warn`/`failed` + "kiểm tra 12 giây trước").
 
 ## 5. Component
 
-Luật chung: mọi control có 8 trạng thái (default · hover `bg-3` · focus = outline accent 2px, cách 2px, hiện tức thì · active `bg-4` · disabled `fg-4` + `aria-disabled` · loading · error · success). Icon lucide 16px (điện thoại 20px), nét 1.75. Khi `pointer: coarse`, mọi đích chạm ≥ 44×44px: control dùng `--h-control`; phần tử nhỏ hơn (SourceBadge, pill bấm được, tay nắm trim, nút trong banner/thanh lô nổi) mở rộng vùng bắt bằng `::before` âm inset, không phóng to hình. Nút chỉ có icon luôn có `aria-label` + tooltip (trễ 600ms khi hover, 0ms khi focus).
+Luật chung: mọi control có 8 trạng thái (default · hover `bg-3` · focus = outline accent 2px, cách 2px, hiện tức thì · active `bg-4` · disabled `fg-4` + `aria-disabled` · loading · error · success). Icon lucide 16px (điện thoại 20px), nét 1.75. Khi `pointer: coarse`, mọi đích chạm ≥ 44×44px (mở rộng vùng bắt bằng `::before/::after` âm inset). Nút chỉ có icon luôn có `aria-label` + tooltip (trễ 600ms khi hover, 0ms khi focus).
 
 ### 5.1 Cơ bản
 
@@ -432,21 +528,94 @@ Luật chung: mọi control có 8 trạng thái (default · hover `bg-3` · focu
 | **LoginScreen** | nền bg-0, khối 360px giữa (điện thoại: gutter 16), chữ ký "SagaReel Studio" `3xl` 600, dòng phụ cho biết đang vào Máy nhà/Từ xa; ô Mật khẩu (nút hiện/ẩn, `autocomplete=current-password`); checkbox "Nhớ thiết bị này (30 ngày)"; nút chính "Đăng nhập" full-width. Lỗi dưới ô: "Sai mật khẩu. Còn 4 lần thử, sau đó khoá 15 phút." |
 | **Phiên hết hạn** | modal không tự đóng đè lên màn đang làm (nội dung giữ nguyên sau scrim): "Phiên đã hết hạn. Đăng nhập lại để tiếp tục — thay đổi chưa lưu vẫn ở trên trình duyệt này." ô mật khẩu + Đăng nhập; gửi lại yêu cầu đang dở sau khi vào. |
 
-## 6. Tương tác
+### 5.6 Bổ sung v2
 
-### 6.1 Phím tắt — Duyệt (Review)
+| Component | Thay đổi v2 |
+|---|---|
+| Button | nút trả phí luôn ghi giá bằng mono nhỏ: "Tạo lại `1 lượt`", "Chạy 10 tập `480 lượt`"; nút miễn phí ghi "miễn phí" khi người dùng có thể nghĩ là tốn |
+| StatusPill | thêm biến thể **`wait`**: nền trong suốt, viền 1px đứt accent, chữ accent — "chờ bạn" |
+| SourceBadge | thêm cấp nguồn `agent` / `llm` (ghi tên actor) ngoài 6 cấp ghi đè |
+| Chip (topbar) | cao `--h-control`, viền line-2; số ở fg-1 600; chữ phụ ẩn < 1600/1280 theo §4.1 |
+| ActorTag | icon `Bot`/`User` 12 + tên; agent dùng mono, người dùng dùng UI font, "Bạn" |
+| Dialog | `<dialog>` + `showModal()`; `closedby="any"` cho dialog không có dữ liệu dở; `closedby="none"` + xác nhận cho form dở |
 
-| Phím | Việc | Phím | Việc |
-|---|---|---|---|
-| `→` / `←` | clip kế / trước | `↑` / `↓` | take trước / kế |
-| `Enter` | Chọn take đang xem | `1`–`3` | Chọn take ở ô 1–3 khi so sánh |
-| `R` | Tạo lại (mở ước tính nếu > ngưỡng) | `Shift R` | Tạo lại sau khi sửa prompt (focus vào ô prompt) |
-| `S` | Bỏ qua (để sau) | `F` | Đánh dấu lệch nhất quán thủ công |
-| `C` | Bật/tắt so sánh cạnh nhau | `Space` | Phát / dừng (đồng bộ mọi ô) |
-| `Ctrl Z` | Hoàn tác lần chọn/bỏ qua | `Esc` | Thoát chế độ duyệt |
-| `?` | Bảng phím tắt | `Shift →` | Clip lỗi/đã cũ kế tiếp |
+## 6. Pattern
 
-### 6.2 Phím tắt — Studio
+### 6.1 StageSpine — thanh chặng của tập
+- Trái: tên tập (sm 600) + dòng phụ (arc · số clip · thời lượng), tối đa 220px.
+- Phải: `<nav aria-label="Dây chuyền của tập 12"><ol>` 8 chặng; giữa hai chặng là GateDot hoặc vạch nối 10px.
+- Chặng = link 32px: icon trạng thái 14 + nhãn + đếm (`3 cũ`, `62%`); chặng chờ gate thêm pill `wait`. Chặng đang mở:
+  nền bg-2 + viền line-2. Tooltip: "Chặng 3: Khung hình — có clip đã cũ (Alt 3)". Nhãn trạng thái cũng có trong `sr-only`.
+- Dữ liệu từ workflow preset + `sequence.pipeline` (không code cứng số chặng; xem `ux-architecture.md` §2.2).
+- Cuộn ngang trong chính nó; phần tử `sr-only` bên trong phải có tổ tiên `position: relative` (nếu không, chúng thoát khung
+  cuộn và làm trang cuộn ngang — lỗi đã gặp ở prototype).
+
+### 6.2 ProductionMatrix — tập × chặng
+- Ô = `MatrixCell`: icon 14 + chữ xs (xong / `48 clip` / `3 cũ` / `2 lỗi · 80%` / thanh mini 44×4 + % / vòng `chờ bạn`).
+  Chưa tới = "—" fg-3 + `sr-only` "chưa tới".
+- Cột cuối: chi phí thật của tập (`sequence.cost_summary`, gồm mọi lần tạo lại) mono; "Sửa gần nhất" = ActorTag + thời gian.
+- Chọn hàng (checkbox) → BatchBar nổi: "n tập đã chọn · Duyệt các take · **Chạy tới gate kế tiếp** (EstimateDialog) · ⋯".
+- Hàng tập đang có agent ghi: ô chặng hiện `Bot tên đang viết` màu running.
+
+### 6.3 GateCard
+- Viền accent 55% khi đang chờ. Đầu: vòng đứt 32 + tiêu đề "Duyệt animatic · Tập 12 · Đêm trăng máu" + ai yêu cầu, lúc nào.
+- Thân: xem trước (9:16, 168px desktop; điện thoại 16:10 toàn ngang, nút phát 40) + **checklist** (ok fg-2 `Check`; vấn đề
+  dùng màu trạng thái của nó) + khối **NextCost**: "Nếu duyệt, chạy tiếp chặng Video" / `48 video · 0 lượt` (lg mono) /
+  thời gian + ghi chú (gate thử 2 clip đang bật).
+- Chân: **Trả lại kèm góp ý** (mở dialog textarea → `gate.reject`) · **Duyệt và chạy tiếp** (primary). Điện thoại: lưới 2
+  cột 48px, nhãn rút gọn "Trả lại" / "Duyệt · chạy tiếp".
+- Viewer: không có chân; dòng "Chỉ chủ dự án duyệt được gate".
+- Vượt ngân sách: NextCost có băng warn và nút chính đổi thành "Duyệt, chạy tới hết phần miễn phí".
+
+### 6.4 NeedItem (hàng trong Cần bạn)
+Lưới `32px · 1fr · chevron`: biểu tượng tròn 32 (gate = vòng đứt accent; lỗi/lệch/ngân sách = nền màu trạng thái 14%) +
+tiêu đề sm 500 + một dòng chi tiết xs fg-2 (luôn có số hoặc lý do). Cả hàng là một link tới đúng màn đã lọc.
+
+### 6.5 AgentFeed và panel Hoạt động
+- `<dialog popover>` phải 360, top dưới topbar, không chặn trang (Rule 2 của modern-web-guidance); mở bằng chip agent hoặc
+  phím `.`; điện thoại toàn màn.
+- AgentRow: ô 36 `Bot` · tên mono 600 · nút **Tạm dừng** (ghost) · dòng việc đang làm (op mono xs) · meta (lần ghi cuối,
+  số thay đổi phiên, chi phí).
+- Timeline: `giờ mono · ActorTag + hành động · nơi` + nút **Hoàn tác** khi change set còn hoàn tác được.
+
+### 6.6 CostMeter (topbar)
+Chip 2 dòng: "MaiVideo **412**/1.236 lượt" + "65% tháng", vạch 3px dưới (`scaleX`). > 80% vạch warn; chặn → chữ failed +
+"18 việc bị giữ". Bấm → dialog chi phí theo provider (`budget.status`).
+
+### 6.7 ReviewQueue + TakeCompare
+- ≥ 1280: `280 | 1fr | 320` = hàng đợi (ảo hoá, J/K) · so sánh · inspector gọn (prompt, verdict V, chi phí clip).
+- So sánh: ô đầu là **mỏ neo** của look (khi lọc lệch), rồi các take; take đang chọn viền accent + số take khoanh đặc;
+  dưới ảnh: seed mono, model, chi phí, điểm drift có lý do.
+- Băng **gợi ý đổi cách** (warn 10%) khi `take.verdict` trả `suggest_change`.
+- Thanh quyết định: Tạo lại (R) · Bỏ qua (S) · gợi ý phím · **Chọn take n (A)**. Điện thoại: dính trên thanh dưới, 3 nút 48.
+
+### 6.8 ClipCard — bổ sung (gốc ở §5.2)
+- Agent đã chọn take: số take khoanh **đứt xám** + nhãn `Bot kiểm-định chọn` đáy trái khung; pill "Xong · chờ bạn".
+- Trạng thái và quy tắc ảnh tiến dần như §5.2 (không blur thật, không shadow/filter trong danh sách).
+
+### 6.9 EstimateDialog — bổ sung (gốc ở §5.5)
+- Gom theo **chặng** khi chạy pipeline; dòng "Thời gian" có số song song của lane.
+- Vượt ngân sách: băng warn + **phương án rẻ hơn** thành nút phụ ("Chạy tới hết Phân cảnh · 0 lượt").
+
+### 6.10 CommandPalette — bổ sung (gốc ở §5.4)
+Nhóm: Đi tới (Tổng quan, Tập n, Studio tập n, nhân vật…) · Hành động (Duyệt khung hình tập n, Tạo lại các clip đã cũ, Mở
+Cần bạn, Hoàn tác) · Clip · Tài sản. Mỗi mục có phím tắt ở phải (mono).
+
+### 6.11 Inspector
+Panel bg-1, mục ngăn bằng line-1 (không hộp lồng), chân dính (Ước tính · Tạo lại `n lượt`). ≥ 1280: dính dưới thanh chặng,
+`max-height: 100dvh − top − 16px`, cuộn trong chính nó (nếu không, phần dưới không bao giờ tới được). < 1280: drawer
+(768) hoặc nằm dưới nội dung (375).
+
+## 7. Tương tác
+
+### 7.1 Phím tắt — toàn cục và Duyệt
+Bảng đầy đủ ở `ux-architecture.md` §8. Duyệt (chuẩn Task H): `1–9` chọn · `A` duyệt + sang clip kế · `R` tạo lại ·
+`Shift R` sửa prompt rồi tạo lại · `S` bỏ qua · `J`/`K` (hoặc `←`/`→`) clip trước/kế · `↑`/`↓` take · `E` sửa prompt ·
+`V` verdict · `C` so sánh · `F` đánh dấu lệch · `Space` phát · `Ctrl Z` hoàn tác. Studio: §7.2. Toàn cục: `Ctrl K`,
+`?`, `G` + chữ, `.` panel Hoạt động, `Alt 1…8` chặng.
+
+
+### 7.2 Phím tắt — Studio
 
 | Phím | Việc | Phím | Việc |
 |---|---|---|---|
@@ -461,18 +630,23 @@ Luật chung: mọi control có 8 trạng thái (default · hover `bg-3` · focu
 
 Phím đơn chữ không chạy khi focus đang ở ô nhập. `Ctrl` = `⌘` trên macOS. Không chiếm `Tab` (di chuyển focus), `Alt ←/→` (Back/Forward), `Ctrl S/T/W/L` của trình duyệt (tự lưu, không cần Lưu).
 
-### 6.3 Cập nhật lạc quan + quay lui
+### 7.3 Cập nhật lạc quan + quay lui
 
 Chọn take, bỏ qua, sắp lại, đổi tên, trim, đổi giọng: UI đổi ngay, gửi nền; lỗi → trả về trạng thái cũ, item nháy viền failed 1 lần, toast "Không lưu được lựa chọn take cho Clip 3. [Thử lại]". Hành động trả phí (tạo, tạo lại) **không** lạc quan: card chuyển "Chờ #n" chỉ khi server nhận việc. Mọi thay đổi vào hàng đợi undo theo phiên (100 bước), lưu vào Lịch sử phiên bản mỗi 5 phút hoặc khi rời Studio.
 
-### 6.4 Kéo, trim, chọn
+### 7.4 Kéo, trim, chọn
 
 - Kéo bắt đầu sau 4px (cảm ứng: giữ 300ms). Bóng kéo là chính item opacity .8 + vị trí thả là vạch accent 2px; nam châm vào playhead / mép clip / vạch giây (giữ `Alt` để tắt).
 - Trim: tay nắm 8px, timecode nổi hiện thời lượng mới; không cho trim quá độ dài nguồn (tay nắm đổi màu failed, dừng lại).
 - Chọn: bấm = chọn một; `Shift` = dải; `Ctrl` = thêm/bớt; kéo khung trên nền trống = chọn vùng; `Ctrl A` trong vùng đang focus. Có chọn nhiều → thanh hành động hàng loạt dính đáy vùng: "12 clip đã chọn · Tạo lại · Chọn take mới nhất · Xoá · Bỏ chọn".
 - Mọi thao tác kéo có lối bàn phím (`Ctrl ←/→` dời item một khung; `,`/`.` trim mép đang chọn).
 
-## 7. Chữ trong giao diện
+
+### 7.5 Thay đổi do agent
+Thao tác của **agent** tới qua SSE `entity.changed` → hàng/thẻ nháy viền line-3 một lần (không
+vàng); nếu người dùng đang sửa đúng thực thể đó → `stale_write` theo `ux-architecture.md` §6.
+
+## 8. Chữ trong giao diện
 
 Luật: câu thường (chỉ hoa chữ đầu và tên riêng); nút bắt đầu bằng động từ; một hành động một tên suốt luồng (nút "Tạo lại" → toast "Đã xếp 3 clip để tạo lại"); không "Vui lòng", không "!", không xin lỗi; lỗi = chuyện gì + làm gì; giữ từ nghề người làm phim dùng hằng ngày: *prompt, take, clip, timeline, preset, safe-zone*; con số luôn có đơn vị.
 
@@ -497,8 +671,19 @@ Luật: câu thường (chỉ hoa chữ đầu và tên riêng); nút bắt đ�
 | đăng nhập | Đăng nhập · Nhớ thiết bị này | Login, Ghi nhớ tôi |
 | vị trí truy cập | Máy nhà · Từ xa | Local, Remote |
 | phiên | Phiên đã hết hạn | Session expired |
+| hộp quyết định | Cần bạn | Inbox, Thông báo |
+| ma trận dự án | Tổng quan | Dashboard |
+| chặng | Kịch bản · Phân cảnh · Khung hình · Animatic · Video · Âm thanh · Dựng · Xuất | Step 1…8 |
+| điểm duyệt | gate (giữ từ nghề) — nút: "Duyệt animatic", "Duyệt bản cuối" | Approve |
+| duyệt gate | Duyệt và chạy tiếp | Approve & continue |
+| từ chối gate | Trả lại kèm góp ý | Reject |
+| chờ quyết định | chờ bạn | pending |
+| agent | agent (giữ), tên token mono | bot, AI assistant |
+| tạm dừng agent | Tạm dừng | Kill, Stop |
+| chạy pipeline | Chạy tới gate kế tiếp | Run pipeline |
+| chi phí | lượt (đơn vị provider) · ≈ ₫ | credit, token (trừ LLM) |
 
-## 8. Định dạng số và thời gian (vi-VN)
+## 9. Định dạng số và thời gian (vi-VN)
 
 | Loại | Mẫu | Ghi chú |
 |---|---|---|
@@ -514,25 +699,19 @@ Luật: câu thường (chỉ hoa chữ đầu và tên riêng); nút bắt đ�
 | Hàng đợi | Chờ #12 | vị trí trong hàng đợi chung, không phải trong lô |
 | Lô | 37/120 · 3 lỗi | đã xong / tổng; lỗi tách riêng |
 
-## 9. Checklist duyệt thiết kế
+## 10. Checklist duyệt thiết kế
 
-- [ ] Không màu nào ngoài token; không hex trong component; accent chỉ dùng cho quyết định của người dùng.
-- [ ] Mọi chữ ≥ 4,5:1 trên nền thực của nó (pill, chữ đè ảnh có nền bg-0 85%); viền control ≥ 3:1.
-- [ ] Outline focus (accent 2px, cách 2px) hiện tức thì trên mọi control, kể cả card, item timeline, ô take; không trùng với dấu "đang chọn".
-- [ ] Mỗi trạng thái clip có icon + chữ; tắt màu (grayscale) vẫn phân biệt được.
-- [ ] Skeleton đúng kích thước nội dung thật; không layout shift khi ảnh/ số liệu về.
-- [ ] Danh sách > 50 mục ảo hoá; card không shadow/blur/filter; chỉ animate transform/opacity.
-- [ ] `prefers-reduced-motion` đã thử: không trượt, không nhấp nháy, tiến độ vẫn đọc được.
-- [ ] 375 / 768 / 1280 / 1920: không cuộn ngang trang; vùng chạm ≥ 44px trên cảm ứng; input điện thoại 16px.
-- [ ] Chữ tiếng Việt có dấu chồng (Ễ, Ộ, Ữ, Ẩ) không bị cắt ở nút, pill, dòng `truncate`, `line-clamp`.
-- [ ] Việc trả phí có ước tính; thao tác phá huỷ hai bước hoặc có Hoàn tác; lạc quan có quay lui.
-- [ ] Mỗi màn có trạng thái trống, lỗi, mất kết nối, phiên hết hạn; chip Máy nhà/Từ xa luôn thấy.
-- [ ] Nhãn khớp bảng §7; số theo §8; không "Vui lòng", không "!".
-- [ ] Mọi thao tác chuột (kéo, trim, chọn vùng) có lối bàn phím; phím tắt không chạy khi đang gõ.
+- [ ] Không màu ngoài token (kể cả lớp phủ trên footage); accent chỉ cho quyết định của người; agent không có vàng.
+- [ ] Mọi chữ ≥ 4,5:1 trên nền thực; "chưa tới" dùng fg-3 cho chữ, fg-4 chỉ cho icon/disabled.
+- [ ] Focus accent 2px cách 2px, hiện tức thì; khác dấu "đang chọn".
+- [ ] Trạng thái clip/chặng có icon + chữ (`sr-only` khi ô chỉ có ký hiệu).
+- [ ] Nút trả phí ghi giá; duyệt gate ghi giá bước kế; vượt ngân sách có phương án rẻ hơn.
+- [ ] Mọi thay đổi có actor; có hoàn tác.
+- [ ] 320/375/768/1280/1920: không cuộn ngang trang (đo `scrollWidth`); vùng hai chiều cuộn trong `role=region`.
+- [ ] Nhãn bấm được (rail, tab, nút, chặng) không xuống dòng ở mọi mốc.
+- [ ] `sr-only` trong vùng cuộn có tổ tiên `position: relative`.
+- [ ] Sticky phụ có `top` cộng dồn chiều cao sticky phía trên.
+- [ ] Mỗi màn có trống, đang tải, lỗi, mất kết nối, phiên hết hạn, viewer.
+- [ ] Dấu tiếng Việt không bị cắt ở nút, pill, `truncate`.
 
-## 10. Còn bỏ ngỏ
-
-- Be Vietnam Pro chưa xác minh có `tnum`; tới khi kiểm tra bằng font thật, mọi cột số thẳng hàng dùng mono.
-- Vùng che safe-zone (8% trên, 20% dưới, 15% phải cho 9:16) là số tạm; lấy số chính thức theo từng nền tảng khi có `platform-specs.md`.
-- Không có chủ đề sáng ở v1 (§3.8); xem lại nếu dùng điện thoại ngoài trời nhiều.
-- Presets, Cài đặt (định tuyến LLM theo việc, concurrency) và Xuất mới chỉ có luật chung, chưa có wireframe riêng.
+## 11. Còn bỏ ngỏ

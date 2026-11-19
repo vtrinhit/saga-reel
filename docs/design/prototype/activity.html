@@ -1,0 +1,910 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><link rel="icon" href="data:,"><title>Cần bạn và hoạt động · SagaReel</title><meta name="description" content="Gate chờ duyệt kèm giá bước kế, agent đang làm gì, việc, lịch sử thay đổi."><style>@font-face{font-family:"Be Vietnam Pro";font-style:normal;font-display:swap;font-weight:400;src:url(../../../frontend/node_modules/@fontsource/be-vietnam-pro/files/be-vietnam-pro-vietnamese-400-normal.woff2) format("woff2");unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}@font-face{font-family:"Be Vietnam Pro";font-style:normal;font-display:swap;font-weight:400;src:url(../../../frontend/node_modules/@fontsource/be-vietnam-pro/files/be-vietnam-pro-latin-400-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:"Be Vietnam Pro";font-style:normal;font-display:swap;font-weight:500;src:url(../../../frontend/node_modules/@fontsource/be-vietnam-pro/files/be-vietnam-pro-vietnamese-500-normal.woff2) format("woff2");unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}@font-face{font-family:"Be Vietnam Pro";font-style:normal;font-display:swap;font-weight:500;src:url(../../../frontend/node_modules/@fontsource/be-vietnam-pro/files/be-vietnam-pro-latin-500-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:"Be Vietnam Pro";font-style:normal;font-display:swap;font-weight:600;src:url(../../../frontend/node_modules/@fontsource/be-vietnam-pro/files/be-vietnam-pro-vietnamese-600-normal.woff2) format("woff2");unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}@font-face{font-family:"Be Vietnam Pro";font-style:normal;font-display:swap;font-weight:600;src:url(../../../frontend/node_modules/@fontsource/be-vietnam-pro/files/be-vietnam-pro-latin-600-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:"Be Vietnam Pro";font-style:normal;font-display:swap;font-weight:700;src:url(../../../frontend/node_modules/@fontsource/be-vietnam-pro/files/be-vietnam-pro-vietnamese-700-normal.woff2) format("woff2");unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}@font-face{font-family:"Be Vietnam Pro";font-style:normal;font-display:swap;font-weight:700;src:url(../../../frontend/node_modules/@fontsource/be-vietnam-pro/files/be-vietnam-pro-latin-700-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:"JetBrains Mono Variable";font-style:normal;font-display:swap;font-weight:100 800;src:url(../../../frontend/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2) format("woff2-variations");}
+/* Hallmark · app-system prototype · identity: Take Khoanh v2 · tone: utilitarian-calm · anchor hue: grease-pencil yellow
+ * genre: atmospheric-dark (app, not landing) · macrostructure: Workbench (dense app shell, no hero)
+ * pre-emit critique: P5 H4 E4 S5 R5 V4 — xem docs/design/ux-architecture.md §11
+ */
+
+/* ===== Token — nguyên văn DESIGN.md v2 §3.6 ===== */
+:root {
+  color-scheme: dark;
+  --c-stage: 0 0 0;
+  --c-bg-0: 19 19 19;
+  --c-bg-1: 26 26 26;
+  --c-bg-2: 34 34 34;
+  --c-bg-3: 43 43 43;
+  --c-bg-4: 52 52 52;
+  --c-line-1: 47 47 47;
+  --c-line-2: 71 71 71;
+  --c-line-3: 118 118 118;
+  --c-fg-1: 237 237 235;
+  --c-fg-2: 181 181 178;
+  --c-fg-3: 154 154 151;
+  --c-fg-4: 107 107 105;
+  --c-accent: 242 210 75;
+  --c-accent-hi: 247 223 120;
+  --c-accent-lo: 217 185 46;
+  --c-on-accent: 20 20 20;
+  --c-queued: 154 154 151;
+  --c-running: 114 176 242;
+  --c-done: 181 181 178;
+  --c-failed: 242 122 114;
+  --c-stale: 179 169 222;
+  --c-drifted: 235 134 207;
+  --c-approved: 242 210 75;
+  --c-warn: 240 166 96;
+  --c-ok: 116 211 159;
+  --c-track-video: 94 134 179;
+  --c-track-dialogue: 79 163 150;
+  --c-track-subtitle: 163 154 132;
+  --c-track-music: 146 119 189;
+  --c-track-sfx: 192 123 82;
+  --scrim: rgb(0 0 0 / 0.6);
+  --overlay-dim: rgb(0 0 0 / 0.35); --overlay-line: rgb(255 255 255 / 0.6); --overlay-label: rgb(0 0 0 / 0.6);
+  --sub-fg: rgb(255 255 255); --sub-halo: 0 0 3px rgb(0 0 0), 0 1px 2px rgb(0 0 0);
+  --font-ui: "Be Vietnam Pro", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --text-2xs: 11px; --lh-2xs: 16px;
+  --text-xs: 12px;  --lh-xs: 18px;
+  --text-sm: 13px;  --lh-sm: 20px;
+  --text-base: 14px; --lh-base: 22px;
+  --text-md: 16px;  --lh-md: 24px;
+  --text-lg: 18px;  --lh-lg: 26px;
+  --text-xl: 22px;  --lh-xl: 30px;
+  --text-2xl: 28px; --lh-2xl: 36px;
+  --text-3xl: 36px; --lh-3xl: 44px;
+  --r-xs: 2px; --r-sm: 4px; --r-md: 6px; --r-lg: 10px;
+  --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.45);
+  --shadow-modal: 0 16px 48px rgb(0 0 0 / 0.6);
+  --focus-w: 2px; --focus-offset: 2px;
+  --h-control: 32px; --h-touch: 44px; --h-row: 40px; --h-track: 48px;
+  --w-rail: 76px; --w-inspector: 360px; --h-topbar: 48px; --h-meta: 52px;
+  /* v2: thêm */
+  --h-spine: 44px; --h-bottomnav: 56px; --w-activity: 360px; --w-queue: 280px;
+  --ring-w: 2px; --ring-dash: 3px 3px;
+  --z-sticky: 10; --z-playhead: 20; --z-dropdown: 30; --z-drawer: 40; --z-batchbar: 45;
+  --z-modal: 50; --z-toast: 60; --z-palette: 70; --z-banner: 80; --z-tooltip: 90;
+  --dur-instant: 0ms; --dur-fast: 120ms; --dur-base: 180ms; --dur-slow: 260ms; --dur-exit: 180ms; --dur-image: 320ms;
+  --ease-out: cubic-bezier(.2, .7, .2, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  --ease-inout: cubic-bezier(.45, 0, .2, 1);
+}
+@media (pointer: coarse) { :root { --h-control: 44px; } }
+@media (min-width: 1920px) { :root { --w-rail: 200px; --w-inspector: 400px; } }
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0ms; --dur-base: 0ms; --dur-slow: 0ms; --dur-exit: 0ms; --dur-image: 120ms; }
+}
+@media (prefers-contrast: more) { :root { --c-fg-2: 237 237 235; --c-line-2: 118 118 118; } }
+
+/* Nội dung giả lập (chỉ trong prototype): "footage" — là nội dung, không phải chrome */
+:root {
+  --ft-1: linear-gradient(160deg, #1d3b5c 0%, #c2643a 55%, #f0c27a 100%);
+  --ft-2: linear-gradient(200deg, #0e2a22 0%, #2f7a5a 50%, #d9e7a8 100%);
+  --ft-3: radial-gradient(120% 80% at 50% 20%, #f2b6a0 0%, #8a2f4a 55%, #1a0f24 100%);
+  --ft-4: linear-gradient(180deg, #8fb7d9 0%, #3c5f8a 45%, #14202f 100%);
+  --ft-5: linear-gradient(135deg, #3b1d0e 0%, #b8452a 50%, #f5d08a 100%);
+  --ft-6: radial-gradient(90% 70% at 30% 70%, #e8d36f 0%, #4f7d3a 50%, #12210f 100%);
+  --ft-7: linear-gradient(170deg, #2a1b3d 0%, #6e4fa0 40%, #e79bb0 100%);
+  --ft-8: linear-gradient(190deg, #0b1d2e 0%, #1f6f8b 50%, #9fe0d2 100%);
+  --ft-sheet: linear-gradient(180deg, #8a8a86 0%, #6b6b68 100%);
+}
+.ft-1 { background: var(--ft-1); } .ft-2 { background: var(--ft-2); } .ft-3 { background: var(--ft-3); }
+.ft-4 { background: var(--ft-4); } .ft-5 { background: var(--ft-5); } .ft-6 { background: var(--ft-6); }
+.ft-7 { background: var(--ft-7); } .ft-8 { background: var(--ft-8); } .ft-sheet { background: var(--ft-sheet); }
+
+/* ===== Nền ===== */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: calc(var(--h-topbar) + var(--h-spine)); }
+@media (max-width: 767px) { html { scroll-padding-bottom: calc(var(--h-bottomnav) + env(safe-area-inset-bottom, 0px)); } }
+body {
+  margin: 0; background: rgb(var(--c-bg-0)); color: rgb(var(--c-fg-1));
+  font-family: var(--font-ui); font-size: var(--text-base); line-height: var(--lh-base);
+  overflow-wrap: break-word;
+}
+@media (max-width: 767px) { body { font-size: var(--text-md); line-height: var(--lh-md); } }
+h1, h2, h3, h4 { overflow-wrap: break-word; font-weight: 600; font-style: normal; margin: 0; min-width: 0; text-wrap: balance; }
+h1 { font-size: var(--text-xl); line-height: var(--lh-xl); }
+h2 { font-size: var(--text-lg); line-height: var(--lh-lg); }
+h3 { font-size: var(--text-sm); line-height: var(--lh-sm); }
+p { margin: 0; }
+p, li { text-wrap: pretty; }
+a { color: inherit; }
+button { font: inherit; color: inherit; }
+img, video { max-inline-size: 100%; block-size: auto; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.tnum { font-variant-numeric: tabular-nums; }
+.muted { color: rgb(var(--c-fg-2)); }
+.faint { color: rgb(var(--c-fg-3)); }
+.xs { font-size: var(--text-xs); line-height: var(--lh-xs); }
+.sm { font-size: var(--text-sm); line-height: var(--lh-sm); }
+.b { font-weight: 600; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-block: 1px; min-width: 0; }
+svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+svg.i-12 { width: 12px; height: 12px; } svg.i-20 { width: 20px; height: 20px; } svg.i-24 { width: 24px; height: 24px; } svg.i-32 { width: 32px; height: 32px; }
+:focus-visible { outline: var(--focus-w) solid rgb(var(--c-accent)); outline-offset: var(--focus-offset); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.between { justify-content: space-between; }
+.stack { display: grid; gap: 12px; min-width: 0; }
+.stack-sm { display: grid; gap: 6px; min-width: 0; }
+.grow { flex: 1; min-width: 0; }
+.desk-only { display: none; }
+@media (min-width: 1280px) { .desk-only { display: revert; } .phone-hide-desk { display: none; } }
+@media (max-width: 767px) { .phone-hide { display: none !important; } }
+@media (min-width: 768px) { .phone-only { display: none !important; } }
+
+/* ===== Shell: topbar ===== */
+.topbar {
+  position: sticky; top: 0; z-index: var(--z-sticky);
+  height: var(--h-topbar); display: flex; align-items: center; gap: 6px; padding: 0 8px;
+  background: rgb(var(--c-bg-1)); border-bottom: 1px solid rgb(var(--c-line-1)); min-width: 0;
+}
+.brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; font-size: var(--text-sm); padding: 0 6px; height: var(--h-control); border-radius: var(--r-md); flex: none; }
+.brand .mark { width: 22px; height: 22px; flex: none; }
+.brand:hover { background: rgb(var(--c-bg-3)); }
+.crumb { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 4px; height: var(--h-control); padding: 0 8px; border-radius: var(--r-md); border: 0; background: transparent; font-weight: 600; font-size: var(--text-sm); cursor: pointer; min-width: 0; text-decoration: none; }
+.crumb:hover { background: rgb(var(--c-bg-3)); }
+.crumb svg { color: rgb(var(--c-fg-2)); }
+.crumb-sep { color: rgb(var(--c-fg-4)); flex: none; }
+.spacer { flex: 1; min-width: 8px; }
+.search {
+  display: inline-flex; align-items: center; gap: 8px; height: var(--h-control); padding: 0 8px 0 10px; min-width: 0;
+  border: 1px solid rgb(var(--c-line-2)); border-radius: var(--r-md); background: rgb(var(--c-bg-0)); color: rgb(var(--c-fg-3));
+  font-size: var(--text-sm); cursor: pointer; width: 240px;
+}
+.search:hover { border-color: rgb(var(--c-line-3)); color: rgb(var(--c-fg-2)); }
+.search .label { flex: 1; text-align: left; white-space: nowrap; }
+@media (max-width: 1599px) { .search { width: var(--h-control); padding: 0; justify-content: center; border-color: transparent; background: transparent; } .search .label, .search .kbd { display: none; } }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; height: var(--h-control); padding: 0 10px; border-radius: var(--r-md);
+  border: 1px solid rgb(var(--c-line-2)); background: transparent; color: rgb(var(--c-fg-2)); font-size: var(--text-sm);
+  white-space: nowrap; text-decoration: none; cursor: pointer; flex: none;
+}
+.chip:hover { border-color: rgb(var(--c-line-3)); background: rgb(var(--c-bg-3)); color: rgb(var(--c-fg-1)); }
+.chip[aria-current="page"] { background: rgb(var(--c-bg-2)); color: rgb(var(--c-fg-1)); }
+.chip .n { font-variant-numeric: tabular-nums; color: rgb(var(--c-fg-1)); font-weight: 600; }
+.chip .live { width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--c-running)); }
+/* Cần bạn: vòng khoanh đứt = đang chờ quyết định của bạn */
+.chip.need .ring {
+  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 999px;
+  border: var(--ring-w) dashed rgb(var(--c-accent)); color: rgb(var(--c-accent)); font: 600 var(--text-xs)/1 var(--font-ui); font-variant-numeric: tabular-nums;
+}
+.meter { display: inline-grid; grid-template-columns: auto auto; gap: 2px 8px; align-items: center; height: var(--h-control); padding: 3px 10px; }
+.meter .bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; background: rgb(var(--c-bg-4)); overflow: hidden; }
+.meter .bar i { display: block; height: 100%; background: rgb(var(--c-fg-2)); transform-origin: left; transform: scaleX(var(--p)); }
+.meter.hot .bar i { background: rgb(var(--c-warn)); }
+.meter .t { font-size: var(--text-xs); line-height: 14px; }
+.net { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: var(--r-md); border: 1px solid rgb(var(--c-line-2)); color: rgb(var(--c-fg-2)); font-size: var(--text-xs); white-space: nowrap; flex: none; }
+.net .dot { width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--c-ok)); }
+@media (max-width: 1279px) { .meter .t .long, .chip .long { display: none; } }
+@media (max-width: 767px) {
+  .topbar { gap: 2px; padding: 0 4px 0 8px; }
+  .brand .word, .crumb-ep, .crumb-sep.ep, .meter, .chip.jobs, .chip.agents, .net .long { display: none; }
+  .chip, .search { height: var(--h-touch); min-width: var(--h-touch); justify-content: center; }
+  .net { border: 0; padding: 0 6px; }
+}
+
+/* ===== Shell: rail + main ===== */
+.app { display: flex; min-width: 0; min-height: calc(100dvh - var(--h-topbar)); }
+.rail {
+  position: sticky; top: var(--h-topbar); height: calc(100dvh - var(--h-topbar)); width: var(--w-rail); flex: none;
+  overflow-y: auto; border-right: 1px solid rgb(var(--c-line-1)); background: rgb(var(--c-bg-1)); padding: 8px 0;
+  display: none; flex-direction: column;
+}
+@media (min-width: 1280px) { .rail { display: flex; } }
+.rail a {
+  display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border-left: 2px solid transparent;
+  color: rgb(var(--c-fg-2)); text-decoration: none; font-size: var(--text-2xs); line-height: var(--lh-2xs); text-align: center; white-space: nowrap;
+}
+.rail a:hover { background: rgb(var(--c-bg-2)); color: rgb(var(--c-fg-1)); }
+.rail a[aria-current="page"] { border-left-color: rgb(var(--c-accent)); background: rgb(var(--c-bg-2)); color: rgb(var(--c-fg-1)); }
+.rail a:focus-visible { outline-offset: -2px; }
+.rail hr { border: 0; border-top: 1px solid rgb(var(--c-line-1)); margin: 8px 12px; }
+.rail .badge { font: 600 var(--text-2xs)/1 var(--font-ui); color: rgb(var(--c-accent)); }
+@media (min-width: 1920px) {
+  .rail a { display: flex; align-items: center; gap: 12px; padding: 8px 16px; font-size: var(--text-sm); line-height: var(--lh-sm); text-align: left; }
+  .rail a .badge { margin-left: auto; }
+}
+.tabs-md {
+  position: sticky; top: var(--h-topbar); z-index: var(--z-sticky); display: none; overflow-x: auto; scrollbar-width: none;
+  border-bottom: 1px solid rgb(var(--c-line-1)); background: rgb(var(--c-bg-1)); padding: 0 8px;
+}
+@media (min-width: 768px) and (max-width: 1279px) { .tabs-md { display: flex; } }
+.tabs-md a { position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: var(--h-touch); padding: 0 12px; color: rgb(var(--c-fg-2)); text-decoration: none; font-size: var(--text-sm); white-space: nowrap; flex: none; }
+.tabs-md a[aria-current="page"] { color: rgb(var(--c-fg-1)); }
+.tabs-md a[aria-current="page"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; background: rgb(var(--c-accent)); }
+main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.page { padding: 16px; display: grid; gap: 16px; align-content: start; min-width: 0; }
+@media (min-width: 768px) { .page { padding: 20px 24px; gap: 20px; } }
+@media (max-width: 767px) { .page { padding-bottom: calc(var(--h-bottomnav) + 24px + env(safe-area-inset-bottom, 0px)); } }
+.page-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-end; justify-content: space-between; min-width: 0; }
+.page-head .sub { color: rgb(var(--c-fg-2)); font-size: var(--text-sm); line-height: var(--lh-sm); }
+
+/* ===== Thanh chặng của tập (spine) ===== */
+.spinebar {
+  position: sticky; top: var(--h-topbar); z-index: var(--z-sticky); display: flex; align-items: center; gap: 12px;
+  min-height: var(--h-spine); padding: 0 16px; background: rgb(var(--c-bg-0)); border-bottom: 1px solid rgb(var(--c-line-1)); min-width: 0;
+}
+@media (min-width: 768px) and (max-width: 1279px) { .spinebar { top: calc(var(--h-topbar) + var(--h-touch) + 1px); } }
+.spinebar .ep { display: grid; min-width: 0; flex: none; max-width: 220px; }
+.spinebar .ep b { font-size: var(--text-sm); line-height: var(--lh-sm); }
+.spinebar .ep span { font-size: var(--text-xs); line-height: var(--lh-xs); color: rgb(var(--c-fg-3)); }
+.spinebar > nav { flex: 1; min-width: 0; }
+.spine { position: relative; display: flex; align-items: center; gap: 0; list-style: none; margin: 0; padding: 0; min-width: 0; overflow-x: auto; scrollbar-width: none; flex: 1; }
+.spine li { display: flex; align-items: center; flex: none; }
+.stage { position: relative;
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: var(--r-md);
+  text-decoration: none; color: rgb(var(--c-fg-2)); font-size: var(--text-sm); white-space: nowrap; border: 1px solid transparent;
+}
+.stage:hover { background: rgb(var(--c-bg-2)); color: rgb(var(--c-fg-1)); }
+.stage[aria-current="page"] { background: rgb(var(--c-bg-2)); border-color: rgb(var(--c-line-2)); color: rgb(var(--c-fg-1)); }
+.stage .st { width: 14px; height: 14px; flex: none; }
+.stage .cnt { font: 500 var(--text-xs)/1 var(--font-ui); font-variant-numeric: tabular-nums; }
+.stage.s-done .st { color: rgb(var(--c-fg-2)); }
+.stage.s-run .st, .stage.s-run .cnt { color: rgb(var(--c-running)); }
+.stage.s-fail .st, .stage.s-fail .cnt { color: rgb(var(--c-failed)); }
+.stage.s-stale .st, .stage.s-stale .cnt { color: rgb(var(--c-stale)); }
+.stage.s-wait { color: rgb(var(--c-fg-1)); }
+.stage.s-todo { color: rgb(var(--c-fg-3)); }
+.stage.s-todo .st { color: rgb(var(--c-fg-4)); }
+.gate-dot { width: 18px; display: grid; place-items: center; color: rgb(var(--c-fg-4)); flex: none; }
+.gate-dot svg { width: 12px; height: 12px; }
+.gate-dot.wait { color: rgb(var(--c-accent)); }
+.gate-dot.wait svg { stroke-dasharray: 3 2; }
+.gate-dot.ok { color: rgb(var(--c-fg-2)); }
+.gate-dot.ok svg { fill: currentColor; }
+.spine-link { width: 10px; height: 1px; background: rgb(var(--c-line-2)); flex: none; }
+@media (max-width: 1279px) { .stage .lbl-long { display: none; } }
+@media (max-width: 767px) {
+  .spinebar { padding: 0 8px 0 16px; gap: 8px; }
+  .spinebar .ep { max-width: 45%; }
+  .spine .stage:not([aria-current="page"]) .lbl { display: none; }
+  .stage { padding: 0 8px; height: 40px; }
+}
+
+/* ===== Nút, ô nhập ===== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: var(--h-control); padding: 0 12px; border-radius: var(--r-md);
+  font: 500 var(--text-sm)/var(--lh-sm) var(--font-ui); white-space: nowrap; border: 1px solid rgb(var(--c-line-2));
+  background: rgb(var(--c-bg-2)); color: rgb(var(--c-fg-1)); cursor: pointer; touch-action: manipulation; text-decoration: none; flex: none;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.btn:hover { background: rgb(var(--c-bg-3)); border-color: rgb(var(--c-line-3)); }
+.btn:active { background: rgb(var(--c-bg-4)); }
+.btn[disabled], .btn[aria-disabled="true"] { color: rgb(var(--c-fg-4)); background: rgb(var(--c-bg-1)); border-color: rgb(var(--c-line-1)); cursor: not-allowed; }
+.btn.primary { background: rgb(var(--c-accent)); border-color: rgb(var(--c-accent)); color: rgb(var(--c-on-accent)); }
+.btn.primary:hover { background: rgb(var(--c-accent-hi)); border-color: rgb(var(--c-accent-hi)); }
+.btn.primary:active { background: rgb(var(--c-accent-lo)); }
+.btn.ghost { background: transparent; border-color: transparent; }
+.btn.ghost:hover { background: rgb(var(--c-bg-3)); }
+.btn.danger { background: color-mix(in srgb, rgb(var(--c-failed)) 12%, rgb(var(--c-bg-2))); border-color: color-mix(in srgb, rgb(var(--c-failed)) 40%, rgb(var(--c-bg-2))); color: rgb(var(--c-failed)); }
+.btn.lg { height: 48px; padding: 0 16px; font-size: var(--text-md); }
+.btn.block { width: 100%; }
+.btn .cost { font-family: var(--font-mono); font-variant-numeric: tabular-nums; opacity: .8; font-size: var(--text-xs); }
+.icon-btn { display: inline-grid; place-items: center; width: var(--h-control); height: var(--h-control); border-radius: var(--r-md); background: transparent; border: 1px solid transparent; color: rgb(var(--c-fg-2)); cursor: pointer; flex: none; position: relative; }
+.icon-btn:hover { background: rgb(var(--c-bg-3)); color: rgb(var(--c-fg-1)); }
+.icon-btn[aria-pressed="true"] { background: rgb(var(--c-bg-3)); color: rgb(var(--c-accent)); }
+@media (pointer: coarse) { .icon-btn::after { content: ""; position: absolute; inset: -6px; } }
+.kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: var(--r-xs); border: 1px solid rgb(var(--c-line-2)); background: rgb(var(--c-bg-1)); font: 500 11px/1 var(--font-mono); color: rgb(var(--c-fg-2)); flex: none; }
+.btn .kbd { background: transparent; border-color: currentColor; color: inherit; opacity: .7; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field > label, .field .label { font-size: var(--text-sm); line-height: var(--lh-sm); font-weight: 500; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.field .hint { font-size: var(--text-xs); line-height: var(--lh-xs); color: rgb(var(--c-fg-3)); }
+.input, .textarea, .select {
+  width: 100%; min-width: 0; background: rgb(var(--c-bg-2)); color: rgb(var(--c-fg-1)); border: 1px solid rgb(var(--c-line-3)); border-radius: var(--r-sm);
+  font: 400 var(--text-base)/var(--lh-base) var(--font-ui); padding: 4px 10px; min-height: var(--h-control);
+}
+.input:hover, .textarea:hover, .select:hover { border-color: rgb(var(--c-fg-3)); }
+.textarea { resize: vertical; min-height: 88px; padding: 8px 10px; }
+.textarea.mono-sm { font: 400 var(--text-xs)/var(--lh-xs) var(--font-mono); }
+.select { appearance: none; padding-right: 30px; background-image: linear-gradient(45deg, transparent 50%, rgb(var(--c-fg-2)) 50%), linear-gradient(135deg, rgb(var(--c-fg-2)) 50%, transparent 50%); background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+@media (max-width: 767px) { .input, .textarea, .select { font-size: var(--text-md); line-height: var(--lh-md); } }
+.check { display: inline-flex; align-items: center; gap: 10px; min-height: var(--h-touch); cursor: pointer; font-size: var(--text-sm); }
+.check input { width: 18px; height: 18px; accent-color: rgb(var(--c-accent)); margin: 0; }
+.seg { display: inline-flex; border: 1px solid rgb(var(--c-line-2)); border-radius: var(--r-md); padding: 2px; gap: 2px; background: rgb(var(--c-bg-1)); max-width: 100%; overflow-x: auto; flex: none; }
+.seg button { display: inline-flex; align-items: center; gap: 6px; height: calc(var(--h-control) - 6px); padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: rgb(var(--c-fg-2)); font: 500 var(--text-sm)/var(--lh-sm) var(--font-ui); cursor: pointer; white-space: nowrap; }
+.seg button:hover { color: rgb(var(--c-fg-1)); }
+.seg button[aria-checked="true"], .seg button[aria-selected="true"] { background: rgb(var(--c-bg-4)); color: rgb(var(--c-fg-1)); }
+@media (pointer: coarse) { .seg button { height: 40px; } }
+
+/* ===== Pill, SourceBadge, actor ===== */
+.pill {
+  --pc: var(--c-fg-2); display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: var(--r-sm);
+  background: color-mix(in srgb, rgb(var(--pc)) 16%, rgb(var(--c-bg-2))); color: rgb(var(--pc));
+  font: 500 var(--text-xs)/var(--lh-xs) var(--font-ui); white-space: nowrap; font-variant-numeric: tabular-nums; flex: none;
+}
+.pill svg.i { width: 12px; height: 12px; }
+.pill.queued { --pc: var(--c-queued); } .pill.running { --pc: var(--c-running); } .pill.done { --pc: var(--c-done); }
+.pill.failed { --pc: var(--c-failed); } .pill.stale { --pc: var(--c-stale); } .pill.drifted { --pc: var(--c-drifted); }
+.pill.approved { --pc: var(--c-approved); } .pill.warn { --pc: var(--c-warn); } .pill.ok { --pc: var(--c-ok); }
+.pill.wait { --pc: var(--c-accent); background: transparent; border: 1px dashed rgb(var(--c-accent)); }
+.src { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 6px; border-radius: var(--r-sm); border: 1px solid rgb(var(--c-line-2)); background: rgb(var(--c-bg-1)); color: rgb(var(--c-fg-2)); font: 400 var(--text-xs)/var(--lh-xs) var(--font-ui); white-space: nowrap; cursor: pointer; flex: none; }
+.src .ladder { display: inline-flex; gap: 2px; align-items: flex-end; }
+.src .ladder i { display: block; width: 3px; height: 10px; border-radius: 1px; background: rgb(var(--c-line-2)); }
+.src .ladder i.on { background: rgb(var(--c-fg-1)); }
+.src.here { border-color: rgb(var(--c-accent) / 0.5); color: rgb(var(--c-fg-1)); }
+.src.here .ladder i.on { background: rgb(var(--c-accent)); }
+.actor { display: inline-flex; align-items: center; gap: 4px; font: 500 var(--text-xs)/var(--lh-xs) var(--font-mono); color: rgb(var(--c-fg-2)); white-space: nowrap; }
+.actor svg { width: 12px; height: 12px; }
+.actor.human { font-family: var(--font-ui); }
+
+/* ===== Bề mặt ===== */
+.panel { background: rgb(var(--c-bg-1)); border: 1px solid rgb(var(--c-line-2)); border-radius: var(--r-md); min-width: 0; }
+.panel-h { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid rgb(var(--c-line-1)); min-width: 0; }
+.panel-b { padding: 12px; display: grid; gap: 12px; min-width: 0; }
+.divide > * + * { border-top: 1px solid rgb(var(--c-line-1)); }
+.region { position: relative; overflow: auto; min-width: 0; scrollbar-width: thin; scrollbar-color: rgb(var(--c-line-2)) transparent; }
+.region:focus-visible { outline-offset: -2px; }
+
+/* ===== Thẻ clip (ClipCard) ===== */
+.grid-916 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 480px) { .grid-916 { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; } }
+.scene-head { position: sticky; top: calc(var(--h-topbar) + var(--h-spine) + 52px); z-index: 1; background: rgb(var(--c-bg-0)); min-height: 32px; display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); font-weight: 600; }
+.card { position: relative; display: grid; grid-template-rows: auto var(--h-meta); min-width: 0; background: rgb(var(--c-bg-2)); border: 1px solid rgb(var(--c-line-1)); border-radius: var(--r-md); overflow: hidden; cursor: pointer; text-align: left; color: inherit; padding: 0; font: inherit; }
+.card:hover { border-color: rgb(var(--c-line-3)); }
+.card.selected::after { content: ""; position: absolute; inset: 0; border: 2px solid rgb(var(--c-accent)); border-radius: inherit; pointer-events: none; }
+.card .media { position: relative; aspect-ratio: 9 / 16; background: rgb(var(--c-stage)); overflow: hidden; }
+.card .media .img { position: absolute; inset: 0; }
+.card .media .center { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px; padding: 12px; text-align: center; color: rgb(var(--c-fg-3)); font-size: var(--text-xs); line-height: var(--lh-xs); }
+.card .meta { padding: 6px 10px; display: grid; gap: 2px; align-content: center; min-width: 0; }
+.card .meta .l1 { display: flex; justify-content: space-between; gap: 8px; font-size: var(--text-xs); line-height: var(--lh-xs); color: rgb(var(--c-fg-2)); min-width: 0; }
+.card .meta .l2 { display: flex; gap: 6px; align-items: center; min-width: 0; overflow: hidden; }
+.card .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgb(var(--c-running) / 0.2); }
+.card .bar i { display: block; height: 100%; background: rgb(var(--c-running)); transform-origin: left; transform: scaleX(var(--p, 0)); }
+.card.failed { border-color: rgb(var(--c-failed) / 0.45); }
+.card.failed .center { color: rgb(var(--c-failed)); }
+.card.stale .img { opacity: .45; }
+.card.stale .media::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(135deg, rgb(var(--c-stale) / 0.18) 0 6px, transparent 6px 14px); }
+.card .flag { position: absolute; top: 0; right: 0; border-style: solid; border-width: 0 22px 22px 0; border-color: transparent rgb(var(--c-drifted)) transparent transparent; }
+.take-no { position: absolute; top: 8px; left: 8px; min-width: 28px; height: 22px; padding: 0 6px; display: grid; place-items: center; border-radius: 999px; background: rgb(var(--c-bg-0) / 0.85); font: 600 var(--text-xs)/1 var(--font-mono); color: rgb(var(--c-fg-1)); }
+/* Khoanh: đặc = bạn đã chọn; đứt xám = agent đã chọn, chờ bạn */
+.card.approved .take-no, .take-no.mine { border: var(--ring-w) solid rgb(var(--c-accent)); color: rgb(var(--c-accent)); transform: rotate(-4deg); }
+.take-no.agent { border: var(--ring-w) dashed rgb(var(--c-fg-2)); }
+.card .agent-mark { position: absolute; left: 8px; bottom: 8px; display: inline-flex; gap: 4px; align-items: center; padding: 2px 6px; border-radius: var(--r-sm); background: rgb(var(--c-bg-0) / 0.85); font: 500 var(--text-2xs)/var(--lh-2xs) var(--font-mono); color: rgb(var(--c-fg-1)); }
+
+/* ===== Bảng ===== */
+.table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); line-height: var(--lh-sm); }
+.table th { position: sticky; top: 0; z-index: 1; background: rgb(var(--c-bg-1)); text-align: left; font-weight: 500; color: rgb(var(--c-fg-2)); font-size: var(--text-xs); padding: 8px 10px; border-bottom: 1px solid rgb(var(--c-line-2)); white-space: nowrap; }
+.table td { padding: 6px 10px; border-bottom: 1px solid rgb(var(--c-line-1)); vertical-align: middle; height: var(--h-row); }
+.table tr:hover td { background: rgb(var(--c-bg-1)); }
+.table tr.sel td { background: color-mix(in srgb, rgb(var(--c-accent)) 6%, rgb(var(--c-bg-1))); }
+.table tr.group td { background: rgb(var(--c-bg-0)); font-weight: 600; height: 32px; color: rgb(var(--c-fg-1)); }
+.table .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: rgb(var(--c-fg-2)); }
+.table .r { text-align: right; }
+.thumb { width: 27px; height: 48px; border-radius: var(--r-xs); flex: none; display: block; }
+.cell-edit { display: block; width: 100%; min-width: 220px; max-width: 420px; color: rgb(var(--c-fg-1)); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: var(--lh-sm); padding: 2px 4px; border-radius: var(--r-xs); border: 1px solid transparent; }
+.cell-edit:hover { border-color: rgb(var(--c-line-2)); }
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: var(--r-sm); background: rgb(var(--c-bg-3)); font-size: var(--text-xs); color: rgb(var(--c-fg-1)); white-space: nowrap; }
+.tag .k { font-family: var(--font-mono); color: rgb(var(--c-fg-2)); margin-right: 4px; }
+
+/* ===== Ma trận sản xuất (tập × chặng) ===== */
+.matrix { border-collapse: separate; border-spacing: 0; width: 100%; font-size: var(--text-sm); }
+.matrix th { position: sticky; top: 0; z-index: 2; background: rgb(var(--c-bg-1)); font-weight: 500; color: rgb(var(--c-fg-2)); font-size: var(--text-xs); text-align: left; padding: 8px; border-bottom: 1px solid rgb(var(--c-line-2)); white-space: nowrap; }
+.matrix th.gate-col { width: 18px; padding: 0; }
+.matrix td { border-bottom: 1px solid rgb(var(--c-line-1)); height: var(--h-row); padding: 0 8px; white-space: nowrap; }
+.matrix td.gate-col { padding: 0; text-align: center; }
+.matrix .ep-cell { position: sticky; left: 0; z-index: 1; background: rgb(var(--c-bg-0)); min-width: 200px; }
+.matrix th.ep-cell { z-index: 3; background: rgb(var(--c-bg-1)); }
+.matrix tr:hover td { background: rgb(var(--c-bg-1)); }
+.matrix tr.sel td { background: color-mix(in srgb, rgb(var(--c-accent)) 6%, rgb(var(--c-bg-1))); }
+.matrix .ep-cell label { flex-wrap: nowrap; }
+.matrix .ep-cell a { text-decoration: none; }
+.matrix .ep-cell a:hover { text-decoration: underline; }
+.matrix tr.arc td { height: 32px; background: rgb(var(--c-bg-0)); font-weight: 600; font-size: var(--text-sm); color: rgb(var(--c-fg-1)); }
+.mcell { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: rgb(var(--c-fg-2)); min-width: 88px; }
+.mcell svg { width: 14px; height: 14px; }
+.mcell .mini { width: 44px; height: 4px; border-radius: 2px; background: rgb(var(--c-bg-3)); overflow: hidden; }
+.mcell .mini i { display: block; height: 100%; background: rgb(var(--c-running)); transform-origin: left; transform: scaleX(var(--p)); }
+.mcell.todo { color: rgb(var(--c-fg-3)); }
+.mcell.done { color: rgb(var(--c-fg-2)); }
+.mcell.run { color: rgb(var(--c-running)); }
+.mcell.fail { color: rgb(var(--c-failed)); }
+.mcell.stale { color: rgb(var(--c-stale)); }
+.mcell.wait { color: rgb(var(--c-accent)); }
+.mcell.wait .ring { display: inline-grid; place-items: center; height: 22px; padding: 0 8px; border-radius: 999px; border: var(--ring-w) dashed rgb(var(--c-accent)); font-weight: 500; }
+
+/* ===== Cần bạn / Gate card ===== */
+.inbox { display: grid; gap: 8px; }
+.need-item { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 10px 12px; background: rgb(var(--c-bg-1)); border: 1px solid rgb(var(--c-line-1)); border-radius: var(--r-md); text-decoration: none; }
+.need-item:hover { border-color: rgb(var(--c-line-3)); }
+.need-item .ic { width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; }
+.need-item .ic.gate { border: var(--ring-w) dashed rgb(var(--c-accent)); color: rgb(var(--c-accent)); }
+.need-item .ic.fail { background: color-mix(in srgb, rgb(var(--c-failed)) 14%, rgb(var(--c-bg-2))); color: rgb(var(--c-failed)); }
+.need-item .ic.drift { background: color-mix(in srgb, rgb(var(--c-drifted)) 14%, rgb(var(--c-bg-2))); color: rgb(var(--c-drifted)); }
+.need-item .ic.warn { background: color-mix(in srgb, rgb(var(--c-warn)) 14%, rgb(var(--c-bg-2))); color: rgb(var(--c-warn)); }
+.need-item .t { font-size: var(--text-sm); line-height: var(--lh-sm); font-weight: 500; }
+.need-item .d { font-size: var(--text-xs); line-height: var(--lh-xs); color: rgb(var(--c-fg-2)); }
+.gatecard { display: grid; gap: 0; background: rgb(var(--c-bg-1)); border: 1px solid rgb(var(--c-line-2)); border-radius: var(--r-md); min-width: 0; overflow: hidden; }
+.gatecard.waiting { border-color: rgb(var(--c-accent) / 0.55); }
+.gatecard .gh { display: flex; gap: 12px; align-items: flex-start; padding: 12px; }
+.gatecard .gh .ring { width: 32px; height: 32px; border-radius: 999px; border: var(--ring-w) dashed rgb(var(--c-accent)); display: grid; place-items: center; color: rgb(var(--c-accent)); flex: none; }
+.gatecard .gbody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 0 12px 12px; }
+@media (min-width: 900px) { .gatecard .gbody { grid-template-columns: 168px minmax(0, 1fr); } }
+.gatecard .preview { position: relative; aspect-ratio: 9 / 16; border-radius: var(--r-sm); overflow: hidden; background: rgb(var(--c-stage)); max-height: 300px; justify-self: start; width: 100%; max-width: 168px; }
+@media (max-width: 899px) { .gatecard .preview { max-width: none; aspect-ratio: 16 / 10; max-height: none; } }
+.gatecard .preview .play { position: absolute; inset: auto 8px 8px auto; width: 40px; height: 40px; border-radius: 999px; background: rgb(var(--c-bg-0) / 0.85); display: grid; place-items: center; color: rgb(var(--c-fg-1)); border: 0; cursor: pointer; }
+.checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: var(--text-sm); line-height: var(--lh-sm); }
+.checklist li { display: flex; gap: 8px; align-items: flex-start; }
+.checklist svg { margin-top: 2px; }
+.checklist .ok { color: rgb(var(--c-fg-2)); }
+.checklist .bad { color: rgb(var(--c-drifted)); }
+.nextcost { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--r-sm); background: rgb(var(--c-bg-2)); font-size: var(--text-sm); line-height: var(--lh-sm); }
+.nextcost .big { font: 600 var(--text-lg)/var(--lh-lg) var(--font-mono); font-variant-numeric: tabular-nums; }
+.gatecard .gf { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; padding: 12px; border-top: 1px solid rgb(var(--c-line-1)); }
+@media (max-width: 767px) { .gatecard .gf { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); } .gatecard .gf .btn { height: 48px; font-size: var(--text-md); min-width: 0; padding: 0 10px; } }
+
+/* ===== Agent / hoạt động ===== */
+.agent { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; padding: 12px; }
+.agent .av { width: 36px; height: 36px; border-radius: var(--r-md); background: rgb(var(--c-bg-3)); display: grid; place-items: center; color: rgb(var(--c-fg-1)); grid-row: span 2; }
+.agent .nm { font: 600 var(--text-sm)/var(--lh-sm) var(--font-mono); }
+.agent .doing { font-size: var(--text-sm); line-height: var(--lh-sm); color: rgb(var(--c-fg-1)); grid-column: 2; }
+.agent .meta { grid-column: 2 / -1; font-size: var(--text-xs); line-height: var(--lh-xs); color: rgb(var(--c-fg-3)); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.feed { list-style: none; margin: 0; padding: 0; }
+.feed li { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 2px 10px; padding: 10px 12px; border-top: 1px solid rgb(var(--c-line-1)); align-items: start; }
+.feed .tm { font: 400 var(--text-xs)/var(--lh-sm) var(--font-mono); color: rgb(var(--c-fg-3)); }
+.feed .what { font-size: var(--text-sm); line-height: var(--lh-sm); min-width: 0; }
+.feed .what .actor { margin-right: 6px; }
+.feed .where { font-size: var(--text-xs); line-height: var(--lh-xs); color: rgb(var(--c-fg-3)); grid-column: 2; }
+
+/* ===== Việc ===== */
+.job { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 10px 12px; border-top: 1px solid rgb(var(--c-line-1)); min-height: 56px; }
+.job .name { font-size: var(--text-sm); line-height: var(--lh-sm); font-weight: 500; }
+.job .stage-t { font-size: var(--text-xs); line-height: var(--lh-xs); color: rgb(var(--c-fg-2)); }
+.job .prog { grid-column: 2 / -1; display: flex; gap: 12px; align-items: center; font-size: var(--text-xs); color: rgb(var(--c-fg-2)); min-width: 0; }
+.track4 { flex: 1; height: 4px; background: rgb(var(--c-bg-3)); border-radius: 2px; overflow: hidden; min-width: 40px; }
+.track4 i { display: block; height: 100%; background: rgb(var(--c-running)); transform-origin: left; transform: scaleX(var(--p, 0)); }
+.ic-run { color: rgb(var(--c-running)); } .ic-fail { color: rgb(var(--c-failed)); } .ic-q { color: rgb(var(--c-queued)); } .ic-warn { color: rgb(var(--c-warn)); }
+.segbar { display: flex; height: 8px; border-radius: var(--r-xs); overflow: hidden; background: rgb(var(--c-bg-3)); }
+.segbar i { display: block; height: 100%; }
+.segbar .s-done { background: rgb(var(--c-fg-2)); } .segbar .s-ok { background: rgb(var(--c-accent)); } .segbar .s-run { background: rgb(var(--c-running)); } .segbar .s-fail { background: rgb(var(--c-failed)); } .segbar .s-stale { background: rgb(var(--c-stale)); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: var(--text-xs); color: rgb(var(--c-fg-2)); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend b { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+
+/* ===== Stat (số thật của dự án, không trang trí) ===== */
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: rgb(var(--c-line-1)); border: 1px solid rgb(var(--c-line-1)); border-radius: var(--r-md); overflow: hidden; }
+@media (min-width: 900px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.stat { background: rgb(var(--c-bg-1)); padding: 12px; display: grid; gap: 2px; min-width: 0; }
+.stat .v { font: 600 var(--text-xl)/var(--lh-xl) var(--font-ui); font-variant-numeric: tabular-nums; }
+.stat .k { font-size: var(--text-xs); line-height: var(--lh-xs); color: rgb(var(--c-fg-2)); }
+
+/* ===== Duyệt (review) ===== */
+.review { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
+@media (min-width: 1280px) { .review { grid-template-columns: var(--w-queue) minmax(0, 1fr) 320px; } }
+.queue { list-style: none; margin: 0; padding: 0; display: grid; }
+.queue li a { display: grid; grid-template-columns: 27px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 10px; text-decoration: none; border-left: 2px solid transparent; }
+.queue li a:hover { background: rgb(var(--c-bg-2)); }
+.queue li a[aria-current="true"] { background: rgb(var(--c-bg-2)); border-left-color: rgb(var(--c-accent)); }
+.compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (min-width: 1600px) { .compare.three { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.take { display: grid; gap: 8px; min-width: 0; }
+.take .frame { position: relative; aspect-ratio: 9 / 16; width: 100%; background: rgb(var(--c-stage)); border-radius: var(--r-sm); overflow: hidden; border: 2px solid transparent; }
+@media (min-width: 1280px) { .take .frame { height: min(56vh, 520px); width: auto; max-width: 100%; margin-inline: auto; } }
+.take.picked .frame { border-color: rgb(var(--c-accent)); }
+.take .frame .img { position: absolute; inset: 0; }
+.take .kv { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: var(--text-xs); line-height: var(--lh-xs); color: rgb(var(--c-fg-2)); }
+.take .note { font-size: var(--text-xs); line-height: var(--lh-xs); color: rgb(var(--c-drifted)); display: flex; gap: 6px; }
+.decide { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid rgb(var(--c-line-1)); }
+@media (max-width: 767px) {
+  .decide { position: sticky; bottom: calc(var(--h-bottomnav) + env(safe-area-inset-bottom, 0px)); background: rgb(var(--c-bg-0)); padding: 8px 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .decide .btn { height: 48px; padding: 0 8px; font-size: var(--text-md); }
+  .decide .hints, .decide .kbd { display: none; }
+  .decide .btn { min-width: 0; }
+}
+.suggest { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r-sm); background: color-mix(in srgb, rgb(var(--c-warn)) 10%, rgb(var(--c-bg-1))); border: 1px solid color-mix(in srgb, rgb(var(--c-warn)) 35%, rgb(var(--c-bg-1))); font-size: var(--text-sm); line-height: var(--lh-sm); }
+.suggest svg { color: rgb(var(--c-warn)); margin-top: 2px; }
+
+/* ===== Library ===== */
+.assets { align-items: start; align-content: start; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (min-width: 640px) { .assets { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); } }
+.asset { display: grid; background: rgb(var(--c-bg-2)); border: 1px solid rgb(var(--c-line-1)); border-radius: var(--r-md); overflow: hidden; text-decoration: none; min-width: 0; position: relative; }
+.asset:hover { border-color: rgb(var(--c-line-3)); }
+.asset.selected::after { content: ""; position: absolute; inset: 0; border: 2px solid rgb(var(--c-accent)); border-radius: inherit; pointer-events: none; }
+.asset .ph { aspect-ratio: 1; position: relative; }
+.asset .ph .code { position: absolute; left: 8px; top: 8px; font: 600 var(--text-xs)/1 var(--font-mono); padding: 4px 6px; border-radius: var(--r-sm); background: rgb(var(--c-bg-0) / 0.85); }
+.asset .ph .lockd { position: absolute; right: 8px; top: 8px; padding: 3px; border-radius: var(--r-sm); background: rgb(var(--c-bg-0) / 0.85); display: grid; }
+.asset .info { padding: 8px 10px 10px; display: grid; gap: 6px; min-width: 0; }
+.asset .info .nm { font-size: var(--text-sm); line-height: var(--lh-sm); font-weight: 600; }
+.asset .info .row { gap: 4px; }
+.sheet { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 767px) { .sheet { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.view { display: grid; gap: 4px; min-width: 0; }
+.view .fr { aspect-ratio: 2 / 3; border-radius: var(--r-sm); position: relative; overflow: hidden; border: 2px solid transparent; }
+.view.anchor .fr { border-color: rgb(var(--c-accent)); }
+.view .cap { font-size: var(--text-xs); line-height: var(--lh-xs); color: rgb(var(--c-fg-2)); display: flex; justify-content: space-between; gap: 4px; }
+.view .fr .tk { position: absolute; left: 6px; bottom: 6px; font: 500 var(--text-2xs)/1 var(--font-mono); padding: 3px 5px; border-radius: var(--r-sm); background: rgb(var(--c-bg-0) / 0.85); }
+.prompt-final { font: 400 var(--text-xs)/var(--lh-xs) var(--font-mono); background: rgb(var(--c-stage)); border: 1px solid rgb(var(--c-line-2)); border-radius: var(--r-sm); padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; color: rgb(var(--c-fg-2)); }
+.prompt-final mark { background: rgb(var(--c-bg-3)); color: rgb(var(--c-fg-1)); border-radius: 2px; padding: 0 2px; }
+.prompt-final .lockw { color: rgb(var(--c-fg-1)); text-decoration: underline; text-decoration-color: rgb(var(--c-accent)); text-underline-offset: 3px; }
+
+/* ===== Split: nội dung + inspector ===== */
+.split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
+@media (min-width: 1280px) { .split { grid-template-columns: minmax(0, 1fr) var(--w-inspector); } }
+.inspector { --insp-top: calc(var(--h-topbar) + var(--h-spine) + 16px); background: rgb(var(--c-bg-1)); border: 1px solid rgb(var(--c-line-2)); border-radius: var(--r-md); min-width: 0; align-self: start; position: sticky; top: var(--insp-top); }
+@media (min-width: 1280px) { .inspector { max-height: calc(100dvh - var(--insp-top) - 16px); overflow-y: auto; scrollbar-width: thin; } }
+@media (max-width: 1279px) { .inspector { position: static; } .inspector.dock { display: none; } }
+.insp-sec { padding: 12px; display: grid; gap: 10px; border-top: 1px solid rgb(var(--c-line-1)); }
+.insp-sec:first-child { border-top: 0; }
+.insp-sec > h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.insp-foot { position: sticky; bottom: 0; display: flex; gap: 8px; justify-content: flex-end; padding: 12px; border-top: 1px solid rgb(var(--c-line-1)); background: rgb(var(--c-bg-1)); }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
+.lint { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; border-radius: var(--r-sm); border: 1px solid rgb(var(--c-line-2)); background: rgb(var(--c-bg-1)); font-size: var(--text-sm); line-height: var(--lh-sm); }
+.lint svg { color: rgb(var(--c-warn)); }
+.batchbar { position: sticky; bottom: 16px; z-index: var(--z-batchbar); justify-self: center; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 8px 8px 14px; border-radius: var(--r-md); background: rgb(var(--c-bg-4)); border: 1px solid rgb(var(--c-line-2)); box-shadow: var(--shadow-pop); max-width: 100%; }
+@media (max-width: 767px) { .batchbar { bottom: calc(var(--h-bottomnav) + 8px + env(safe-area-inset-bottom, 0px)); } }
+
+/* ===== Studio ===== */
+.studio { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; min-width: 0; border: 1px solid rgb(var(--c-line-2)); border-radius: var(--r-md); overflow: hidden; }
+@media (min-width: 1280px) { .studio { grid-template-columns: minmax(0, 1fr) var(--w-inspector); } }
+.studio .center { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.player { background: rgb(var(--c-stage)); display: grid; place-items: center; padding: 16px; min-height: 300px; position: relative; }
+.player .frame { position: relative; height: min(46vh, 440px); aspect-ratio: 9 / 16; border-radius: 2px; overflow: hidden; }
+.safezone { position: absolute; inset: 0; pointer-events: none; }
+.safezone .top { position: absolute; left: 0; right: 0; top: 0; height: 8%; background: var(--overlay-dim); border-bottom: 1px dashed var(--overlay-line); }
+.safezone .bot { position: absolute; left: 0; right: 0; bottom: 0; height: 20%; background: var(--overlay-dim); border-top: 1px dashed var(--overlay-line); }
+.safezone .rt { position: absolute; right: 0; top: 8%; bottom: 20%; width: 15%; background: var(--overlay-dim); border-left: 1px dashed var(--overlay-line); }
+.safezone .lb { position: absolute; left: 6px; top: 6px; font: 500 var(--text-2xs)/1 var(--font-ui); padding: 3px 5px; border-radius: 2px; background: var(--overlay-label); color: var(--sub-fg); }
+.subline { position: absolute; left: 8%; right: 18%; bottom: 24%; text-align: center; font: 600 15px/1.35 var(--font-ui); color: var(--sub-fg); text-shadow: var(--sub-halo); }
+.transport { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: rgb(var(--c-bg-1)); border-top: 1px solid rgb(var(--c-line-1)); flex-wrap: wrap; min-width: 0; }
+.tc { font: 500 var(--text-sm)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.tl { background: rgb(var(--c-bg-1)); border-top: 1px solid rgb(var(--c-line-1)); }
+.tl-scroll { overflow-x: auto; position: relative; }
+.tl-inner { position: relative; width: 1400px; }
+.ruler { height: 24px; position: sticky; top: 0; display: flex; border-bottom: 1px solid rgb(var(--c-line-1)); margin-left: 40px; font: 400 var(--text-2xs)/24px var(--font-mono); color: rgb(var(--c-fg-3)); background: rgb(var(--c-bg-1)); }
+.ruler span { width: 100px; flex: none; padding-left: 4px; border-left: 1px solid rgb(var(--c-line-2)); }
+.track { display: flex; height: var(--h-track); border-bottom: 1px solid rgb(var(--c-line-1)); }
+.track.v { height: 64px; }
+.track .hd { position: sticky; left: 0; z-index: 2; width: 40px; flex: none; display: grid; place-items: center; background: rgb(var(--c-bg-1)); border-right: 1px solid rgb(var(--c-line-1)); font: 600 var(--text-xs)/1 var(--font-mono); color: rgb(var(--c-fg-2)); }
+.track .lane { position: relative; flex: 1; }
+.item { --tc: var(--c-track-video); position: absolute; top: 6px; bottom: 6px; border-radius: var(--r-xs); background: color-mix(in srgb, rgb(var(--tc)) 28%, rgb(var(--c-bg-1))); border-left: 3px solid rgb(var(--tc)); font-size: var(--text-2xs); line-height: var(--lh-2xs); padding: 3px 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: rgb(var(--c-fg-1)); }
+.item.d { --tc: var(--c-track-dialogue); } .item.p { --tc: var(--c-track-subtitle); } .item.n { --tc: var(--c-track-music); } .item.s { --tc: var(--c-track-sfx); }
+.item.sel { box-shadow: inset 0 0 0 2px rgb(var(--c-accent)); }
+.item .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: 1px; }
+.playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: rgb(var(--c-accent)); z-index: var(--z-playhead); pointer-events: none; }
+.playhead::before { content: ""; position: absolute; top: 0; left: -5px; border: 6px solid transparent; border-top-color: rgb(var(--c-accent)); }
+@media (max-width: 767px) { .studio-desk { display: none; } }
+
+/* ===== Xuất ===== */
+.xm { border-collapse: separate; border-spacing: 8px; width: 100%; margin: -8px; }
+.xm th { font-size: var(--text-xs); color: rgb(var(--c-fg-2)); font-weight: 500; text-align: left; padding: 0 4px; }
+.xcell .check { min-height: 0; }
+.xcell { display: grid; gap: 6px; padding: 10px 12px; border-radius: var(--r-md); border: 1px solid rgb(var(--c-line-2)); background: rgb(var(--c-bg-1)); min-width: 200px; position: relative; }
+.xcell.on { border-color: rgb(var(--c-accent) / 0.6); }
+.xcell .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.xcell .spec { font: 400 var(--text-xs)/var(--lh-xs) var(--font-mono); color: rgb(var(--c-fg-3)); }
+.issues { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: var(--text-xs); line-height: var(--lh-xs); }
+.issues li { display: flex; gap: 6px; align-items: flex-start; }
+.issues .w { color: rgb(var(--c-warn)); } .issues .e { color: rgb(var(--c-failed)); } .issues .o { color: rgb(var(--c-fg-2)); }
+
+/* ===== Âm thanh ===== */
+.line { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 10px 12px; border-top: 1px solid rgb(var(--c-line-1)); }
+.line:first-child { border-top: 0; }
+.line .who { font-size: var(--text-sm); line-height: var(--lh-sm); font-weight: 600; }
+.line .who small { display: block; font-weight: 400; font-size: var(--text-xs); color: rgb(var(--c-fg-3)); }
+.line .txt { font-size: var(--text-sm); line-height: var(--lh-sm); }
+.line .wave { grid-column: 2; height: 20px; display: flex; gap: 2px; align-items: center; }
+.line .wave i { display: block; width: 2px; border-radius: 1px; background: rgb(var(--c-track-dialogue)); }
+@media (max-width: 767px) { .line { grid-template-columns: minmax(0, 1fr) auto; } .line .who { grid-column: 1 / -1; } .line .wave { grid-column: 1; } }
+.voice { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 12px; border-top: 1px solid rgb(var(--c-line-1)); align-items: center; }
+.voice:first-child { border-top: 0; }
+
+/* ===== Thanh dưới (điện thoại) ===== */
+.bottomnav {
+  position: fixed; inset: auto 0 0 0; z-index: var(--z-sticky); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  background: rgb(var(--c-bg-1)); border-top: 1px solid rgb(var(--c-line-1)); padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (min-width: 768px) { .bottomnav { display: none; } }
+.bottomnav a { position: relative; display: grid; justify-items: center; align-content: center; gap: 2px; min-height: var(--h-bottomnav); color: rgb(var(--c-fg-3)); text-decoration: none; font-size: var(--text-2xs); line-height: var(--lh-2xs); }
+.bottomnav a[aria-current="page"] { color: rgb(var(--c-fg-1)); }
+.bottomnav a[aria-current="page"]::before { content: ""; position: absolute; left: 30%; right: 30%; top: 0; height: 2px; background: rgb(var(--c-accent)); }
+.bottomnav a:focus-visible { outline-offset: -2px; }
+.bottomnav .ct { position: absolute; left: calc(50% + 6px); top: 4px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px; border: var(--ring-w) dashed rgb(var(--c-accent)); color: rgb(var(--c-accent)); font: 600 var(--text-2xs)/14px var(--font-ui); text-align: center; background: rgb(var(--c-bg-1)); }
+.bottomnav .ct.f { border-style: solid; border-color: rgb(var(--c-failed)); color: rgb(var(--c-failed)); }
+
+/* ===== Lớp phủ: dialog, popover, palette, toast ===== */
+dialog { color: inherit; padding: 0; border: 1px solid rgb(var(--c-line-2)); background: rgb(var(--c-bg-4)); border-radius: var(--r-lg); box-shadow: var(--shadow-modal); max-width: calc(100vw - 32px); }
+dialog:modal { overscroll-behavior: contain; }
+dialog::backdrop { background: var(--scrim); overflow: hidden; overscroll-behavior: contain; }
+dialog .dh { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid rgb(var(--c-line-1)); }
+dialog .db { padding: 16px; display: grid; gap: 12px; }
+dialog .df { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid rgb(var(--c-line-1)); }
+#palette { width: 640px; margin-top: 12vh; background: rgb(var(--c-bg-3)); }
+#palette .pin { width: 100%; border: 0; border-bottom: 1px solid rgb(var(--c-line-2)); background: transparent; padding: 14px 16px; font: 400 var(--text-md)/var(--lh-md) var(--font-ui); color: rgb(var(--c-fg-1)); }
+#palette .pin:focus-visible { outline: none; }
+#palette ul { list-style: none; margin: 0; padding: 6px; max-height: 50vh; overflow: auto; }
+#palette .grp { padding: 8px 10px 4px; font-size: var(--text-xs); color: rgb(var(--c-fg-3)); }
+#palette li a { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: var(--r-sm); text-decoration: none; font-size: var(--text-sm); }
+#palette li a:hover, #palette li a.on { background: rgb(var(--c-bg-4)); }
+#palette li a .kbd { margin-left: auto; }
+.estimate { width: 560px; }
+.est-t { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.est-t td { padding: 6px 0; border-bottom: 1px solid rgb(var(--c-line-1)); }
+.est-t td.r { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.est-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.est-total .big { font: 600 var(--text-2xl)/var(--lh-2xl) var(--font-mono); font-variant-numeric: tabular-nums; }
+.warnband { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r-sm); background: color-mix(in srgb, rgb(var(--c-warn)) 12%, rgb(var(--c-bg-4))); color: rgb(var(--c-fg-1)); font-size: var(--text-sm); line-height: var(--lh-sm); }
+.warnband svg { color: rgb(var(--c-warn)); margin-top: 2px; }
+#activity { position: fixed; inset: var(--h-topbar) 0 0 auto; margin: 0; width: var(--w-activity); max-width: 100vw; height: auto; border-radius: 0; border-width: 0 0 0 1px; background: rgb(var(--c-bg-1)); box-shadow: var(--shadow-pop); overflow-y: auto; }
+#activity:popover-open { display: block; }
+@media (max-width: 767px) { #activity { inset: var(--h-topbar) 0 0 0; width: 100vw; border-width: 0; } }
+.toast { position: fixed; right: 16px; bottom: 16px; z-index: var(--z-toast); display: flex; gap: 12px; align-items: center; padding: 10px 10px 10px 14px; border-radius: var(--r-md); background: rgb(var(--c-bg-4)); border: 1px solid rgb(var(--c-line-2)); box-shadow: var(--shadow-pop); font-size: var(--text-sm); max-width: calc(100vw - 32px); }
+@media (max-width: 767px) { .toast { left: 16px; right: 16px; bottom: calc(var(--h-bottomnav) + 12px + env(safe-area-inset-bottom, 0px)); } }
+.banner-viewer { display: flex; gap: 8px; align-items: center; justify-content: center; min-height: 28px; font-size: var(--text-xs); color: rgb(var(--c-fg-2)); background: rgb(var(--c-bg-1)); border-bottom: 1px solid rgb(var(--c-line-1)); }
+
+/* ===== Trạng thái ===== */
+.empty { display: grid; justify-items: start; gap: 10px; padding: 24px; border: 1px dashed rgb(var(--c-line-2)); border-radius: var(--r-md); color: rgb(var(--c-fg-2)); }
+.empty svg { color: rgb(var(--c-fg-3)); }
+
+/* ===== Mục lục prototype (index) ===== */
+.screens { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.screen { display: grid; gap: 6px; padding: 14px; border-radius: var(--r-md); background: rgb(var(--c-bg-1)); border: 1px solid rgb(var(--c-line-2)); text-decoration: none; min-width: 0; }
+.screen:hover { border-color: rgb(var(--c-line-3)); }
+.screen .route { font: 400 var(--text-xs)/var(--lh-xs) var(--font-mono); color: rgb(var(--c-fg-3)); overflow-wrap: anywhere; }
+.screen .who { font-size: var(--text-xs); color: rgb(var(--c-fg-3)); }
+.phones { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 375px), 1fr)); gap: 16px; }
+.phones figure { margin: 0; display: grid; gap: 8px; }
+.phones iframe { width: 375px; max-width: 100%; height: 760px; border: 1px solid rgb(var(--c-line-2)); border-radius: var(--r-md); background: rgb(var(--c-bg-0)); }
+.phones figcaption { font-size: var(--text-sm); color: rgb(var(--c-fg-2)); }
+</style></head><body data-page="activity"><svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol><symbol id="i-book" viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></symbol><symbol id="i-library" viewBox="0 0 24 24"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></symbol><symbol id="i-rows" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M21 9H3"/><path d="M21 15H3"/></symbol><symbol id="i-review" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol><symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol><symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol><symbol id="i-settings" viewBox="0 0 24 24"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol><symbol id="i-bot" viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></symbol><symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol><symbol id="i-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol><symbol id="i-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol><symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol><symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol><symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></symbol><symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol><symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol><symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol><symbol id="i-redo" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol><symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol><symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol><symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol><symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></symbol><symbol id="i-face" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/></symbol><symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol><symbol id="i-audio" viewBox="0 0 24 24"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></symbol><symbol id="i-clapper" viewBox="0 0 24 24"><path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol><symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol><symbol id="i-video" viewBox="0 0 24 24"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></symbol><symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol><symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></symbol><symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol><symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></symbol><symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol><symbol id="i-list" viewBox="0 0 24 24"><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/></symbol><symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/></symbol><symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol><symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol><symbol id="i-gate" viewBox="0 0 24 24"><path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41L13.7 2.71a2.41 2.41 0 0 0-3.41 0z"/></symbol><symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol><symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></symbol><symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88"/><path d="M14.47 14.48 20 20"/><path d="M8.12 8.12 12 12"/></symbol><symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/></symbol><symbol id="i-captions" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15h4M15 15h2M7 11h2M13 11h4"/></symbol><symbol id="i-skipb" viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" x2="5" y1="19" y2="5"/></symbol><symbol id="i-skipf" viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/></symbol><symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 12h16"/><path d="M4 6h16"/><path d="M4 18h16"/></symbol><symbol id="i-wand" viewBox="0 0 24 24"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></symbol></svg><a class="sr-only" href="#main">Bỏ qua tới nội dung</a><header class="topbar"><a class="brand" href="index.html" aria-label="SagaReel — mục lục prototype"><svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 7.2C17.8 4.6 14.9 3 11.8 3.1 6.9 3.3 3 7.3 3.1 12.2c.1 4.9 4.1 8.8 9 8.7 4.6-.1 8.4-3.8 8.7-8.3" fill="none" stroke="rgb(var(--c-accent))" stroke-width="2.4" stroke-linecap="round"/><path d="M9 9.2 15.2 12 9 14.8z" fill="rgb(var(--c-fg-1))"/></svg><span class="word">SagaReel</span></a><span class="crumb-sep" aria-hidden="true">/</span><a class="crumb" href="projects.html" aria-label="Dự án Kiếp Hồ Ly — đổi dự án"><span class="trunc">Kiếp Hồ Ly</span><svg class="i " aria-hidden="true"><use href="#i-down"/></svg></a><span class="spacer"></span><button class="search" type="button" data-open="palette" aria-label="Tìm hoặc chạy lệnh (Ctrl K)"><svg class="i " aria-hidden="true"><use href="#i-search"/></svg><span class="label">Tìm hoặc chạy lệnh</span><span class="kbd">Ctrl K</span></button><button class="chip meter" type="button" data-open="budget" aria-label="Chi phí: MaiVideo đã dùng 412 trên 1.236 lượt; ngân sách tháng dự án 388 trên 600 lượt"><span class="t"><span class="long">MaiVideo </span><b class="tnum">412</b>/1.236<span class="long"> lượt</span></span><span class="t faint tnum">65%<span class="long"> tháng</span></span><span class="bar" style="--p:.65"><i></i></span></button><button class="chip agents" type="button" popovertarget="activity" aria-label="2 agent đang hoạt động — mở panel Hoạt động"><svg class="i " aria-hidden="true"><use href="#i-bot"/></svg><span class="n">2</span><span class="long">agent</span><span class="live" aria-hidden="true"></span></button><a class="chip need" href="activity.html" aria-label="Cần bạn: 5 việc chờ quyết định"><span class="ring">5</span><span class="long">Cần bạn</span></a><a class="chip jobs" href="activity.html#viec" aria-label="Việc: 12 đang chạy, 2 lỗi"><svg class="i " aria-hidden="true"><use href="#i-layers"/></svg><span class="n">12</span><span class="long">đang chạy</span></a><span class="net" title="Vào từ localhost · không cần đăng nhập"><svg class="i " aria-hidden="true"><use href="#i-house"/></svg><span class="long">Máy nhà</span></span></header><nav class="tabs-md" aria-label="Trong dự án"><a href="overview.html"><svg class="i " aria-hidden="true"><use href="#i-overview"/></svg>Tổng quan</a><a href="story.html"><svg class="i " aria-hidden="true"><use href="#i-book"/></svg>Câu chuyện</a><a href="library.html"><svg class="i " aria-hidden="true"><use href="#i-library"/></svg>Thư viện</a><a href="review.html"><svg class="i " aria-hidden="true"><use href="#i-review"/></svg>Duyệt</a><a href="export.html"><svg class="i " aria-hidden="true"><use href="#i-download"/></svg>Xuất</a><a href="activity.html" aria-current="page"><svg class="i " aria-hidden="true"><use href="#i-activity"/></svg>Hoạt động</a><a href="activity.html#lich-su"><svg class="i " aria-hidden="true"><use href="#i-history"/></svg>Lịch sử</a><a href="settings.html"><svg class="i " aria-hidden="true"><use href="#i-settings"/></svg>Cài đặt</a></nav><div class="app"><nav class="rail" aria-label="Trong dự án"><a href="overview.html"><svg class="i " aria-hidden="true"><use href="#i-overview"/></svg><span>Tổng quan</span></a><a href="story.html"><svg class="i " aria-hidden="true"><use href="#i-book"/></svg><span>Câu chuyện</span></a><a href="library.html"><svg class="i " aria-hidden="true"><use href="#i-library"/></svg><span>Thư viện</span></a><a href="review.html"><svg class="i " aria-hidden="true"><use href="#i-review"/></svg><span>Duyệt</span><span class="badge tnum" aria-label="212 mục">212</span></a><a href="export.html"><svg class="i " aria-hidden="true"><use href="#i-download"/></svg><span>Xuất</span></a><hr><a href="activity.html" aria-current="page"><svg class="i " aria-hidden="true"><use href="#i-activity"/></svg><span>Hoạt động</span><span class="badge tnum" aria-label="5 mục">5</span></a><a href="activity.html#lich-su"><svg class="i " aria-hidden="true"><use href="#i-history"/></svg><span>Lịch sử</span></a><a href="settings.html"><svg class="i " aria-hidden="true"><use href="#i-settings"/></svg><span>Cài đặt</span></a></nav><main id="main" tabindex="-1"><div class="page"><style>
+  .act { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+  @media (min-width: 1280px) { .act { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; } }
+</style>
+<div class="page-head">
+  <div class="stack-sm"><h1>Cần bạn</h1><p class="sub">5 việc chờ quyết định · 2 agent đang làm · 12 việc đang chạy</p></div>
+  <div class="seg phone-hide" role="radiogroup" aria-label="Phạm vi"><button type="button" role="radio" aria-checked="true">Kiếp Hồ Ly</button><button type="button" role="radio" aria-checked="false">Mọi dự án</button></div>
+</div>
+
+<div class="act">
+  <div class="stack">
+    <article class="gatecard waiting" aria-labelledby="g1">
+      <div class="gh">
+        <span class="ring"><svg class="i " aria-hidden="true"><use href="#i-gate"/></svg></span>
+        <div class="stack-sm grow">
+          <h2 id="g1" class="sm b">Duyệt animatic · Tập 12 · Đêm trăng máu</h2>
+          <span class="xs muted">Yêu cầu bởi <span class="actor"><svg class="i " aria-hidden="true"><use href="#i-bot"/></svg>biên-tập</span> lúc 13:40 · agent không được tự vượt gate</span>
+        </div>
+      </div>
+      <div class="gbody">
+        <div class="preview"><span class="img ft-7" style="position:absolute;inset:0"></span><button class="play" type="button" aria-label="Xem animatic tập 12"><svg class="i " aria-hidden="true"><use href="#i-play"/></svg></button></div>
+        <div class="stack">
+          <ul class="checklist">
+            <li class="ok"><svg class="i " aria-hidden="true"><use href="#i-check"/></svg>48 / 48 khung hình đã chọn · 6 ph 12 s</li>
+            <li class="ok"><svg class="i " aria-hidden="true"><use href="#i-check"/></svg>Thoại 41 / 64 câu · phần còn lại dùng giọng tạm</li>
+            <li class="bad"><svg class="i " aria-hidden="true"><use href="#i-face"/></svg>3 khung lệch nhân vật An (Clip 9, 18, 31)</li>
+            <li class="bad"><svg class="i " aria-hidden="true"><use href="#i-history"/></svg>3 khung đã cũ sau khi sửa look</li>
+          </ul>
+          <div class="nextcost" aria-label="Chi phí nếu duyệt">
+            <span class="xs muted">Nếu duyệt, chạy tiếp chặng Video</span>
+            <span class="big">48 video · 0 lượt</span>
+            <span class="xs muted">GrokTele không tính lượt · ≈ 35 phút · thử 2 clip trước (gate thử) đang bật</span>
+          </div>
+        </div>
+      </div>
+      <div class="gf">
+        <button class="btn" type="button" data-open="reject"><svg class="i " aria-hidden="true"><use href="#i-msg"/></svg>Trả lại<span class="phone-hide"> kèm góp ý</span></button>
+        <button class="btn primary" type="button" data-toast="Đã duyệt animatic tập 12 — đang tạo 2 clip thử"><svg class="i " aria-hidden="true"><use href="#i-check"/></svg>Duyệt<span class="phone-hide"> và chạy tiếp</span><span class="phone-only"> · chạy tiếp</span></button>
+      </div>
+    </article>
+
+    <article class="gatecard waiting" aria-labelledby="g2">
+      <div class="gh">
+        <span class="ring"><svg class="i " aria-hidden="true"><use href="#i-gate"/></svg></span>
+        <div class="stack-sm grow"><h2 id="g2" class="sm b">Duyệt bản cuối · Tập 10 · Người đưa đò</h2><span class="xs muted">6 ph 40 s · −14,1 LUFS · phụ đề trong vùng an toàn</span></div>
+      </div>
+      <div class="gf"><a class="btn" href="studio.html"><svg class="i " aria-hidden="true"><use href="#i-eye"/></svg>Xem</a><button class="btn primary" type="button" data-toast="Đã duyệt bản cuối tập 10 — xuất 3 gói"><svg class="i " aria-hidden="true"><use href="#i-check"/></svg>Duyệt · xuất 3 gói</button></div>
+    </article>
+
+    <div class="inbox">
+      <a class="need-item" href="review.html"><span class="ic drift"><svg class="i " aria-hidden="true"><use href="#i-face"/></svg></span><span class="stack-sm"><span class="t">An lệch ở 3 clip · Tập 12</span><span class="d">kiểm-định · tóc ngắn hơn mỏ neo · điểm 58–64</span></span><svg class="i " aria-hidden="true"><use href="#i-right"/></svg></a>
+      <a class="need-item" href="episode.html"><span class="ic fail"><svg class="i " aria-hidden="true"><use href="#i-alert"/></svg></span><span class="stack-sm"><span class="t">Không chắc MaiVideo đã nhận ảnh Clip 7 · Tập 13</span><span class="d">Máy nhà khởi động lại lúc đang gửi. Gửi lại có thể tốn thêm 1 lượt.</span></span><svg class="i " aria-hidden="true"><use href="#i-right"/></svg></a>
+      <a class="need-item" href="settings.html"><span class="ic warn"><svg class="i " aria-hidden="true"><use href="#i-gauge"/></svg></span><span class="stack-sm"><span class="t">18 việc chờ vì vượt ngân sách tháng</span><span class="d">Tập 41–43 · cần thêm 136 lượt ảnh</span></span><svg class="i " aria-hidden="true"><use href="#i-right"/></svg></a>
+    </div>
+  </div>
+
+  <div class="stack">
+    <section class="panel" aria-labelledby="ag-h">
+      <div class="panel-h"><h2 id="ag-h" class="sm b">Agent</h2><a class="btn ghost" href="settings.html">Token</a></div>
+      <div class="divide">
+        <div class="agent"><span class="av"><svg class="i " aria-hidden="true"><use href="#i-bot"/></svg></span><span class="nm">biên-tập</span><button class="btn ghost" type="button" data-toast="Đã tạm dừng agent biên-tập"><svg class="i " aria-hidden="true"><use href="#i-pause"/></svg>Tạm dừng</button><span class="doing">Viết kịch bản Tập 14</span><span class="meta"><span>40 giây trước</span><span>23 thay đổi</span><span>0 lượt</span></span></div>
+        <div class="agent"><span class="av"><svg class="i " aria-hidden="true"><use href="#i-bot"/></svg></span><span class="nm">kiểm-định</span><button class="btn ghost" type="button" data-toast="Đã tạm dừng agent kiểm-định"><svg class="i " aria-hidden="true"><use href="#i-pause"/></svg>Tạm dừng</button><span class="doing">Kiểm tra lệch Tập 9–12 · 31/192</span><span class="meta"><span>đang chạy</span><span>vision</span></span></div>
+      </div>
+    </section>
+
+    <section class="panel" id="viec" aria-labelledby="jb-h">
+      <div class="panel-h"><h2 id="jb-h" class="sm b">Việc</h2><a class="btn ghost" href="#">Tất cả 12</a></div>
+      <div>
+        <div class="job"><span class="ic-run"><svg class="i " aria-hidden="true"><use href="#i-loader"/></svg></span><span class="stack-sm"><span class="name">Tập 11 · video 34 / 44</span><span class="stage-t">GrokTele · ảnh → video</span></span><button class="btn ghost" type="button">Huỷ việc</button><span class="prog"><span class="track4"><i style="--p:.71"></i></span><span class="mono">71%</span><span>còn ~12 phút</span></span></div>
+        <div class="job"><span class="ic-fail"><svg class="i " aria-hidden="true"><use href="#i-alert"/></svg></span><span class="stack-sm"><span class="name">Tập 13 · Clip 20 ảnh</span><span class="stage-t">MaiVideo trả 502 sau 3 lần thử</span></span><button class="btn" type="button">Thử lại</button></div>
+        <div class="job"><span class="ic-warn"><svg class="i " aria-hidden="true"><use href="#i-gauge"/></svg></span><span class="stack-sm"><span class="name">Tập 41 · 48 ảnh</span><span class="stage-t">Chờ · vượt ngân sách tháng</span></span><a class="btn ghost" href="settings.html">Ngân sách</a></div>
+      </div>
+    </section>
+
+    <section class="panel" id="lich-su" aria-labelledby="hs-h">
+      <div class="panel-h"><h2 id="hs-h" class="sm b">Lịch sử</h2><span class="xs faint">Ctrl Z hoàn tác của bạn</span></div>
+      <ul class="feed">
+        <li><span class="tm">14:05</span><span class="what"><span class="actor"><svg class="i " aria-hidden="true"><use href="#i-bot"/></svg>biên-tập</span>sửa prompt 12 clip</span><button class="btn ghost" type="button" data-toast="Đã hoàn tác thay đổi của biên-tập">Hoàn tác</button><span class="where">Tập 14 · Cảnh 2</span></li>
+        <li><span class="tm">13:58</span><span class="what"><span class="actor human"><svg class="i " aria-hidden="true"><use href="#i-user"/></svg>Bạn</span>duyệt gate Khung hình</span><span></span><span class="where">Tập 12</span></li>
+        <li><span class="tm">13:51</span><span class="what"><span class="actor human"><svg class="i " aria-hidden="true"><use href="#i-user"/></svg>Bạn</span>sửa cụm khoá look Áo dài đỏ</span><button class="btn ghost" type="button">Hoàn tác</button><span class="where">Đánh dấu cũ 14 clip ở tập 9–12</span></li>
+        <li><span class="tm">13:40</span><span class="what"><span class="actor"><svg class="i " aria-hidden="true"><use href="#i-bot"/></svg>llm-local</span>viết metadata 3 gói</span><span></span><span class="where">Tập 9</span></li>
+      </ul>
+    </section>
+  </div>
+</div>
+
+<dialog id="reject" class="estimate" aria-labelledby="rj-h" closedby="any">
+  <div class="dh"><h2 id="rj-h">Trả lại animatic tập 12</h2><button class="icon-btn" type="button" data-close aria-label="Đóng"><svg class="i " aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <div class="db">
+    <div class="field"><label for="fb">Góp ý cho agent biên-tập</label><textarea id="fb" class="textarea" autofocus>Cảnh 3 nhịp chậm quá, cắt bớt 2 clip phố Hội. Sửa lệch tóc An trước khi làm video.</textarea><span class="hint">Gửi qua gate.reject · agent thấy góp ý trong Hoạt động.</span></div>
+  </div>
+  <div class="df"><button class="btn" type="button" data-close>Huỷ</button><button class="btn primary" type="button" data-close data-toast="Đã trả lại animatic tập 12 kèm góp ý">Trả lại</button></div>
+</dialog>
+</div></main></div><nav class="bottomnav" aria-label="Điều hướng chính"><a href="activity.html" aria-current="page"><svg class="i i-20" aria-hidden="true"><use href="#i-inbox"/></svg>Cần bạn<span class="ct tnum">5</span></a><a href="review.html"><svg class="i i-20" aria-hidden="true"><use href="#i-review"/></svg>Duyệt</a><a href="overview.html"><svg class="i i-20" aria-hidden="true"><use href="#i-rows"/></svg>Tập</a><a href="activity.html#viec"><svg class="i i-20" aria-hidden="true"><use href="#i-layers"/></svg>Việc<span class="ct f tnum">2</span></a><a href="index.html#them"><svg class="i i-20" aria-hidden="true"><use href="#i-menu"/></svg>Thêm</a></nav><dialog id="palette" aria-label="Bảng lệnh" closedby="any">
+  <input class="pin" type="search" placeholder="Gõ tên tập, clip, nhân vật hoặc lệnh — không cần dấu" aria-label="Tìm hoặc chạy lệnh" autofocus>
+  <ul>
+    <li class="grp">Đi tới</li>
+    <li><a href="overview.html"><svg class="i " aria-hidden="true"><use href="#i-overview"/></svg>Tổng quan · Kiếp Hồ Ly<span class="kbd">G O</span></a></li>
+    <li><a href="episode.html"><svg class="i " aria-hidden="true"><use href="#i-rows"/></svg>Tập 12 · Đêm trăng máu<span class="kbd">G T</span></a></li>
+    <li><a href="studio.html"><svg class="i " aria-hidden="true"><use href="#i-clapper"/></svg>Studio tập 12</a></li>
+    <li><a href="library.html"><svg class="i " aria-hidden="true"><use href="#i-library"/></svg>Lạc An · nhân vật</a></li>
+    <li class="grp">Hành động</li>
+    <li><a href="review.html"><svg class="i " aria-hidden="true"><use href="#i-review"/></svg>Duyệt khung hình tập 12 · 212 take chờ<span class="kbd">G D</span></a></li>
+    <li><a href="#" data-open="estimate"><svg class="i " aria-hidden="true"><use href="#i-redo"/></svg>Tạo lại các clip đã cũ ở tập 12 · 3 lượt</a></li>
+    <li><a href="activity.html"><svg class="i " aria-hidden="true"><use href="#i-inbox"/></svg>Mở Cần bạn · 5 mục<span class="kbd">G I</span></a></li>
+    <li><a href="#" data-toast="Đã hoàn tác: sửa prompt Clip 18"><svg class="i " aria-hidden="true"><use href="#i-undo"/></svg>Hoàn tác thay đổi gần nhất của bạn<span class="kbd">Ctrl Z</span></a></li>
+  </ul>
+</dialog>
+
+<dialog id="estimate" class="estimate" aria-labelledby="est-t" closedby="any">
+  <div class="dh"><h2 id="est-t">Chạy tới gate kế tiếp · 10 tập</h2><button class="icon-btn" type="button" data-close aria-label="Đóng"><svg class="i " aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <div class="db">
+    <p class="muted sm">Tập 41–50 · Arc 4 · từ Kịch bản tới gate Khung hình. Video chưa tính: chỉ chạy sau khi bạn duyệt animatic.</p>
+    <table class="est-t">
+      <tr><td>Kịch bản + phân cảnh · LLM</td><td class="muted">10 tập</td><td class="r">≈ 1,9 triệu token</td></tr>
+      <tr><td>Khung hình · MaiVideo</td><td class="muted">480 ảnh × 1 lượt</td><td class="r">480 lượt</td></tr>
+      <tr><td>Thoại · edge-tts</td><td class="muted">612 câu</td><td class="r">miễn phí</td></tr>
+      <tr><td>Thời gian</td><td class="muted">song song 3 · MaiVideo</td><td class="r">≈ 2 giờ 40 ph</td></tr>
+    </table>
+    <div class="est-total"><span class="muted">Tổng trả phí</span><span class="big">480 lượt</span></div>
+    <div class="warnband"><svg class="i " aria-hidden="true"><use href="#i-alert"/></svg><div><b>Vượt ngân sách tháng của dự án.</b> Còn 212 lượt trong tháng 11; còn 824 lượt trọn đời MaiVideo. Chạy tới hết Phân cảnh trước thì không tốn lượt ảnh.</div></div>
+    <label class="check"><input type="checkbox"> Không hỏi lại với việc dưới 5 lượt</label>
+  </div>
+  <div class="df">
+    <button class="btn" type="button" data-close>Huỷ</button>
+    <button class="btn" type="button" data-close data-toast="Đã xếp 10 tập chạy tới hết Phân cảnh">Chạy tới hết Phân cảnh <span class="cost">0 lượt</span></button>
+    <button class="btn primary" type="button" data-close data-toast="Đã xếp 10 tập · 480 lượt">Chạy 10 tập <span class="cost">480 lượt</span></button>
+  </div>
+</dialog>
+
+<dialog id="budget" class="estimate" aria-labelledby="bud-t" closedby="any">
+  <div class="dh"><h2 id="bud-t">Chi phí</h2><button class="icon-btn" type="button" data-close aria-label="Đóng"><svg class="i " aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <div class="db">
+    <table class="est-t">
+      <tr><td>MaiVideo · ảnh</td><td class="muted">trọn đời</td><td class="r">412 / 1.236 lượt</td></tr>
+      <tr><td>Kiếp Hồ Ly · tháng 11</td><td class="muted">ngân sách dự án</td><td class="r">388 / 600 lượt</td></tr>
+      <tr><td>GrokTele · video</td><td class="muted">không giới hạn</td><td class="r">1.204 clip</td></tr>
+      <tr><td>LLM · llm-local</td><td class="muted">tháng 11</td><td class="r">14,2 triệu token</td></tr>
+    </table>
+    <p class="xs faint">Số liệu từ budget.status · cập nhật mỗi khi việc trả phí xong.</p>
+  </div>
+  <div class="df"><a class="btn" href="settings.html">Sửa ngân sách</a><button class="btn primary" type="button" data-close>Xong</button></div>
+</dialog>
+
+<dialog id="activity" popover aria-labelledby="act-t">
+  <div class="panel-h"><h2 id="act-t">Hoạt động</h2><button class="icon-btn" type="button" popovertarget="activity" popovertargetaction="hide" aria-label="Đóng panel Hoạt động"><svg class="i " aria-hidden="true"><use href="#i-x"/></svg></button></div>
+  <div class="divide">
+    <div class="agent">
+      <span class="av"><svg class="i " aria-hidden="true"><use href="#i-bot"/></svg></span>
+      <span class="nm">biên-tập</span>
+      <button class="btn ghost" type="button" data-toast="Đã tạm dừng agent biên-tập (token chỉ còn quyền đọc)"><svg class="i " aria-hidden="true"><use href="#i-pause"/></svg>Tạm dừng</button>
+      <span class="doing">Viết kịch bản Tập 14 · <span class="mono xs">story.write_script</span></span>
+      <span class="meta"><span>ghi lần cuối 40 giây trước</span><span>23 thay đổi phiên này</span><span>0 lượt</span></span>
+    </div>
+    <div class="agent">
+      <span class="av"><svg class="i " aria-hidden="true"><use href="#i-bot"/></svg></span>
+      <span class="nm">kiểm-định</span>
+      <button class="btn ghost" type="button" data-toast="Đã tạm dừng agent kiểm-định"><svg class="i " aria-hidden="true"><use href="#i-pause"/></svg>Tạm dừng</button>
+      <span class="doing">Kiểm tra lệch nhân vật Tập 9–12 · 31/192 clip</span>
+      <span class="meta"><span>đang chạy</span><span>vision · llm-local</span></span>
+    </div>
+  </div>
+  <ul class="feed" aria-label="Dòng thời gian">
+    <li><span class="tm">14:05</span><span class="what"><span class="actor"><svg class="i " aria-hidden="true"><use href="#i-bot"/></svg>biên-tập</span>sửa prompt 12 clip</span><button class="btn ghost" type="button" data-toast="Đã hoàn tác thay đổi của biên-tập">Hoàn tác</button><span class="where">Tập 14 · Cảnh 2</span></li>
+    <li><span class="tm">14:02</span><span class="what"><span class="actor"><svg class="i " aria-hidden="true"><use href="#i-bot"/></svg>kiểm-định</span>đánh dấu lệch An ở 3 clip</span><span></span><span class="where">Tập 12 · Clip 9, 18, 31</span></li>
+    <li><span class="tm">13:58</span><span class="what"><span class="actor human"><svg class="i " aria-hidden="true"><use href="#i-user"/></svg>Bạn</span>duyệt gate Khung hình</span><span></span><span class="where">Tập 12</span></li>
+    <li><span class="tm">13:40</span><span class="what"><span class="actor"><svg class="i " aria-hidden="true"><use href="#i-bot"/></svg>biên-tập</span>yêu cầu duyệt animatic</span><span></span><span class="where">Tập 12 · đang chờ bạn</span></li>
+  </ul>
+  <div class="panel-b"><a class="btn block" href="activity.html">Mở trang Hoạt động</a></div>
+</dialog>
+<script>// Prototype SagaReel — tương tác tối thiểu: bảng lệnh, panel Hoạt động, hộp ước tính, phím duyệt, chuyển dạng xem.
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const typing = (e) => e.target.closest('input, textarea, select, [contenteditable="true"]');
+
+  // Đưa chặng đang mở vào giữa thanh chặng (điện thoại cuộn ngang).
+  const sp = $('.spine'), cur = $('.stage[aria-current="page"]');
+  if (sp && cur) sp.scrollLeft = cur.offsetLeft - (sp.clientWidth - cur.offsetWidth) / 2;
+
+  // Mở dialog bằng data-open="<id>" (Invoker Commands chưa Baseline rộng — dùng showModal()).
+  document.addEventListener('click', (e) => {
+    const o = e.target.closest('[data-open]');
+    if (o) { const d = document.getElementById(o.dataset.open); if (d && !d.open) d.showModal(); }
+    const c = e.target.closest('[data-close]');
+    if (c) c.closest('dialog')?.close();
+  });
+
+  // Toast có Hoàn tác (8 s, dừng đếm khi hover/focus).
+  let tt;
+  window.toast = (msg) => {
+    let t = $('.toast');
+    if (!t) {
+      t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.setAttribute('aria-live', 'polite');
+      document.body.append(t);
+    }
+    const s = document.createElement('span'); s.textContent = msg;
+    const u = document.createElement('button'); u.className = 'btn ghost'; u.type = 'button'; u.textContent = 'Hoàn tác';
+    t.replaceChildren(s, u);
+    t.hidden = false; clearTimeout(tt); tt = setTimeout(() => (t.hidden = true), 8000);
+    t.onmouseenter = () => clearTimeout(tt);
+    t.querySelector('button').onclick = () => (t.hidden = true);
+  };
+  $$('[data-toast]').forEach((b) => b.addEventListener('click', () => toast(b.dataset.toast)));
+
+  // SegmentedControl và chuyển dạng xem (data-view="a" ↔ [data-pane="a"]).
+  $$('.seg').forEach((g) => g.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    $$('button', g).forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+    if (b.dataset.view) $$('[data-pane]').forEach((p) => (p.hidden = p.dataset.pane !== b.dataset.view));
+  }));
+
+  // Chọn hàng trong ma trận / bảng → thanh lô.
+  const bar = $('[data-batchbar]');
+  const syncBar = () => {
+    if (!bar) return;
+    const n = $$('[data-pick]:checked').length;
+    bar.hidden = n === 0;
+    const c = $('[data-count]', bar); if (c) c.textContent = n;
+  };
+  document.addEventListener('change', (e) => { if (e.target.matches('[data-pick]')) { e.target.closest('tr')?.classList.toggle('sel', e.target.checked); syncBar(); } });
+  syncBar();
+
+  // Bảng lệnh Ctrl K (gõ không dấu vẫn khớp).
+  const pal = $('#palette');
+  const fold = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+  if (pal) {
+    const inp = $('.pin', pal);
+    inp.addEventListener('input', () => {
+      const q = fold(inp.value.trim());
+      $$('li', pal).forEach((li) => { if (!li.classList.contains('grp')) li.hidden = q && !fold(li.textContent).includes(q); });
+    });
+  }
+  const panel = $('#activity');
+  let gPending = 0;
+  const gMap = { o: 'overview.html', c: 'story.html', l: 'library.html', t: 'episode.html', d: 'review.html', x: 'export.html', h: 'activity.html', i: 'activity.html' };
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); pal?.showModal(); $('.pin', pal)?.focus(); return; }
+    if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === '.' && panel) { panel.togglePopover(); return; }
+    if (document.body.dataset.page === 'studio') return; // G = safe-zone trong Studio
+    if (e.key.toLowerCase() === 'g') { gPending = Date.now(); return; }
+    if (gPending && Date.now() - gPending < 1200 && gMap[e.key.toLowerCase()]) { location.href = gMap[e.key.toLowerCase()]; }
+    gPending = 0;
+  });
+
+  // Phím duyệt (chuẩn Task H): 1–9 chọn, A duyệt, R tạo lại, S bỏ qua, J/K clip trước/kế.
+  if (document.body.dataset.page === 'review') {
+    const takes = $$('.take');
+    const pick = (i) => takes.forEach((t, j) => { t.classList.toggle('picked', i === j); $('.take-no', t)?.classList.toggle('mine', i === j); });
+    document.addEventListener('keydown', (e) => {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (/^[1-9]$/.test(k) && takes[+k - 1]) pick(+k - 1);
+      else if (k === 'a') toast('Đã chọn take cho Clip 18 — sang Clip 19');
+      else if (k === 'r') toast('Đã xếp tạo lại Clip 18 · 1 lượt');
+      else if (k === 's') toast('Đã bỏ qua Clip 18');
+      else if (k === 'e') $('#prompt')?.focus({ preventScroll: false });
+      else return;
+      e.preventDefault();
+    });
+  }
+})();
+</script></body></html>

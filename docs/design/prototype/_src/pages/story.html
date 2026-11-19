@@ -1,0 +1,37 @@
+<!--{"title": "Câu chuyện", "desc": "Bible có bằng chứng, dàn ý arc, kịch bản từng tập với chữ chạy dần.", "rail": "story", "phone": "more"}-->
+<style>
+  .story { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+  @media (min-width: 1280px) { .story { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: start; } }
+  .bible li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 12px; border-top: 1px solid rgb(var(--c-line-1)); }
+  .bible { list-style: none; margin: 0; padding: 0; }
+  .bible .q { grid-column: 1 / -1; font-size: var(--text-xs); color: rgb(var(--c-fg-3)); border-left: 2px solid rgb(var(--c-line-2)); padding-left: 8px; }
+  .script { font-size: var(--text-md); line-height: 1.7; max-width: 68ch; display: grid; gap: 12px; }
+  .caret { display: inline-block; width: 2px; height: 1.1em; vertical-align: text-bottom; background: rgb(var(--c-accent)); animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
+</style>
+<div class="page-head">
+  <div class="stack-sm"><h1>Câu chuyện</h1><p class="sub">Bible 64 mục · 7 chờ xác nhận · dàn ý 3 arc · 36 kịch bản</p></div>
+  <div class="row"><input class="input" type="search" placeholder="Tìm trong bible — không cần dấu" aria-label="Tìm trong bible" style="max-width:260px"><button class="btn" type="button">{{i:upload}}Chuyển thể truyện</button></div>
+</div>
+<div class="story">
+  <section class="panel" aria-labelledby="bb-h">
+    <div class="panel-h"><h2 id="bb-h" class="sm b">Bible</h2><div class="seg" role="radiogroup" aria-label="Lọc bible"><button type="button" role="radio" aria-checked="false">Tất cả</button><button type="button" role="radio" aria-checked="true">Chờ xác nhận 7</button></div></div>
+    <ul class="bible">
+      <li><span class="stack-sm"><b class="sm">Chuông đồng chỉ kêu khi trăng đỏ</b><span class="xs muted">sự thật · từ tập 3</span></span><span class="row"><button class="btn ghost" type="button">Bỏ</button><button class="btn" type="button">{{i:check}}Xác nhận</button></span><span class="q">“…tiếng chuông chỉ vang lên trong đêm trăng nhuộm máu.” — kịch bản tập 3</span></li>
+      <li><span class="stack-sm"><b class="sm">Minh Khang không biết An là hồ ly</b><span class="xs muted">quan hệ · tập 1–12</span></span><span class="row"><span class="pill">{{i:lock}}khoá</span></span><span class="q">“Cô gái ở bến đò… có đôi mắt màu hổ phách lạ lùng.” — tập 1</span></li>
+      <li><span class="stack-sm"><b class="sm">Ai đã gõ chuông ba đêm trước?</b><span class="xs muted">câu hỏi mở · từ tập 9</span></span><span class="pill wait">chờ xác nhận</span></li>
+    </ul>
+  </section>
+  <section class="panel" id="tap-12" aria-labelledby="sc-h">
+    <div class="panel-h"><h2 id="sc-h" class="sm b">Kịch bản · Tập 14 · Khách trọ phòng số 7</h2><span class="actor">{{i:bot}}biên-tập đang viết</span></div>
+    <div class="panel-b">
+      <div class="script" aria-live="polite">
+        <p><b>Cảnh 1 · Phố Hội, mưa đêm.</b> Đèn lồng đỏ chao trong gió. Minh Khang dừng trước nhà trọ Phúc An, áo tơi ướt sũng.</p>
+        <p><b>Bà chủ trọ:</b> “Phòng số 7 trống từ tháng Chạp. Cậu chắc chưa?”</p>
+        <p>Khang gật đầu. Trên bậc cửa, một sợi dây đỏ quấn quanh chuôi chìa khoá<span class="caret" aria-hidden="true"></span></p>
+      </div>
+      <div class="row"><button class="btn" type="button">{{i:pause}}Dừng agent</button><span class="xs faint">story.write_script · ngữ cảnh: bible 18 mục, tóm tắt arc 1–2, câu hỏi mở 4</span></div>
+    </div>
+  </section>
+</div>

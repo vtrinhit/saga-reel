@@ -1,0 +1,155 @@
+<!--{"title": "Tổng quan", "desc": "Bàn sản xuất: ma trận tập × chặng, việc chờ bạn, chi phí.", "rail": "overview", "phone": "episodes"}-->
+<style>
+  .ov { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+  @media (min-width: 1600px) { .ov { grid-template-columns: minmax(0, 1fr) var(--w-activity); } }
+  .eplist { display: grid; }
+  .eplist a { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px 16px; border-top: 1px solid rgb(var(--c-line-1)); text-decoration: none; align-items: center; min-height: 64px; }
+  .eplist a:first-child { border-top: 0; }
+  .eplist .t { font-weight: 600; }
+  .eplist .s { grid-column: 1; font-size: var(--text-xs); color: rgb(var(--c-fg-2)); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+</style>
+
+<div class="page-head">
+  <div class="stack-sm">
+    <h1>Kiếp Hồ Ly</h1>
+    <p class="sub">Phim dài tập · 9:16 · TikTok, Reels, Shorts · 36 / 120 tập đã có kịch bản</p>
+  </div>
+  <div class="row">
+    <a class="btn" href="story.html">{{i:book}}Viết dàn ý tập 37–48</a>
+    <a class="btn phone-hide" href="#">{{i:upload}}Nhập hàng loạt</a>
+  </div>
+</div>
+
+<div class="stats" role="list" aria-label="Số liệu dự án">
+  <div class="stat" role="listitem"><span class="v">1.728</span><span class="k">clip trong 36 tập</span></div>
+  <div class="stat" role="listitem"><span class="v">212</span><span class="k">take chờ duyệt</span></div>
+  <div class="stat" role="listitem"><span class="v">388<span class="faint sm"> / 600</span></span><span class="k">lượt ảnh tháng 11</span></div>
+  <div class="stat" role="listitem"><span class="v">9</span><span class="k">tập đã xuất gói</span></div>
+</div>
+
+<div class="ov">
+  <section class="panel" aria-labelledby="mx-h">
+    <div class="panel-h">
+      <h2 id="mx-h" class="sm b">Tập theo chặng</h2>
+      <div class="row">
+        <div class="seg phone-hide" role="radiogroup" aria-label="Lọc arc">
+          <button type="button" role="radio" aria-checked="true">Tất cả</button>
+          <button type="button" role="radio" aria-checked="false">Arc 1</button>
+          <button type="button" role="radio" aria-checked="false">Arc 2</button>
+          <button type="button" role="radio" aria-checked="false">Arc 3</button>
+        </div>
+        <button class="btn ghost" type="button">{{i:filter}}Lọc</button>
+      </div>
+    </div>
+
+    <div class="region phone-hide" role="region" aria-label="Ma trận tập theo chặng — cuộn ngang được" tabindex="0">
+      <table class="matrix">
+        <thead><tr>
+          <th class="ep-cell"><span class="sr-only">Chọn</span> Tập</th>
+          <th>Kịch bản</th><th class="gate-col"><span class="sr-only">gate</span></th>
+          <th>Phân cảnh</th><th class="gate-col"></th>
+          <th>Khung hình</th><th class="gate-col"></th>
+          <th>Animatic</th><th class="gate-col"></th>
+          <th>Video</th><th>Âm thanh</th><th>Dựng</th><th class="gate-col"></th>
+          <th>Xuất</th><th class="r">Chi phí</th><th>Sửa gần nhất</th>
+        </tr></thead>
+        <tbody>
+          <tr class="arc"><td class="ep-cell">Arc 1 · Miếu hoang</td><td colspan="15" class="faint xs">Tập 1–8 đã xuất · ẩn</td></tr>
+          <tr>
+            <td class="ep-cell"><label class="row"><input type="checkbox" data-pick aria-label="Chọn tập 9"><span class="mono faint">09</span> Hồn trong chuông</label></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}48 clip</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td><span class="mcell done">{{i:check}}xong</span></td><td><span class="mcell done">{{i:check}}xong</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:download}}3 gói</span></td><td class="r mono xs">61 lượt</td><td><span class="actor human">Bạn · hôm qua</span></td>
+          </tr>
+          <tr>
+            <td class="ep-cell"><label class="row"><input type="checkbox" data-pick aria-label="Chọn tập 10"><span class="mono faint">10</span> Người đưa đò</label></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}52 clip</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td><span class="mcell done">{{i:check}}xong</span></td><td><span class="mcell wait"><span class="ring">duyệt bản cuối</span></span></td><td class="gate-col"><span class="gate-dot wait">{{i:gate}}</span></td>
+            <td><span class="mcell todo">—<span class="sr-only">chưa tới</span></span></td><td class="r mono xs">58 lượt</td><td><span class="actor">{{i:bot}}biên-tập · 1 giờ</span></td>
+          </tr>
+          <tr>
+            <td class="ep-cell"><label class="row"><input type="checkbox" data-pick aria-label="Chọn tập 11"><span class="mono faint">11</span> Trăng non</label></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}44 clip</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell run">{{i:loader}}<span class="mini" style="--p:.71"><i></i></span>71%</span></td><td><span class="mcell done">{{i:check}}xong</span></td><td><span class="mcell todo">—<span class="sr-only">chưa tới</span></span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td class="r mono xs">47 lượt</td><td><span class="actor human">Bạn · 2 giờ</span></td>
+          </tr>
+          <tr class="sel">
+            <td class="ep-cell"><span class="row" style="flex-wrap:nowrap"><input type="checkbox" data-pick checked aria-label="Chọn tập 12"><a href="episode.html"><span class="mono faint">12</span> Đêm trăng máu</a></span></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}48 clip</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell stale">{{i:redo}}3 cũ</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell wait"><span class="ring">chờ bạn</span></span></td><td class="gate-col"><span class="gate-dot wait">{{i:gate}}</span></td>
+            <td><span class="mcell todo">—<span class="sr-only">chưa tới</span></span></td><td><span class="mcell run">{{i:loader}}<span class="mini" style="--p:.62"><i></i></span>62%</span></td><td><span class="mcell todo">—</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td class="r mono xs">52 lượt</td><td><span class="actor">{{i:bot}}kiểm-định · 3 ph</span></td>
+          </tr>
+          <tr class="arc"><td class="ep-cell">Arc 2 · Phố Hội đêm mưa</td><td colspan="15"></td></tr>
+          <tr>
+            <td class="ep-cell"><label class="row"><input type="checkbox" data-pick aria-label="Chọn tập 13"><span class="mono faint">13</span> Đèn lồng đỏ</label></td>
+            <td><span class="mcell done">{{i:check}}xong</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell done">{{i:check}}50 clip</span></td><td class="gate-col"><span class="gate-dot ok">{{i:gate}}</span></td>
+            <td><span class="mcell fail">{{i:alert}}2 lỗi · 80%</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td><span class="mcell todo">—</span></td><td><span class="mcell todo">—</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td class="r mono xs">40 lượt</td><td><span class="actor human">Bạn · 20 ph</span></td>
+          </tr>
+          <tr>
+            <td class="ep-cell"><label class="row"><input type="checkbox" data-pick aria-label="Chọn tập 14"><span class="mono faint">14</span> Khách trọ phòng số 7</label></td>
+            <td><span class="mcell run">{{i:bot}}biên-tập đang viết</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td><span class="mcell todo">—</span></td><td><span class="mcell todo">—</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td class="r mono xs">0 lượt</td><td><span class="actor">{{i:bot}}biên-tập · 40 giây</span></td>
+          </tr>
+          <tr>
+            <td class="ep-cell"><label class="row"><input type="checkbox" data-pick aria-label="Chọn tập 15"><span class="mono faint">15</span> Chưa đặt tên</label></td>
+            <td><span class="mcell todo">{{i:clock}}chờ dàn ý</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td><span class="mcell todo">—</span></td><td><span class="mcell todo">—</span></td><td class="gate-col"></td>
+            <td><span class="mcell todo">—</span></td><td class="r mono xs">0 lượt</td><td class="faint xs">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="eplist phone-only">
+      <a href="episode.html"><span class="t">Tập 12 · Đêm trăng máu</span><span class="pill wait">chờ bạn</span><span class="s">Animatic · 48 clip · 3 khung hình đã cũ</span></a>
+      <a href="#"><span class="t">Tập 10 · Người đưa đò</span><span class="pill wait">chờ bạn</span><span class="s">Dựng · duyệt bản cuối</span></a>
+      <a href="#"><span class="t">Tập 13 · Đèn lồng đỏ</span><span class="pill failed">{{i:alert}}2 lỗi</span><span class="s">Khung hình · 80%</span></a>
+      <a href="#"><span class="t">Tập 11 · Trăng non</span><span class="pill running">71%</span><span class="s">Video · còn ~12 phút</span></a>
+      <a href="#"><span class="t">Tập 14 · Khách trọ phòng số 7</span><span class="pill running">{{i:bot}}viết</span><span class="s">Kịch bản · agent biên-tập</span></a>
+      <a href="#"><span class="t">Tập 9 · Hồn trong chuông</span><span class="pill done">{{i:check}}đã xuất</span><span class="s">3 gói · 61 lượt</span></a>
+    </div>
+
+    <div class="panel-b">
+      <div class="batchbar" data-batchbar>
+        <span class="sm"><b data-count class="tnum">1</b> tập đã chọn</span>
+        <button class="btn" type="button">{{i:review}}Duyệt các take</button>
+        <button class="btn primary" type="button" data-open="estimate">{{i:play}}Chạy tới gate kế tiếp</button>
+        <button class="icon-btn" type="button" aria-label="Thêm thao tác">{{i:more}}</button>
+      </div>
+    </div>
+  </section>
+
+  <aside class="stack" aria-labelledby="need-h">
+    <div class="row between"><h2 id="need-h" class="sm b">Cần bạn</h2><a class="btn ghost" href="activity.html">Xem tất cả 5</a></div>
+    <div class="inbox">
+      <a class="need-item" href="activity.html"><span class="ic gate">{{i:gate}}</span><span class="stack-sm"><span class="t">Duyệt animatic · Tập 12</span><span class="d">Sau khi duyệt: 48 video GrokTele · không tính lượt</span></span>{{i:right}}</a>
+      <a class="need-item" href="activity.html"><span class="ic gate">{{i:gate}}</span><span class="stack-sm"><span class="t">Duyệt bản cuối · Tập 10</span><span class="d">6 ph 40 s · loudness −14,1 LUFS</span></span>{{i:right}}</a>
+      <a class="need-item" href="review.html"><span class="ic drift">{{i:face}}</span><span class="stack-sm"><span class="t">An lệch ở 3 clip · Tập 12</span><span class="d">kiểm-định: tóc ngắn hơn mỏ neo</span></span>{{i:right}}</a>
+      <a class="need-item" href="episode.html"><span class="ic fail">{{i:alert}}</span><span class="stack-sm"><span class="t">2 ảnh lỗi · Tập 13</span><span class="d">MaiVideo trả 502 · đã thử 3 lần</span></span>{{i:right}}</a>
+      <a class="need-item" href="settings.html"><span class="ic warn">{{i:gauge}}</span><span class="stack-sm"><span class="t">Còn 212 lượt ảnh tháng 11</span><span class="d">Lô tập 41–50 cần 480 lượt</span></span>{{i:right}}</a>
+    </div>
+  </aside>
+</div>

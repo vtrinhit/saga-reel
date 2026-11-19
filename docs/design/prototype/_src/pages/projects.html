@@ -1,0 +1,29 @@
+<!--{"title": "Dự án", "desc": "Danh sách dự án và tạo dự án mới từ ý tưởng, truyện, kênh mẫu.", "project": false}-->
+<style>
+  .projs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+  .proj { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; padding: 12px; border-radius: var(--r-md); background: rgb(var(--c-bg-1)); border: 1px solid rgb(var(--c-line-2)); text-decoration: none; min-width: 0; }
+  .proj:hover { border-color: rgb(var(--c-line-3)); }
+  .proj .cov { aspect-ratio: 9 / 16; border-radius: var(--r-sm); }
+  .proj .segbar { height: 4px; margin-top: 6px; }
+  .newp { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
+  .newp button { display: grid; gap: 4px; text-align: left; padding: 12px; border-radius: var(--r-md); border: 1px dashed rgb(var(--c-line-2)); background: transparent; cursor: pointer; }
+  .newp button:hover { border-color: rgb(var(--c-line-3)); background: rgb(var(--c-bg-1)); }
+</style>
+<div class="page-head"><h1>Dự án</h1><a class="btn" href="settings.html">{{i:settings}}Cài đặt</a></div>
+<section class="stack" aria-labelledby="np-h">
+  <h2 id="np-h" class="sm b">Tạo dự án</h2>
+  <div class="newp">
+    <button type="button"><b class="sm">{{i:wand}} Từ một ý tưởng</b><span class="xs muted">Bible → dàn ý → kịch bản, dừng ở gate đầu tiên</span></button>
+    <button type="button"><b class="sm">{{i:book}} Chuyển thể truyện dài</b><span class="xs muted">Dán hoặc tải truyện, tự tách tập có điểm treo</span></button>
+    <button type="button"><b class="sm">{{i:video}} Từ kênh mẫu</b><span class="xs muted">Phân tích nhịp, phong cách từ video bạn tải lên</span></button>
+    <button type="button"><b class="sm">{{i:plus}} Dự án trống</b><span class="xs muted">Tự thêm clip, nhập bảng CSV hoặc ghép tự do</span></button>
+  </div>
+</section>
+<section class="stack" aria-labelledby="pj-h">
+  <h2 id="pj-h" class="sm b">Gần đây</h2>
+  <div class="projs">
+    <a class="proj" href="overview.html"><span class="cov ft-3"></span><span class="stack-sm"><b>Kiếp Hồ Ly</b><span class="xs muted">Phim dài tập · 36 / 120 tập</span><span class="xs"><span class="pill wait">5 chờ bạn</span></span><span class="segbar" aria-label="9 tập đã xuất, 27 đang làm"><i class="s-ok" style="width:25%"></i><i class="s-run" style="width:50%"></i></span></span></a>
+    <a class="proj" href="#"><span class="cov ft-6"></span><span class="stack-sm"><b>Chuyện làng Tân Phú</b><span class="xs muted">Thuyết minh · 14 video</span><span class="xs faint">sửa hôm qua</span><span class="segbar"><i class="s-ok" style="width:86%"></i></span></span></a>
+    <a class="proj" href="#"><span class="cov ft-8"></span><span class="stack-sm"><b>Montage Đà Lạt mưa</b><span class="xs muted">Ghép tự do · 1 video</span><span class="xs faint">sửa 12/11</span><span class="segbar"><i class="s-ok" style="width:100%"></i></span></span></a>
+  </div>
+</section>

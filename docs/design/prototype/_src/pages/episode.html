@@ -1,0 +1,78 @@
+<!--{"title": "Tập 12 · Bảng clip", "desc": "Bảng clip của một tập: lưới khung hình hoặc bảng shot list, inspector clip.", "rail": "overview", "phone": "episodes", "stage": 2}-->
+<div class="toolbar">
+  <div class="seg" role="radiogroup" aria-label="Dạng xem">
+    <button type="button" role="radio" aria-checked="true" data-view="board">{{i:grid}}Lưới</button>
+    <button type="button" role="radio" aria-checked="false" data-view="table">{{i:list}}Bảng</button>
+  </div>
+  <div class="seg phone-hide" role="radiogroup" aria-label="Hiện phần">
+    <button type="button" role="radio" aria-checked="true">Ảnh</button>
+    <button type="button" role="radio" aria-checked="false">Video</button>
+  </div>
+  <button class="btn ghost" type="button">{{i:filter}}Lọc: tất cả 48</button>
+  <span class="spacer"></span>
+  <a class="btn phone-hide" href="#">{{i:upload}}Nhập hàng loạt</a>
+  <button class="btn phone-hide" type="button">{{i:file}}Xuất shot list</button>
+  <button class="btn" type="button">{{i:plus}}Thêm clip</button>
+</div>
+
+<div class="lint" role="status">{{i:alert}}<span><b>2 cảnh báo nhịp:</b> Clip 21–22 cùng cỡ cảnh trung (MS) liền nhau · Clip 30 thoại dài hơn 6 s cho phép</span><a class="btn ghost" href="#">Xem</a></div>
+
+<div class="split">
+  <div class="stack" data-pane="board">
+    <div class="scene-head"><span>Cảnh 2 · Miếu hoang lúc nửa đêm</span><span class="faint xs">Clip 14–25 · 1 ph 18 s</span></div>
+    <div class="grid-916">
+      <button class="card approved" type="button"><span class="media"><span class="img ft-4"></span><span class="take-no">T2</span></span><span class="meta"><span class="l1"><span class="trunc">C2 · Clip 14</span><span class="mono">6,0 s</span></span><span class="l2"><span class="pill approved">{{i:check}}Đã chọn</span></span></span></button>
+      <button class="card approved" type="button"><span class="media"><span class="img ft-1"></span><span class="take-no">T1</span></span><span class="meta"><span class="l1"><span class="trunc">C2 · Clip 15</span><span class="mono">4,0 s</span></span><span class="l2"><span class="pill approved">{{i:check}}Đã chọn</span></span></span></button>
+      <button class="card" type="button"><span class="media"><span class="img ft-3"></span><span class="take-no agent">T3</span><span class="agent-mark">{{i:bot}}kiểm-định chọn</span></span><span class="meta"><span class="l1"><span class="trunc">C2 · Clip 16</span><span class="mono">6,0 s</span></span><span class="l2"><span class="pill done">{{i:check}}Xong · chờ bạn</span></span></span></button>
+      <button class="card" type="button"><span class="media"><span class="center">{{i:loader:i-24}}<span>Đang tạo ảnh · 46%</span></span><span class="bar"><i style="--p:.46"></i></span></span><span class="meta"><span class="l1"><span class="trunc">C2 · Clip 17</span><span class="mono">6,0 s</span></span><span class="l2"><span class="pill running">Đang tạo 46%</span><span class="faint xs">còn ~1 ph</span></span></span></button>
+      <button class="card selected" type="button" aria-pressed="true"><span class="media"><span class="img ft-7"></span><span class="flag" title="Lệch nhất quán"></span><span class="take-no">T4</span></span><span class="meta"><span class="l1"><span class="trunc">C2 · Clip 18</span><span class="mono">6,0 s</span></span><span class="l2"><span class="pill drifted">{{i:face}}Lệch nhất quán</span></span></span></button>
+      <button class="card stale" type="button"><span class="media"><span class="img ft-2"></span><span class="take-no">T1</span></span><span class="meta"><span class="l1"><span class="trunc">C2 · Clip 19</span><span class="mono">10,0 s</span></span><span class="l2"><span class="pill stale">{{i:history}}Đã cũ</span></span></span></button>
+      <button class="card failed" type="button"><span class="media"><span class="center">{{i:alert:i-24}}<span>MaiVideo trả 502 sau 3 lần thử</span><span class="btn">Thử lại</span></span></span><span class="meta"><span class="l1"><span class="trunc">C2 · Clip 20</span><span class="mono">6,0 s</span></span><span class="l2"><span class="pill failed">{{i:alert}}Lỗi</span></span></span></button>
+      <button class="card" type="button"><span class="media"><span class="center">{{i:clock:i-24}}<span>Chờ #12</span></span></span><span class="meta"><span class="l1"><span class="trunc">C2 · Clip 21</span><span class="mono">6,0 s</span></span><span class="l2"><span class="pill queued">{{i:clock}}Chờ #12</span></span></span></button>
+      <button class="card approved" type="button"><span class="media"><span class="img ft-5"></span><span class="take-no">T2</span></span><span class="meta"><span class="l1"><span class="trunc">C2 · Clip 22</span><span class="mono">6,0 s</span></span><span class="l2"><span class="pill approved">{{i:check}}Đã chọn</span></span></span></button>
+      <button class="card approved" type="button"><span class="media"><span class="img ft-8"></span><span class="take-no">T1</span></span><span class="meta"><span class="l1"><span class="trunc">C2 · Clip 23</span><span class="mono">4,0 s</span></span><span class="l2"><span class="pill approved">{{i:check}}Đã chọn</span></span></span></button>
+    </div>
+  </div>
+
+  <div class="panel region" data-pane="table" hidden role="region" aria-label="Bảng clip tập 12 — cuộn ngang được" tabindex="0">
+    <table class="table">
+      <thead><tr><th><span class="sr-only">Chọn</span></th><th>#</th><th>Ảnh</th><th>Prompt ảnh</th><th>Nhân vật</th><th>Cỡ · máy</th><th class="r">Thời lượng</th><th>Engine</th><th>Trạng thái</th></tr></thead>
+      <tbody>
+        <tr class="group"><td colspan="9">Cảnh 2 · Miếu hoang lúc nửa đêm</td></tr>
+        <tr><td><input type="checkbox" data-pick aria-label="Chọn clip 14"></td><td class="num">14</td><td><span class="thumb ft-4"></span></td><td><span class="cell-edit" tabindex="0">Wide shot, ruined shrine at midnight, moonlight through broken roof, An kneels before a bronze bell</span></td><td><span class="tag"><span class="k">AN</span>Áo dài đỏ</span></td><td class="xs">WS · tĩnh</td><td class="r num">6,0 s</td><td class="xs">ai_video</td><td><span class="pill approved">{{i:check}}Đã chọn</span></td></tr>
+        <tr><td><input type="checkbox" data-pick aria-label="Chọn clip 15"></td><td class="num">15</td><td><span class="thumb ft-1"></span></td><td><span class="cell-edit" tabindex="0">Close-up of the bronze bell, dust falling, faint red glow from inside</span></td><td><span class="tag"><span class="k">CD</span>Chuông đồng</span></td><td class="xs">CU · đẩy chậm</td><td class="r num">4,0 s</td><td class="xs">still_motion</td><td><span class="pill approved">{{i:check}}Đã chọn</span></td></tr>
+        <tr class="sel"><td><input type="checkbox" data-pick checked aria-label="Chọn clip 18"></td><td class="num">18</td><td><span class="thumb ft-7"></span></td><td><span class="cell-edit" tabindex="0">Medium close-up, An turns toward the door, nine tails unfurl behind her, eyes catching red moonlight</span></td><td><span class="tag"><span class="k">AN</span>Hồ ly hiện hình</span></td><td class="xs">MCU · xoay 3/4</td><td class="r num">6,0 s</td><td class="xs">ai_video</td><td><span class="pill drifted">{{i:face}}Lệch</span></td></tr>
+        <tr><td><input type="checkbox" data-pick aria-label="Chọn clip 19"></td><td class="num">19</td><td><span class="thumb ft-2"></span></td><td><span class="cell-edit" tabindex="0">Minh Khang steps into the shrine holding a paper lantern, rain on his shoulders</span></td><td><span class="tag"><span class="k">MK</span>Thư sinh</span></td><td class="xs">MS · theo</td><td class="r num">10,0 s</td><td class="xs">ai_video</td><td><span class="pill stale">{{i:history}}Đã cũ</span></td></tr>
+        <tr><td><input type="checkbox" data-pick aria-label="Chọn clip 20"></td><td class="num">20</td><td><span class="thumb" style="background:rgb(var(--c-bg-3))"></span></td><td><span class="cell-edit" tabindex="0">Two-shot over An's shoulder, Minh Khang freezes, lantern trembling</span></td><td><span class="tag"><span class="k">AN</span>Áo dài đỏ</span> <span class="tag"><span class="k">MK</span>Thư sinh</span></td><td class="xs">OTS · tĩnh</td><td class="r num">6,0 s</td><td class="xs">ai_video</td><td><span class="pill failed">{{i:alert}}Lỗi</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <aside class="inspector dock" aria-labelledby="ins-h">
+    <div class="insp-sec">
+      <h2 id="ins-h" class="sm b">Cảnh 2 · Clip 18</h2>
+      <div class="row"><span class="pill drifted">{{i:face}}Lệch nhất quán</span><span class="xs muted">kiểm-định: tóc ngắn hơn mỏ neo</span></div>
+    </div>
+    <div class="insp-sec">
+      <h3>Prompt ảnh <span class="src" title="Nguồn: agent biên-tập, 14:05"><span class="ladder"><i></i><i></i><i></i><i></i><i></i><i class="on"></i></span>agent</span></h3>
+      <div class="seg" role="radiogroup" aria-label="Chế độ prompt"><button type="button" role="radio" aria-checked="false">Nguyên văn</button><button type="button" role="radio" aria-checked="true">Đồng bộ</button></div>
+      <textarea class="textarea" aria-label="Prompt ảnh clip 18">Medium close-up, An turns toward the door, nine tails unfurl behind her, eyes catching red moonlight</textarea>
+      <details><summary class="sm muted">Prompt cuối · 3 ảnh tham chiếu</summary>
+        <div class="prompt-final"><mark>[CHARACTERS — locked] Lac An: slender young woman, waist-length black hair with a single red cord, </mark><span class="lockw">crimson silk áo dài with gold fox embroidery</span><mark>, amber eyes. [STYLE — locked] dark folk-horror, wet film grain…</mark> [SCENE] ruined shrine, midnight… [ACTION/CAMERA] MCU, slow 3/4 turn, 0–6s</div>
+      </details>
+    </div>
+    <div class="insp-sec">
+      <h3>Tài sản</h3>
+      <div class="row"><span class="tag"><span class="k">AN</span>Hồ ly hiện hình</span><span class="tag"><span class="k">MH</span>Miếu hoang</span><button class="btn ghost" type="button">{{i:plus}}Thêm</button></div>
+    </div>
+    <div class="insp-sec">
+      <h3>Thoại</h3>
+      <p class="sm"><b>An:</b> “Chàng không nên tới đây đêm nay.”</p>
+    </div>
+    <div class="insp-sec">
+      <h3>Take <span class="xs faint">4 take · tổng 4 lượt</span></h3>
+      <div class="row"><span class="thumb ft-3"></span><span class="thumb ft-7"></span><span class="thumb ft-6"></span><span class="thumb ft-7" style="outline:2px solid rgb(var(--c-accent));outline-offset:1px"></span></div>
+    </div>
+    <div class="insp-foot"><button class="btn" type="button" data-open="estimate">Ước tính chi phí</button><button class="btn primary" type="button" data-toast="Đã xếp tạo lại ảnh Clip 18 · 1 lượt">{{i:redo}}Tạo lại <span class="cost">1 lượt</span></button></div>
+  </aside>
+</div>

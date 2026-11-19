@@ -1,0 +1,51 @@
+<!--{"title": "Thư viện", "desc": "Nhân vật, bối cảnh, đạo cụ, giọng, âm thanh; look và sheet nhiều góc.", "rail": "library", "phone": "more"}-->
+<div class="page-head">
+  <h1>Thư viện</h1>
+  <div class="row"><button class="btn" type="button">{{i:upload}}Mô tả từ ảnh</button><button class="btn primary" type="button">{{i:plus}}Thêm nhân vật</button></div>
+</div>
+<div class="toolbar">
+  <div class="seg" role="tablist" aria-label="Loại tài sản">
+    <button type="button" role="tab" aria-selected="true">Nhân vật 6</button>
+    <button type="button" role="tab" aria-selected="false">Bối cảnh 9</button>
+    <button type="button" role="tab" aria-selected="false">Đạo cụ 14</button>
+    <button type="button" role="tab" aria-selected="false">Giọng 5</button>
+    <button type="button" role="tab" aria-selected="false">Âm thanh 38</button>
+  </div>
+  <span class="spacer"></span>
+  <input class="input" style="max-width:240px" type="search" placeholder="Tìm theo tên hoặc mã" aria-label="Tìm tài sản">
+</div>
+
+<div class="split">
+  <div class="assets">
+    <a class="asset selected" href="#" aria-current="true"><span class="ph ft-3"><span class="code">AN</span><span class="lockd" title="Mô tả đã khoá">{{i:lock:i-12}}</span></span><span class="info"><span class="nm">Lạc An</span><span class="row"><span class="tag">Áo dài đỏ</span><span class="tag">Hồ ly hiện hình</span><span class="tag">+1</span></span><span class="row xs muted">{{i:audio:i-12}}vi-VN-HoaiMy · 3 look</span></span></a>
+    <a class="asset" href="#"><span class="ph ft-2"><span class="code">MK</span><span class="lockd">{{i:lock:i-12}}</span></span><span class="info"><span class="nm">Trần Minh Khang</span><span class="row"><span class="tag">Thư sinh</span><span class="tag">Áo tơi</span></span><span class="row xs muted">{{i:audio:i-12}}vi-VN-NamMinh · 2 look</span></span></a>
+    <a class="asset" href="#"><span class="ph ft-5"><span class="code">BT</span></span><span class="info"><span class="nm">Bà Tư</span><span class="row"><span class="tag">Bà đồng</span></span><span class="row xs muted">{{i:audio:i-12}}chưa gán giọng</span></span></a>
+    <a class="asset" href="#"><span class="ph ft-8"><span class="code">HD</span><span class="lockd">{{i:lock:i-12}}</span></span><span class="info"><span class="nm">Hắc Diện</span><span class="row"><span class="tag">Đạo sĩ</span><span class="tag">Mặt nạ sắt</span></span><span class="row xs muted">{{i:audio:i-12}}giọng trầm · 2 look</span></span></a>
+    <a class="asset" href="#"><span class="ph" style="background:rgb(var(--c-bg-1))"><span class="code">TT</span></span><span class="info"><span class="nm">Thằng Tí</span><span class="row"><span class="pill wait">chờ xác nhận</span></span><span class="row xs muted">gợi ý từ bible · chưa có sheet</span></span></a>
+  </div>
+
+  <aside class="inspector" aria-labelledby="as-h" style="--insp-top: calc(var(--h-topbar) + 16px)">
+    <div class="insp-sec">
+      <div class="row between"><h2 id="as-h" class="sm b">Lạc An <span class="mono faint">AN</span></h2><button class="btn ghost" type="button">{{i:lock}}Đã khoá mô tả</button></div>
+      <p class="sm muted">Thiếu nữ hồ ly mười bảy tuổi, dáng mảnh, tóc đen dài tới eo buộc một sợi dây đỏ, mắt hổ phách.</p>
+    </div>
+    <div class="insp-sec">
+      <h3>Look <span class="xs faint">chọn theo tập</span></h3>
+      <div class="seg" role="radiogroup" aria-label="Look"><button type="button" role="radio" aria-checked="true">Áo dài đỏ · tập 1–40</button><button type="button" role="radio" aria-checked="false">Hồ ly hiện hình</button><button type="button" role="radio" aria-checked="false">15 tuổi</button></div>
+      <div class="sheet" style="grid-template-columns: repeat(3, minmax(0,1fr))">
+        <div class="view anchor"><div class="fr ft-sheet"><span class="tk">T2</span></div><div class="cap"><span>Mỏ neo</span><span>{{i:check:i-12}}</span></div></div>
+        <div class="view"><div class="fr ft-3"><span class="tk">T1</span></div><div class="cap"><span>Cận mặt</span></div></div>
+        <div class="view"><div class="fr ft-7"><span class="tk">T3</span></div><div class="cap"><span>Nghiêng</span></div></div>
+        <div class="view"><div class="fr ft-1"><span class="tk">T1</span></div><div class="cap"><span>Sau lưng</span></div></div>
+        <div class="view"><div class="fr" style="background:rgb(var(--c-bg-2))"><span class="tk">chờ #3</span></div><div class="cap"><span>3/4</span><span class="faint">đang chờ</span></div></div>
+      </div>
+      <div class="field"><label for="lw">Cụm khoá (lock word)</label><input id="lw" class="input" value="crimson silk áo dài with gold fox embroidery"><span class="hint">Chèn nguyên văn vào mọi prompt đồng bộ dùng look này.</span></div>
+      <div class="field"><span class="label">Phải giữ</span><div class="row"><span class="tag">dây đỏ trên tóc</span><span class="tag">mắt hổ phách</span><span class="tag">tóc dài tới eo</span><button class="btn ghost" type="button">{{i:plus}}Thêm</button></div></div>
+    </div>
+    <div class="insp-sec">
+      <h3>Drift <span class="pill drifted">{{i:face}}14 clip lệch</span></h3>
+      <p class="xs muted">Tập 9–12 · lý do hay gặp nhất: tóc ngắn hơn mỏ neo.</p>
+    </div>
+    <div class="insp-foot"><button class="btn" type="button" data-open="estimate">Ma trận look…</button><button class="btn primary" type="button" data-toast="Đã xếp tạo sheet 5 góc · 5 lượt">{{i:image}}Tạo lại sheet <span class="cost">5 lượt</span></button></div>
+  </aside>
+</div>
