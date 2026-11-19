@@ -270,9 +270,7 @@ def load(
                                    it.end_anchor, m.duration_ms if m is not None else None, dict(it.params or {}),
                                    src={"path": mpath, "fp": {"sha": m.sha256 if m is not None else None}}))
 
-        safe_zone = None
-        if platform and (presets.PRESETS_DIR / "platform").is_dir():
-            safe_zone = presets.load("platform", s, project.id).get(platform, {}).get("safe_zone")
+        safe_zone = _platform_safe_zone(s, project.id, platform, prof) if platform else None
         loaded.seq = SequenceIn(clips_in, lines_in, items_in)
         loaded.options = chunks.PlanOptions(
             profile=prof, variant=variant, lang=lang, subtitle_style=_subtitle_style(s, project, sequence),
@@ -281,6 +279,27 @@ def load(
             scene_max_ms=int((_setting(services, "render.scene_max_s") or 180) * 1000),
         )
     return loaded
+
+
+def _platform_safe_zone(s: Session, project_id: int, platform: str, prof: Profile) -> dict[str, int] | None:
+    """Vùng an toàn của preset nền tảng (Task F: `safe_zone_px` theo khung `safe_zone_ref`) quy về khung dựng.
+    Preset kiểu cũ có sẵn `safe_zone` (px của khung dựng) vẫn được nhận."""
+    from sagareel.services import presets as preset_svc
+    from sagareel.services.export import platforms as plat
+
+    row = preset_svc.find_row(s, "platform", platform, project_id)
+    if row is not None:
+        spec = dict(row.data or {})
+    elif (presets.PRESETS_DIR / "platform").is_dir():
+        raw = presets.load("platform", s, project_id).get(platform) or {}
+        spec = dict(raw.get("data") or raw)
+    else:
+        return None
+    if spec.get("safe_zone"):
+        return dict(spec["safe_zone"])
+    if spec.get("safe_zone_px") and spec.get("safe_zone_ref"):
+        return plat.safe_zone(spec, prof.width, prof.height)
+    return None
 
 
 # --- Kế hoạch -------------------------------------------------------------------------------------------------------

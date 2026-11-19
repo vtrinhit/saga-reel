@@ -86,6 +86,12 @@ def fakes(monkeypatch, owner_ctx, project, make_clip_tiny):
         return state.media_id
 
     pipeline.render = render
+    # collect_cues dựng lại timeline như lúc burn-in: `pipeline.load` + `pipeline.make_plan` (bản giả tối giản).
+    pipeline.load = lambda services, sequence_id, variant, platform, lang: SimpleNamespace(
+        lang=lang, options=SimpleNamespace(subtitles=True, subtitle_style={}))
+    pipeline.make_plan = lambda loaded: SimpleNamespace(timeline=SimpleNamespace(dialogue=[
+        SimpleNamespace(id=1, text="Xin chào", start_ms=0, end_ms=400, subtitle=True, src={}),
+        SimpleNamespace(id=2, text="Tạm biệt", start_ms=600, end_ms=1000, subtitle=True, src={})]))
 
     layout = types.ModuleType("sagareel.render.layout")
     layout.compute = lambda sequence_id: SimpleNamespace(dialogue=[

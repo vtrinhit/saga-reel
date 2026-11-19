@@ -314,27 +314,31 @@ def cue_boxes(cues: Sequence[Any]) -> list[Any]:
     return boxes
 
 
-async def collect_cues(services: Any, sequence_id: int, lang: str, extra: Mapping[str, Any], spec: Mapping[str, Any]) -> list[Any]:
-    """Cue phụ đề của bản dựng: ưu tiên `cues` do pipeline trả; không thì dựng từ layout + `subtitles.build_cues`."""
+async def collect_cues(services: Any, sequence_id: int, lang: str, extra: Mapping[str, Any], spec: Mapping[str, Any],
+                       platform: str | None = None) -> list[Any]:
+    """Cue phụ đề của bản dựng: ưu tiên `cues` do pipeline trả; không thì dựng lại đúng như lúc burn-in — timeline
+    `render.pipeline.load/make_plan` (thoại đã đặt vị trí, mốc từ của take âm thanh) + `subtitles.build_cues` với style
+    của tập và vùng an toàn của nền tảng, trên khung xuất của preset."""
     if extra.get("cues"):
         return list(extra["cues"])
-    try:
-        layout = importlib.import_module("sagareel.render.layout")
+
+    def build() -> list[Any]:
+        pipeline = importlib.import_module("sagareel.render.pipeline")
         subs = importlib.import_module("sagareel.services.audio.subtitles")
-        timeline = await _call(layout.compute, sequence_id)
-        lines = []
-        for d in getattr(timeline, "dialogue", None) or []:
-            start = _field(d, "start_ms")
-            dur = _field(d, "dur_ms") or _field(d, "duration_ms")
-            end = _field(d, "end_ms") if dur is None else start + dur
-            tr = _field(d, "translations") or {}
-            text = tr.get(lang) if isinstance(tr, Mapping) and tr.get(lang) else _field(d, "text")
-            if text and start is not None and end is not None and _field(d, "subtitle") is not False:
-                lines.append({"text": text, "start_ms": start, "end_ms": end})
+        loaded = pipeline.load(services, sequence_id, "final", platform, lang)
+        plan = pipeline.make_plan(loaded)
+        lines = [{"id": d.id, "text": d.text, "start_ms": d.start_ms, "end_ms": d.end_ms,
+                  "words": d.src.get("words"), "lang": loaded.lang}
+                 for d in plan.timeline.dialogue if d.subtitle and d.text.strip()]
+        if not lines or not loaded.options.subtitles:
+            return []
         w, h = platforms.target_size(dict(spec))
-        style = f"{spec['aspect'].replace(':', 'x')}"
-        return list(await _call(subs.build_cues, lines, style, w, h, platforms.safe_zone(dict(spec))))
-    except Exception as e:  # noqa: BLE001 — thiếu module/định dạng khác giả định: gói vẫn xuất, không có phụ đề
+        return list(subs.build_cues(lines, dict(loaded.options.subtitle_style), w, h,
+                                    platforms.safe_zone(dict(spec), w, h)))
+
+    try:
+        return await anyio.to_thread.run_sync(build)
+    except Exception as e:  # noqa: BLE001 — phụ đề hỏng không chặn xuất gói (cảnh báo trong log)
         logger.warning("Không dựng được phụ đề cho tập #%s: %s", sequence_id, e)
         return []
 
@@ -454,7 +458,7 @@ async def run_unit(services: Any, run: Any, export_id: int, step: Any = None) ->
             files.append({"index": i, "total": n, "file": name, "start_ms": a, "end_ms": b})
             step(0.4 + 0.3 * i / n, f"Phần {i}/{n}")
 
-        cues = await collect_cues(services, seq["id"], lang, extra, spec)
+        cues = await collect_cues(services, seq["id"], lang, extra, spec, plat)
         sub_files: list[str] = []
         for f in files:
             suffix = "" if n == 1 else f"-part{f['index']}"
