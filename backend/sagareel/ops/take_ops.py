@@ -9,7 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from sagareel.core.context import OpContext
-from sagareel.core.ops import op
+from sagareel.core.ops import last_change_set_id, op
 from sagareel.services import takes
 
 
@@ -30,7 +30,8 @@ class TakeRateParams(BaseModel):
 
 class TakeVerdictParams(BaseModel):
     take_id: int
-    verdict: Literal["keep", "trim", "fix_post", "regenerate", "reject"]
+    verdict: Literal["keep", "trim", "fix_post", "regenerate", "reject"] | None = Field(
+        description="Phán quyết; null = xoá phán quyết (và lý do)")
     reason: str | None = Field(default=None, description="Lý do (vd. 'tay lỗi'); 2 lần cùng lý do → gợi ý đổi cách")
 
 
@@ -59,7 +60,7 @@ def take_list(ctx: OpContext, p: TakeListParams) -> dict:
 @op("take.select", summary="Chọn take làm đầu ra hiện tại (áp bảng làm-cũ)", params=TakeIdParams, idempotent=True,
     mcp="tool")
 def take_select(ctx: OpContext, p: TakeIdParams) -> dict:
-    return takes.select_take(ctx, p.take_id)
+    return {**takes.select_take(ctx, p.take_id), "change_set_id": last_change_set_id()}
 
 
 @op("take.rate", summary="Chấm điểm take (0–5)", params=TakeRateParams, idempotent=True, mcp="tool")
@@ -67,10 +68,10 @@ def take_rate(ctx: OpContext, p: TakeRateParams) -> dict:
     return takes.rate(ctx, p.take_id, p.rating)
 
 
-@op("take.verdict", summary="Phán quyết take (keep/trim/fix_post/regenerate/reject) kèm lý do",
-    params=TakeVerdictParams, idempotent=True, mcp="tool")
+@op("take.verdict", summary="Phán quyết take (keep/trim/fix_post/regenerate/reject) kèm lý do; null = xoá "
+    "(hoàn tác được)", params=TakeVerdictParams, idempotent=True, mcp="tool")
 def take_verdict(ctx: OpContext, p: TakeVerdictParams) -> dict:
-    return takes.verdict(ctx, p.take_id, p.verdict, p.reason)
+    return {**takes.verdict(ctx, p.take_id, p.verdict, p.reason), "change_set_id": last_change_set_id()}
 
 
 @op("take.note", summary="Ghi chú cho take", params=TakeNoteParams, idempotent=True)

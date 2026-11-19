@@ -147,32 +147,58 @@ def _norm_reason(reason: str | None) -> str:
     return " ".join((reason or "").lower().split())
 
 
-def verdict(ctx: OpContext, take_id: int, value: str, reason: str | None = None) -> dict[str, Any]:
-    """Đặt phán quyết; lý do lưu ở cột `take.verdict_reason`. Sau ≥ 2 take cùng chủ + phần bị `regenerate` với cùng
-    lý do → kèm `suggest_change` (gợi ý đổi cách thay vì tạo lại tiếp, spec §23.9)."""
-    if value not in VERDICTS:
-        raise ValidationFailed(f"Phán quyết phải là một trong: {', '.join(VERDICTS)}.")
+def _owner_project(s: Session, t: Take) -> int | None:
+    table = {"clip": "clip", "variant": "asset_variant", "dialogue": "dialogue_line"}.get(t.owner_type)
+    if table is None:
+        return None
+    try:
+        return entities.project_id_of(s, entities.get(s, table, t.owner_id))
+    except AppError:
+        return None
+
+
+def verdict(ctx: OpContext, take_id: int, value: str | None, reason: str | None = None) -> dict[str, Any]:
+    """Đặt phán quyết (None = xoá phán quyết + lý do); lý do lưu ở cột `take.verdict_reason`. Ghi qua UnitOfWork (có
+    change set, hoàn tác được). Sau ≥ 2 take cùng chủ + phần bị `regenerate` với cùng lý do → kèm `suggest_change`
+    (gợi ý đổi cách thay vì tạo lại tiếp, spec §23.9). Kết quả kèm `previous` (phán quyết + lý do trước đó)."""
+    if value is not None and value not in VERDICTS:
+        raise ValidationFailed(f"Phán quyết phải là một trong: {', '.join(VERDICTS)} (hoặc null để xoá).")
 
     def fn(s, t):
-        t.verdict = value
-        t.verdict_reason = reason or ""
-        if value != "regenerate" or not _norm_reason(reason):
-            return {"suggest_change": None}
-        s.flush()
-        same = [x for x in s.scalars(select(Take).where(
-            Take.owner_type == t.owner_type, Take.owner_id == t.owner_id, Take.part == t.part,
-            Take.verdict == "regenerate"))
-            if _norm_reason(x.verdict_reason) == _norm_reason(reason)]
-        if len(same) >= SUGGEST_AFTER:
-            return {"suggest_change": {
-                "reason": reason, "count": len(same), "take_ids": sorted(x.id for x in same),
-                "message": f"Đã {len(same)} lần tạo lại vì cùng lý do \"{reason}\" — nên đổi cách thay vì tạo lại "
-                           "tiếp.",
-                "suggestions": SUGGESTIONS,
-            }}
-        return {"suggest_change": None}
+        prev = {"verdict": t.verdict or None, "reason": t.verdict_reason or ""}
+        t.verdict = value or ""
+        t.verdict_reason = (reason or "") if value else ""
+        out = _verdict_suggest(s, t, value, reason)
+        out["previous"] = prev
+        return out
 
-    return _write_take(ctx, take_id, fn)
+    u = entities.uow(ctx, f"Phán quyết take #{take_id}", "take.verdict")
+    with u as s:
+        t = get_take(s, take_id)
+        u.track(t)
+        u.project_id = _owner_project(s, t)
+        extra = fn(s, t)
+        s.flush()
+        out = take_out(t, s.get(Media, t.media_id) if t.media_id else None)
+    out.update(extra)
+    return out
+
+
+def _verdict_suggest(s: Session, t: Take, value: str | None, reason: str | None) -> dict[str, Any]:
+    if value != "regenerate" or not _norm_reason(reason):
+        return {"suggest_change": None}
+    s.flush()
+    same = [x for x in s.scalars(select(Take).where(
+        Take.owner_type == t.owner_type, Take.owner_id == t.owner_id, Take.part == t.part,
+        Take.verdict == "regenerate"))
+        if _norm_reason(x.verdict_reason) == _norm_reason(reason)]
+    if len(same) >= SUGGEST_AFTER:
+        return {"suggest_change": {
+            "reason": reason, "count": len(same), "take_ids": sorted(x.id for x in same),
+            "message": f"Đã {len(same)} lần tạo lại vì cùng lý do \"{reason}\" — nên đổi cách thay vì tạo lại tiếp.",
+            "suggestions": SUGGESTIONS,
+        }}
+    return {"suggest_change": None}
 
 
 def apply_selection(s: Session, clip: Clip, take: Take) -> dict[str, Any]:

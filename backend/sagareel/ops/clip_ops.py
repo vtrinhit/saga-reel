@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, ValidationFailed
-from sagareel.core.ops import op
+from sagareel.core.ops import last_change_set_id, op
 from sagareel.ops.project_ops import DeletePreviewOut
 from sagareel.services import clips, entities, llm, takes
 
@@ -151,15 +151,22 @@ class ReviewQueueParams(BaseModel):
     limit: int = Field(default=50, ge=1, le=clips.LIST_MAX)
 
 
+def _with_cs(out: dict) -> dict:
+    """Kèm `change_set_id` của lần ghi (None = không có gì đổi) để UI hoàn tác đúng thao tác."""
+    return {**out, "change_set_id": last_change_set_id()}
+
+
 @op("clip.create", summary="Tạo một clip trong tập (chèn theo rank)", params=ClipCreateParams, mcp="tool")
 def clip_create(ctx: OpContext, p: ClipCreateParams) -> dict:
-    return clips.create(ctx, p.sequence_id, p.fields, p.after_clip_id, p.scene_id)
+    return {**clips.create(ctx, p.sequence_id, p.fields, p.after_clip_id, p.scene_id),
+            "change_set_id": last_change_set_id()}
 
 
 @op("clip.bulk_create", summary="Tạo nhiều clip liền nhau trong tập (một change set)", params=ClipBulkCreateParams,
     mcp="tool")
 def clip_bulk_create(ctx: OpContext, p: ClipBulkCreateParams) -> dict:
-    return {"items": clips.bulk_create(ctx, p.sequence_id, p.clips, p.after_clip_id, p.scene_id)}
+    return {"items": clips.bulk_create(ctx, p.sequence_id, p.clips, p.after_clip_id, p.scene_id),
+            "change_set_id": last_change_set_id()}
 
 
 @op("clip.get", summary="Đọc một clip kèm lời thoại", params=ClipIdParams, read_only=True, idempotent=True,
@@ -177,30 +184,30 @@ def clip_list(ctx: OpContext, p: ClipListParams) -> dict:
 @op("clip.update", summary="Sửa clip (hoàn tác được) + gắn cờ làm-cũ theo trường đổi", params=ClipUpdateParams,
     idempotent=True, mcp="tool")
 def clip_update(ctx: OpContext, p: ClipUpdateParams) -> dict:
-    return clips.update(ctx, p.id, p.values, p.expected_updated_at)
+    return _with_cs(clips.update(ctx, p.id, p.values, p.expected_updated_at))
 
 
 @op("clip.bulk_update", summary="Sửa cùng giá trị cho nhiều clip (một change set)", params=ClipBulkUpdateParams,
     idempotent=True, mcp="tool")
 def clip_bulk_update(ctx: OpContext, p: ClipBulkUpdateParams) -> dict:
-    return clips.bulk_update(ctx, p.ids, p.values)
+    return _with_cs(clips.bulk_update(ctx, p.ids, p.values))
 
 
 @op("clip.move", summary="Đổi thứ tự clip (chỉ ghi rank của clip được di chuyển), tuỳ chọn đổi cảnh",
     params=ClipMoveParams, mcp="tool")
 def clip_move(ctx: OpContext, p: ClipMoveParams) -> dict:
-    return clips.move(ctx, p.ids, p.after_clip_id, p.scene_id)
+    return _with_cs(clips.move(ctx, p.ids, p.after_clip_id, p.scene_id))
 
 
 @op("clip.split", summary="Tách clip tại một mốc (ms): hai clip cùng take, cắt bằng trim", params=ClipSplitParams)
 def clip_split(ctx: OpContext, p: ClipSplitParams) -> dict:
-    return clips.split(ctx, p.id, p.at_ms)
+    return _with_cs(clips.split(ctx, p.id, p.at_ms))
 
 
 @op("clip.duplicate", summary="Nhân bản clip (prompt, tài sản, shot, lời thoại; không take)",
     params=ClipDuplicateParams)
 def clip_duplicate(ctx: OpContext, p: ClipDuplicateParams) -> dict:
-    return clips.duplicate(ctx, p.id, p.after_clip_id)
+    return _with_cs(clips.duplicate(ctx, p.id, p.after_clip_id))
 
 
 @op("clip.delete_preview", summary="Xem tác động của việc xoá clip và lấy confirm_token",
@@ -213,7 +220,7 @@ def clip_delete_preview(ctx: OpContext, p: ClipDeletePreviewParams) -> dict:
 @op("clip.delete", summary="Xoá (mềm) clip; take giữ nguyên, timeline neo sang clip kế", params=ClipDeleteParams,
     destructive=True, mcp="tool")
 def clip_delete(ctx: OpContext, p: ClipDeleteParams) -> dict:
-    return clips.delete(ctx, p.confirm_token)
+    return _with_cs(clips.delete(ctx, p.confirm_token))
 
 
 @op("clip.regenerate", summary="Tạo lại ảnh/video của clip thành take mới (không ghi đè); dry_run chỉ ước tính",
