@@ -34,7 +34,7 @@ Cập nhật sau mỗi mốc và sau mỗi lần gọi provider thật.
 |---|---|---|---|
 | Nghiên cứu OSS | đang làm (dừng giữa chừng vì hết hạn mức) | | Đã có: `docs/research/raw/assembly-editor-clone.md`. Còn chờ 4 báo cáo agent (nền tảng phim ngắn; skill/planner; TTS; thông số nền tảng) + agent design system (ghi `DESIGN.md`, `docs/design/preview.html`). Báo cáo nào chưa lưu thành file thì chạy lại agent đó. Sau đó: viết `oss-study.md`, `platform-specs.md`, spec. |
 | Spec | xong bản 1 + rà soát người xây | | `docs/superpowers/specs/2026-11-19-sagareel-studio-design.md`; còn bổ sung preset nền tảng + prompt mặc định khi có nghiên cứu |
-| M0 | chưa | | |
+| M0 | đang làm | nhánh `m0-foundation` | Xong & gộp: T1–T7, T9, T16, T17a (+T8 đã gộp, đang sửa test tích hợp). Đang làm: T10–T14. Còn: T15, T8b, T17b, T18. Sổ chi tiết: `.superpowers/sdd/2026-11-19-m0-foundation/progress.md` |
 | M1 | chưa | | |
 | M2 | chưa | | |
 | M3 | chưa | | |
