@@ -33,8 +33,9 @@ M0_DEFAULTS = {
     "budget.videos_total": ("int", 20, None),
     "jobs.ffmpeg_concurrency": ("int", 2, None),
     "remote.public_hosts": ("json", [], None),
-    "remote.require_login_local": ("bool", False, None),
+    "remote.require_login_local": ("bool", True, None),
     "remote.allow_viewer": ("bool", False, None),
+    "remote.client_ip_header": ("str", "cf-connecting-ip", None),
 }
 
 

@@ -16,13 +16,14 @@ import binascii
 import hashlib
 import hmac
 import ipaddress
+import posixpath
 import re
 import secrets
 import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Literal
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from starlette.requests import HTTPConnection
 
@@ -222,21 +223,20 @@ def is_local(request: HTTPConnection) -> bool:
     return not has_forwarding_headers(request)
 
 
-def client_ip(conn: HTTPConnection) -> str:
-    """IP để ghi vào phiên / giới hạn đăng nhập: sau tunnel trên loopback lấy IP từ header của tunnel.
+def client_ip(conn: HTTPConnection, trusted_header: str = "") -> str:
+    """IP của client để giới hạn đăng nhập sai và ghi vào phiên.
 
-    Header có thể bị giả mạo khi proxy không ghi đè nó — chỉ dùng để hiển thị và chia nhóm giới hạn, không bao giờ
-    để quyết định quyền.
+    Chỉ tin đúng **một** header do tunnel/proxy ghi đè (`remote.client_ip_header`, mặc định `cf-connecting-ip`), và
+    chỉ khi kết nối đến từ loopback (tunnel chạy trên máy này). X-Forwarded-For / X-Real-IP không bao giờ được dùng
+    (kẻ tấn công tự đặt được). Header có nhiều giá trị → lấy giá trị cuối (do proxy gần nhất thêm). Không có header
+    (hoặc `trusted_header` rỗng) → IP socket. Không bao giờ dùng để quyết định quyền.
     """
     peer = conn.client.host if conn.client else ""
-    if _is_loopback_ip(peer):
-        for h in ("cf-connecting-ip", "x-real-ip"):
-            v = conn.headers.get(h, "").strip()
-            if v:
-                return v[:64]
-        xff = conn.headers.get("x-forwarded-for", "")
-        if xff.strip():
-            return xff.split(",")[0].strip()[:64]
+    name = trusted_header.strip().lower()
+    if name and _is_loopback_ip(peer):
+        value = conn.headers.get(name, "").split(",")[-1].strip()
+        if value:
+            return value[:64]
     return peer[:64]
 
 
@@ -270,15 +270,34 @@ _SLASHES_RE = re.compile(r"/{2,}")
 
 
 def normalize_path(path: str) -> str:
-    return _SLASHES_RE.sub("/", "/" + path.lstrip("/")).lower()
+    """Dạng so sánh của đường dẫn: dấu gạch ngược → `/`, giải mã `%xx` (tối đa 3 lớp), gộp `//`, chữ thường.
+
+    Không xử lý `.`/`..` (xem `is_protected_path`).
+    """
+    p = path.replace("\\", "/")
+    for _ in range(3):
+        q = unquote(p)
+        if q == p:
+            break
+        p = q.replace("\\", "/")
+    return _SLASHES_RE.sub("/", "/" + p.lstrip("/")).lower()
 
 
-def is_protected_path(path: str) -> bool:
-    """Mặc định chặn: `/api*` (trừ health + 3 route auth, khớp đúng), `/media*`, OpenAPI/docs. Còn lại là file SPA."""
-    p = normalize_path(path)
+def _protected_form(p: str) -> bool:
     if p in PUBLIC_API_PATHS:
         return False
     return any(p == pre or p.startswith(pre + "/") for pre in _PROTECTED_PREFIXES)
+
+
+def is_protected_path(path: str) -> bool:
+    """Mặc định chặn: `/api*` (trừ health + 3 route auth, khớp đúng), `/media*`, OpenAPI/docs. Còn lại là file SPA.
+
+    Xét cả dạng chưa và đã giải `.`/`..`; dạng nào được bảo vệ thì chặn (vd. `/media/../api/health` và
+    `/api/ops/../health` đều bị chặn — route `{path:path}` có thể khớp đường dẫn thô).
+    """
+    p = normalize_path(path)
+    resolved = posixpath.normpath(p)
+    return _protected_form(p) or _protected_form(resolved if resolved.startswith("/") else "/" + resolved)
 
 
 # --- Lỗi chuẩn ----------------------------------------------------------------------------------------------------

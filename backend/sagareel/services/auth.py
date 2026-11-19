@@ -47,6 +47,7 @@ class AccessConfig:
     allow_viewer: bool
     owner_password_set: bool
     viewer_password_set: bool
+    client_ip_header: str = "cf-connecting-ip"
 
     @property
     def trusted_hosts(self) -> frozenset[str]:
@@ -80,6 +81,7 @@ def load_access_config(services: Services) -> AccessConfig:
         allow_viewer=value("remote.allow_viewer") is True,
         owner_password_set="owner" in roles,
         viewer_password_set="viewer" in roles,
+        client_ip_header=ip_header if isinstance(ip_header := value("remote.client_ip_header"), str) else "",
     )
 
 
@@ -141,6 +143,28 @@ def authenticate_session(services: Services, raw: str, cfg: AccessConfig) -> Pri
         return Principal(role=row.role, actor=f"user:{row.role}", via="session", session_id=row.id)
 
 
+def principal_still_valid(services: Services, principal: Principal | None) -> bool:
+    """Kiểm lại principal của kết nối dài (SSE): phiên/token chưa thu hồi/hết hạn, vai trò vẫn được phép."""
+    if principal is None:
+        return False
+    cfg = access_config(services)
+    if principal.via == "local":
+        return not cfg.local_login_required
+    model = {"session": AuthSession, "token": ApiToken}.get(principal.via)
+    row_id = principal.session_id if principal.via == "session" else principal.token_id
+    if model is None or row_id is None:
+        return False
+    with services.db.session() as s:
+        row = s.get(model, row_id)
+        return (
+            row is not None
+            and row.revoked_at is None
+            and not _expired(row.expires_at, utcnow())
+            and row.role == principal.role
+            and _role_allowed(row.role, cfg)
+        )
+
+
 # --- Đăng nhập ----------------------------------------------------------------------------------------------------
 
 
@@ -155,50 +179,63 @@ def too_many_attempts(retry_after: int) -> AppError:
 
 
 class LoginLimiter:
-    """Giới hạn lần thử đăng nhập trong cửa sổ 60 s: 5 lần/IP và 30 lần/kết nối nguồn (peer).
+    """Chống dò mật khẩu, cửa sổ 60 s.
 
-    Lần thử được "giữ chỗ" trước khi kiểm mật khẩu (đồng thời cũng không vượt được), đăng nhập đúng thì trả chỗ.
-    IP lấy từ header của tunnel (giả được nếu proxy không ghi đè) nên có thêm hạn mức theo peer thật của socket: sau
-    tunnel mọi client chung peer 127.0.0.1 → tổng 30 lần sai/phút (đánh đổi: kẻ tấn công có thể làm chủ tạm thời
-    không đăng nhập được từ xa trong 1 phút; máy cục bộ vẫn vào được).
+    - **Theo IP** (`security.client_ip`, chỉ tin header `remote.client_ip_header`): cứng 5 lần sai/phút → 429. Lần thử
+      được "giữ chỗ" trước khi kiểm mật khẩu (gửi đồng thời cũng không vượt được); đăng nhập đúng thì trả chỗ.
+    - **Theo kết nối nguồn (peer)**: sau tunnel mọi client chung peer 127.0.0.1, nên ở mức này **không từ chối** (từ
+      chối = kẻ tấn công khoá được chủ ngoài cửa) mà **làm chậm dần**: mỗi lần sai quá `free` lần trong cửa sổ thêm
+      `step` giây, tối đa `max_delay`. Mật khẩu đúng vẫn qua. Request cục bộ (`is_local`) không bị tính, không bị chậm.
     """
 
-    def __init__(self, per_ip: int = 5, per_peer: int = 30, window: float = 60.0) -> None:
-        self.per_ip, self.per_peer, self.window = per_ip, per_peer, window
+    def __init__(
+        self, per_ip: int = 5, window: float = 60.0, free: int = 5, step: float = 0.1, max_delay: float = 3.0
+    ) -> None:
+        self.per_ip, self.window = per_ip, window
+        self.free, self.step, self.max_delay = free, step, max_delay
         self._lock = threading.Lock()
-        self._hits: dict[str, deque[float]] = {}
+        self._ip: dict[str, deque[float]] = {}
+        self._peer: dict[str, deque[float]] = {}
 
-    def _prune(self, key: str, now: float) -> deque[float]:
-        dq = self._hits.setdefault(key, deque())
+    def _prune(self, table: dict[str, deque[float]], key: str, now: float) -> deque[float]:
+        if len(table) > 10_000:
+            for k in [k for k, dq in table.items() if not dq or dq[-1] <= now - self.window]:
+                del table[k]
+        dq = table.setdefault(key, deque())
         while dq and dq[0] <= now - self.window:
             dq.popleft()
         return dq
 
-    def acquire(self, peer: str, ip: str) -> tuple[tuple[str, ...], float]:
+    def acquire(self, ip: str) -> tuple[str, float]:
+        """Giữ chỗ một lần thử cho `ip`; đã đủ 5 lần sai (kể cả đang thử) trong 60 s → `too_many_attempts`."""
         now = time.monotonic()
-        keys = ((f"ip:{peer}|{ip}", self.per_ip), (f"peer:{peer}", self.per_peer))
         with self._lock:
-            if len(self._hits) > 10_000:
-                for k in [k for k, dq in self._hits.items() if not dq or dq[-1] <= now - self.window]:
-                    del self._hits[k]
-            for key, limit in keys:
-                dq = self._prune(key, now)
-                if len(dq) >= limit:
-                    raise too_many_attempts(max(1, int(dq[0] + self.window - now) + 1))
-            for key, _ in keys:
-                self._hits[key].append(now)
-        return tuple(k for k, _ in keys), now
+            dq = self._prune(self._ip, ip, now)
+            if len(dq) >= self.per_ip:
+                raise too_many_attempts(max(1, int(dq[0] + self.window - now) + 1))
+            dq.append(now)
+        return ip, now
 
-    def release(self, ticket: tuple[tuple[str, ...], float]) -> None:
-        keys, stamp = ticket
+    def release(self, ticket: tuple[str, float]) -> None:
+        ip, stamp = ticket
         with self._lock:
-            for key in keys:
-                dq = self._hits.get(key)
-                if dq is not None:
-                    try:
-                        dq.remove(stamp)
-                    except ValueError:
-                        pass
+            dq = self._ip.get(ip)
+            if dq is not None:
+                try:
+                    dq.remove(stamp)
+                except ValueError:
+                    pass
+
+    def delay(self, peer: str) -> float:
+        """Số giây phải chờ trước khi kiểm mật khẩu, theo số lần sai gần đây từ `peer`."""
+        with self._lock:
+            n = len(self._prune(self._peer, peer, time.monotonic()))
+        return min(self.max_delay, self.step * max(0, n - self.free))
+
+    def record_peer_failure(self, peer: str) -> None:
+        now = time.monotonic()
+        with self._lock:
+            self._prune(self._peer, peer, now).append(now)
 
 
 @dataclass(frozen=True)
@@ -269,19 +306,37 @@ def _no_token(ctx: OpContext, what: str) -> None:
         raise Forbidden(f"Token API không được phép {what}; hãy làm trong giao diện hoặc trên máy cục bộ.")
 
 
-def set_password(ctx: OpContext, role: str, password: str) -> dict:
-    """Đặt/đổi mật khẩu một vai trò. Lần đầu (chưa có mật khẩu chủ) chỉ từ máy cục bộ. Thu hồi mọi phiên của vai trò
-    đó (kể cả phiên đang gọi — đăng nhập lại bằng mật khẩu mới)."""
+def invalid_current_password() -> AppError:
+    return Forbidden(
+        "Mật khẩu hiện tại của chủ sở hữu không đúng.",
+        hint="Nhập mật khẩu chủ sở hữu hiện tại vào `current_password` để đổi mật khẩu.",
+        code="invalid_current_password",
+    )
+
+
+def set_password(ctx: OpContext, role: str, password: str, current_password: str | None = None) -> dict:
+    """Đặt/đổi mật khẩu một vai trò.
+
+    - Mật khẩu chủ lần đầu chỉ đặt được từ máy cục bộ; mật khẩu người xem cần có mật khẩu chủ trước.
+    - Vai trò đã có mật khẩu (đổi mật khẩu) → bắt buộc `current_password` = mật khẩu **chủ** hiện tại; đổi xong thu hồi
+      mọi phiên **và** token API của vai trò đó (kể cả phiên đang gọi — đăng nhập lại bằng mật khẩu mới).
+    """
     _no_token(ctx, "đặt mật khẩu")
     services = ctx.services
     with services.db.session() as s:
         hashes = {r.role: r.password_hash for r in s.scalars(select(AuthSecret))}
-    if "owner" not in hashes and ctx.via != "local":
-        raise Forbidden(
-            "Mật khẩu lần đầu chỉ đặt được trên máy cục bộ.",
-            hint="Mở http://127.0.0.1:8990 ngay trên máy chạy SagaReel để đặt mật khẩu.",
-            code="local_only",
-        )
+    if "owner" not in hashes:
+        if ctx.via != "local":
+            raise Forbidden(
+                "Mật khẩu lần đầu chỉ đặt được trên máy cục bộ.",
+                hint="Mở http://127.0.0.1:8990 ngay trên máy chạy SagaReel để đặt mật khẩu.",
+                code="local_only",
+            )
+        if role != "owner":
+            raise Forbidden("Hãy đặt mật khẩu chủ sở hữu trước.", code="owner_password_required")
+    changing = role in hashes
+    if changing and not (current_password and security.verify_password(current_password, hashes["owner"])):
+        raise invalid_current_password()
     other = "viewer" if role == "owner" else "owner"
     if other in hashes and security.verify_password(password, hashes[other]):
         raise ValidationFailed(
@@ -290,6 +345,7 @@ def set_password(ctx: OpContext, role: str, password: str) -> dict:
         )
     new_hash = security.hash_password(password)  # băm ngoài transaction ghi
     now = utcnow()
+    revoked_tokens = 0
     with services.db.session() as s:
         row = s.scalars(select(AuthSecret).where(AuthSecret.role == role)).first()
         if row is None:
@@ -301,8 +357,12 @@ def set_password(ctx: OpContext, role: str, password: str) -> dict:
             .where(AuthSession.role == role, AuthSession.revoked_at.is_(None))
             .values(revoked_at=now)
         ).rowcount
+        if changing:
+            revoked_tokens = s.execute(
+                update(ApiToken).where(ApiToken.role == role, ApiToken.revoked_at.is_(None)).values(revoked_at=now)
+            ).rowcount
     invalidate(services)
-    return {"role": role, "revoked_sessions": revoked or 0}
+    return {"role": role, "revoked_sessions": revoked or 0, "revoked_tokens": revoked_tokens or 0}
 
 
 def _token_dict(t: ApiToken, now: datetime) -> dict:

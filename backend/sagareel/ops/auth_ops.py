@@ -17,22 +17,31 @@ RoleName = Literal["owner", "viewer"]
 class SetPasswordParams(BaseModel):
     role: RoleName = Field(description="Vai trò: owner (chủ sở hữu) hoặc viewer (người xem)")
     password: str = Field(min_length=8, max_length=1024, description="Mật khẩu mới, tối thiểu 8 ký tự")
+    current_password: str | None = Field(
+        None,
+        max_length=1024,
+        description="Mật khẩu CHỦ SỞ HỮU hiện tại — bắt buộc khi vai trò này đã có mật khẩu (đổi mật khẩu)",
+    )
 
 
 class SetPasswordResult(BaseModel):
     role: RoleName
     revoked_sessions: int
+    revoked_tokens: int
 
 
 @op(
     "auth.set_password",
-    summary="Đặt/đổi mật khẩu chủ sở hữu hoặc người xem (lần đầu chỉ từ máy cục bộ); thu hồi phiên của vai trò đó",
+    summary=(
+        "Đặt/đổi mật khẩu chủ sở hữu hoặc người xem (lần đầu chỉ từ máy cục bộ; đổi cần mật khẩu chủ hiện tại); "
+        "thu hồi phiên và token API của vai trò đó"
+    ),
     params=SetPasswordParams,
     result=SetPasswordResult,
     viewer=False,
 )
 def auth_set_password(ctx: OpContext, p: SetPasswordParams) -> dict:
-    return auth.set_password(ctx, p.role, p.password)
+    return auth.set_password(ctx, p.role, p.password, p.current_password)
 
 
 class TokenInfo(BaseModel):

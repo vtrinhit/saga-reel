@@ -19,6 +19,8 @@ from sagareel.db.base import utcnow
 from sagareel.db.models import ApiToken, AuthSession
 
 BASE = "http://127.0.0.1:8990"
+# Trình duyệt từ xa nói https với tunnel → cookie `Secure` phải được gửi lại; client test cũng dùng https.
+REMOTE_BASE = "https://127.0.0.1:8990"
 PUBLIC = "studio.example.com"
 REMOTE_H = {"Host": PUBLIC}
 
@@ -42,15 +44,31 @@ def local_client(app):
 @pytest.fixture
 def remote_client(app, local_client):
     # Tunnel (cloudflared) nối từ 127.0.0.1 nhưng luôn gắn CF-Connecting-IP. Dùng chung app (lifespan do local_client).
-    c = TestClient(app, base_url=BASE, client=("127.0.0.1", 50001), headers={"CF-Connecting-IP": "1.2.3.4"})
+    c = TestClient(app, base_url=REMOTE_BASE, client=("127.0.0.1", 50001), headers={"CF-Connecting-IP": "1.2.3.4"})
+    c.portal = local_client.portal  # cùng event loop với lifespan (EventBus đã bind vào loop đó) — cần cho SSE
     try:
         yield c
     finally:
         c.close()
 
 
+def _extra_client(app, base_url, port, headers=None) -> TestClient:
+    """Client phụ dùng chung app (không chạy lại lifespan — lifespan do `local_client` giữ)."""
+    return TestClient(app, base_url=base_url, client=("127.0.0.1", port), headers=headers)
+
+
 def _op(client, name, body=None, headers=None):
+    """POST một op; client đã đăng nhập bằng cookie thì tự gửi X-SR-CSRF (trừ khi test tự đặt header này)."""
+    headers = dict(headers or {})
+    if "sr_csrf" in client.cookies and not any(k.lower() == "x-sr-csrf" for k in headers):
+        headers["X-SR-CSRF"] = client.cookies["sr_csrf"]
     return client.post(f"/api/ops/{name}", json=body if body is not None else {}, headers=headers)
+
+
+def _local_login(client, password):
+    r = client.post("/api/auth/login", json={"password": password, "remember": False})
+    assert r.status_code == 200, r.text
+    return r
 
 
 @pytest.fixture
@@ -58,6 +76,9 @@ def owner_password(local_client) -> str:
     pw = "mat-khau-chu-123"
     r = _op(local_client, "auth.set_password", {"role": "owner", "password": pw})
     assert r.status_code == 200, r.text
+    # `remote.require_login_local` mặc định bật → có mật khẩu chủ rồi thì máy cục bộ cũng phải đăng nhập.
+    assert _op(local_client, "system.info").status_code == 401
+    _local_login(local_client, pw)
     return pw
 
 
@@ -155,11 +176,11 @@ def test_token_raw_shown_once(local_client):
 def test_first_password_only_from_local(remote_client, owner_token):
     # Không đăng nhập được → 401.
     r = _op(remote_client, "auth.set_password", {"role": "owner", "password": "abcdefgh1"}, headers=REMOTE_H)
-    assert r.status_code in (401, 403)
+    assert r.status_code == 401 and r.json()["error_code"] == "auth_required"
     # Kể cả token owner hợp lệ từ xa cũng không được đặt mật khẩu lần đầu.
     h = {**REMOTE_H, "Authorization": f"Bearer {owner_token}"}
     r = _op(remote_client, "auth.set_password", {"role": "owner", "password": "abcdefgh1"}, headers=h)
-    assert r.status_code == 403
+    assert r.status_code == 403 and r.json()["error_code"] == "forbidden"  # token không được đặt mật khẩu
     assert remote_client.get("/api/auth/status", headers=REMOTE_H).json()["password_set"]["owner"] is False
 
 
@@ -291,9 +312,15 @@ def test_remote_status_unauthenticated(remote_client):
                  "password_set": {"owner": False, "viewer": False}}
 
 
-def test_local_status(local_client, owner_password):
+def test_local_status(local_client):
     s = local_client.get("/api/auth/status").json()
     assert s == {"authenticated": True, "role": "owner", "via": "local", "local": True,
+                 "password_set": {"owner": False, "viewer": False}}
+
+
+def test_local_status_after_password_is_session(local_client, owner_password):
+    s = local_client.get("/api/auth/status").json()
+    assert s == {"authenticated": True, "role": "owner", "via": "session", "local": True,
                  "password_set": {"owner": True, "viewer": False}}
 
 
@@ -344,14 +371,27 @@ def test_login_not_remember_is_browser_session_with_12h_db_expiry(remote_client,
     r = _login(remote_client, owner_password, remember=False)
     assert r.status_code == 200
     sess = next(c for c in r.headers.get_list("set-cookie") if c.startswith("sr_session="))
-    assert "max-age" not in sess.lower() and "secure" not in sess.lower()
+    assert "max-age" not in sess.lower()
     with app.state.services.db.session() as s:
-        row = s.scalars(select(AuthSession)).one()
+        row = s.scalars(select(AuthSession).where(AuthSession.ip == "1.2.3.4")).one()
         raw = sess.split(";", 1)[0].split("=", 1)[1]
         assert row.token_hash == hashlib.sha256(raw.encode()).hexdigest()  # chỉ lưu hash
         left = row.expires_at - utcnow()
         assert timedelta(hours=11, minutes=59) < left <= timedelta(hours=12)
         assert row.ip == "1.2.3.4" and row.remember is False
+
+
+def test_secure_cookie_on_public_host_even_over_http(local_client, owner_password, app):
+    # Tunnel nói http với app nhưng trình duyệt dùng https: Host công khai → luôn Secure.
+    c = _extra_client(app, BASE, 50002, {"CF-Connecting-IP": "5.6.7.8"})
+    r = _login(c, owner_password)
+    c.close()
+    assert r.status_code == 200
+    assert all("secure" in v.lower() for v in r.headers.get_list("set-cookie"))
+    # Đăng nhập cục bộ qua http://127.0.0.1:8990 → không Secure (cookie phải dùng được trên http).
+    r = local_client.post("/api/auth/login", json={"password": owner_password})
+    sess = next(c for c in r.headers.get_list("set-cookie") if c.startswith("sr_session="))
+    assert "secure" not in sess.lower()
 
 
 def test_login_wrong_password(remote_client, owner_password):
@@ -362,7 +402,7 @@ def test_login_wrong_password(remote_client, owner_password):
 
 def test_login_without_any_password(remote_client):
     r = _login(remote_client, "gi-cung-duoc")
-    assert r.status_code in (401, 403)
+    assert r.status_code == 403 and r.json()["error_code"] == "password_not_set"
     assert "sr_session" not in remote_client.cookies
 
 
@@ -381,6 +421,7 @@ def test_csrf_wrong_token_or_origin(remote_client, owner_password):
     r = _op(remote_client, "settings.set_global", {"values": {}}, headers={**h, "Origin": "https://evil.com"})
     assert r.status_code == 403 and r.json()["error_code"] == "csrf_failed"
     # Cookie sr_csrf bị ghi đè (vd. từ subdomain) + header khớp cookie đó vẫn không qua: token gắn với phiên.
+    remote_client.cookies.delete("sr_csrf")
     remote_client.cookies.set("sr_csrf", "forged")
     r = _op(remote_client, "settings.set_global", {"values": {}}, headers={**h, "X-SR-CSRF": "forged"})
     assert r.status_code == 403
@@ -403,28 +444,55 @@ def test_logout_revokes_session(remote_client, owner_password):
 
 def test_session_list_and_revoke(local_client, remote_client, owner_password):
     _login(remote_client, owner_password)
-    sessions = _op(local_client, "session.list").json()
+    sessions = [x for x in _op(local_client, "session.list").json() if x["ip"] == "1.2.3.4"]
     assert len(sessions) == 1 and sessions[0]["active"] and sessions[0]["role"] == "owner"
     assert "token_hash" not in sessions[0]
     assert _op(local_client, "session.revoke", {"id": sessions[0]["id"]}).status_code == 200
     assert _op(remote_client, "system.info", headers=_csrf_headers(remote_client)).status_code == 401
-    assert _op(local_client, "session.list").json()[0]["active"] is False
+    by_id = {x["id"]: x for x in _op(local_client, "session.list").json()}
+    assert by_id[sessions[0]["id"]]["active"] is False
     assert _op(local_client, "session.revoke", {"id": 999}).status_code == 404
 
 
-def test_password_change_revokes_sessions_of_role(local_client, remote_client, owner_password):
+def test_password_change_revokes_sessions_and_tokens_of_role(local_client, remote_client, owner_password):
     _login(remote_client, owner_password)
-    assert _op(local_client, "auth.set_password", {"role": "owner", "password": "mat-khau-moi-789"}).status_code == 200
+    tok = _op(local_client, "token.create", {"name": "agent1", "role": "owner"}).json()["token"]
+    bh = {**REMOTE_H, "Authorization": f"Bearer {tok}"}
+    assert _op(remote_client, "system.info", headers=bh).status_code == 200
+    r = _op(local_client, "auth.set_password",
+            {"role": "owner", "password": "mat-khau-moi-789", "current_password": owner_password})
+    assert r.status_code == 200 and r.json()["revoked_tokens"] == 1 and r.json()["revoked_sessions"] == 2
     assert _op(remote_client, "system.info", headers=_csrf_headers(remote_client)).status_code == 401
+    assert _op(remote_client, "system.info", headers=bh).status_code == 401
+    assert _op(local_client, "system.info").status_code == 401  # phiên của chính người đổi cũng bị thu hồi
     assert _login(remote_client, owner_password).status_code == 401
     assert _login(remote_client, "mat-khau-moi-789").status_code == 200
 
 
-def test_remote_owner_session_can_change_password(remote_client, owner_password):
+def test_password_change_requires_current_owner_password(local_client, remote_client, owner_password):
     _login(remote_client, owner_password)
-    r = _op(remote_client, "auth.set_password", {"role": "owner", "password": "doi-tu-xa-000"},
+    body = {"role": "owner", "password": "doi-tu-xa-000"}
+    for extra in ({}, {"current_password": "sai-roi-123"}):
+        r = _op(remote_client, "auth.set_password", {**body, **extra}, headers=_csrf_headers(remote_client))
+        assert r.status_code == 403 and r.json()["error_code"] == "invalid_current_password"
+    # Máy cục bộ (đã có mật khẩu) cũng phải nhập mật khẩu hiện tại.
+    r = _op(local_client, "auth.set_password", body)
+    assert r.status_code == 403 and r.json()["error_code"] == "invalid_current_password"
+    r = _op(remote_client, "auth.set_password", {**body, "current_password": owner_password},
             headers=_csrf_headers(remote_client))
     assert r.status_code == 200
+
+
+def test_viewer_password_change_requires_owner_password(local_client, viewer_password, owner_password):
+    body = {"role": "viewer", "password": "xem-moi-12345"}
+    r = _op(local_client, "auth.set_password", {**body, "current_password": viewer_password})
+    assert r.status_code == 403  # phải là mật khẩu CHỦ, không phải mật khẩu người xem
+    assert _op(local_client, "auth.set_password", {**body, "current_password": owner_password}).status_code == 200
+
+
+def test_viewer_password_needs_owner_first(local_client):
+    r = _op(local_client, "auth.set_password", {"role": "viewer", "password": "xem-12345678"})
+    assert r.status_code == 403 and r.json()["error_code"] == "owner_password_required"
 
 
 def test_password_validation(local_client, owner_password):
@@ -526,22 +594,25 @@ def test_bearer_on_media_and_events(remote_client, owner_token):
 # --- Bắt đăng nhập cả ở máy cục bộ -------------------------------------------------------------------------------
 
 
-def test_require_login_local(local_client, owner_password):
-    assert _op(local_client, "settings.set_global", {"values": {"remote.require_login_local": True}}).status_code == 200
-    r = _op(local_client, "system.info")
-    assert r.status_code == 401
-    assert local_client.get("/api/auth/status").json()["local"] is True
-    r = local_client.post("/api/auth/login", json={"password": owner_password, "remember": False})
+def test_require_login_local_default_on(local_client, owner_password, app):
+    # nginx `proxy_pass http://127.0.0.1:8990` không gắn header → trông như máy cục bộ: vẫn phải đăng nhập.
+    fresh = _extra_client(app, BASE, 50003)
+    r = _op(fresh, "system.info")
+    assert r.status_code == 401 and r.json()["error_code"] == "auth_required"
+    s = fresh.get("/api/auth/status").json()
+    assert s["local"] is True and s["authenticated"] is False
+    # Tắt cờ (từ phiên đã đăng nhập) → máy cục bộ lại là chủ không cần đăng nhập.
+    r = _op(local_client, "settings.set_global", {"values": {"remote.require_login_local": False}})
     assert r.status_code == 200
-    h = {"X-SR-CSRF": local_client.cookies["sr_csrf"]}
-    assert _op(local_client, "system.info", headers=h).status_code == 200
-    r = _op(local_client, "settings.set_global", {"values": {"remote.require_login_local": False}}, headers=h)
-    assert r.status_code == 200
+    assert fresh.get("/api/auth/status").json()["via"] == "local"
+    assert _op(fresh, "system.info").status_code == 200
+    fresh.close()
 
 
 def test_require_login_local_ignored_without_owner_password(local_client):
-    assert _op(local_client, "settings.set_global", {"values": {"remote.require_login_local": True}}).status_code == 200
-    assert _op(local_client, "system.info").status_code == 200  # không tự khoá mình ngoài cửa
+    r = _op(local_client, "settings.explain").json()
+    assert next(x for x in r if x["key"] == "remote.require_login_local")["value"] is True  # mặc định bật
+    assert _op(local_client, "system.info").status_code == 200  # chưa có mật khẩu: không tự khoá mình ngoài cửa
 
 
 # --- OpContext lấy từ principal ------------------------------------------------------------------------------------
@@ -589,3 +660,192 @@ def test_security_check_crash_returns_standard_500(local_client, monkeypatch):
     monkeypatch.setattr(auth, "access_config", boom)
     r = local_client.get("/api/health")
     assert r.status_code == 500 and r.json()["error_code"] == "internal_error"
+
+
+# --- Fix round 1 --------------------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sleeps(monkeypatch) -> list[float]:
+    """Ghi lại độ trễ chống dò mật khẩu thay vì ngủ thật."""
+    from sagareel.api import routes_auth
+
+    recorded: list[float] = []
+
+    async def fake_sleep(seconds):
+        recorded.append(seconds)
+
+    monkeypatch.setattr(routes_auth, "_sleep", fake_sleep)
+    return recorded
+
+
+def test_rate_limit_ignores_untrusted_ip_headers(remote_client, owner_password):
+    # Header tin cậy mặc định là CF-Connecting-IP (cố định 1.2.3.4): đổi XFF / X-Real-IP không lách được.
+    for i in range(5):
+        h = {"X-Forwarded-For": f"9.9.9.{i}", "X-Real-IP": f"8.8.8.{i}"}
+        assert _login(remote_client, "sai", headers=h).status_code == 401
+    r = _login(remote_client, owner_password, headers={"X-Forwarded-For": "7.7.7.7", "X-Real-IP": "6.6.6.6"})
+    assert r.status_code == 429
+
+
+def test_rate_limit_without_trusted_header_uses_socket_peer(local_client, remote_client, owner_password):
+    assert _op(local_client, "settings.set_global", {"values": {"remote.client_ip_header": ""}}).status_code == 200
+    for i in range(5):
+        assert _login(remote_client, "sai", headers={"CF-Connecting-IP": f"10.0.0.{i}"}).status_code == 401
+    r = _login(remote_client, owner_password, headers={"CF-Connecting-IP": "10.0.0.99"})
+    assert r.status_code == 429
+
+
+def test_junk_flood_slows_but_never_blocks_owner(remote_client, owner_password, sleeps):
+    for i in range(12):  # mỗi IP 1 lần sai: không IP nào chạm hạn mức 5
+        assert _login(remote_client, "rac", headers={"CF-Connecting-IP": f"203.0.113.{i}"}).status_code == 401
+    r = _login(remote_client, owner_password, headers={"CF-Connecting-IP": "198.51.100.7"})
+    assert r.status_code == 200 and r.json()["role"] == "owner"
+    assert sleeps and 0 < sleeps[-1] <= 3.0  # bị làm chậm, không bị từ chối
+
+
+def test_login_limiter_delay_is_capped():
+    from sagareel.services.auth import LoginLimiter
+
+    lim = LoginLimiter()
+    assert lim.delay("127.0.0.1") == 0
+    for _ in range(5):
+        lim.record_peer_failure("127.0.0.1")
+    assert lim.delay("127.0.0.1") == 0  # 5 lần đầu miễn phí
+    lim.record_peer_failure("127.0.0.1")
+    assert lim.delay("127.0.0.1") == pytest.approx(0.1)
+    for _ in range(500):
+        lim.record_peer_failure("127.0.0.1")
+    assert lim.delay("127.0.0.1") == 3.0
+    assert lim.delay("10.0.0.1") == 0  # peer khác không bị ảnh hưởng
+
+
+def test_local_login_failures_not_counted_for_peer(local_client, remote_client, owner_password, sleeps):
+    for i in range(5):
+        assert _login(remote_client, "rac", headers={"CF-Connecting-IP": f"203.0.113.{i}"}).status_code == 401
+    for _ in range(5):  # sai từ máy cục bộ (cùng peer 127.0.0.1) — không được làm chậm người dùng từ xa
+        assert local_client.post("/api/auth/login", json={"password": "sai-cuc-bo"}).status_code == 401
+    r = _login(remote_client, owner_password, headers={"CF-Connecting-IP": "198.51.100.8"})
+    assert r.status_code == 200 and sleeps == []
+
+
+def test_cross_site_fetch_metadata_blocks_writes(local_client, remote_client, owner_token):
+    h = {"Sec-Fetch-Site": "cross-site"}
+    r = _op(local_client, "settings.set_global", {"values": {}}, headers=h)
+    assert r.status_code == 403 and r.json()["error_code"] == "csrf_failed"
+    bh = {**REMOTE_H, **h, "Authorization": f"Bearer {owner_token}"}
+    r = _op(remote_client, "system.info", headers=bh)
+    assert r.status_code == 403 and r.json()["error_code"] == "csrf_failed"
+    assert _op(local_client, "system.info", headers={"Sec-Fetch-Site": "same-origin"}).status_code == 200
+    assert local_client.get("/api/ops", headers=h).status_code == 200  # GET không bị chặn
+
+
+def test_sse_with_bearer(remote_client, owner_token):
+    bh = {**REMOTE_H, "Authorization": f"Bearer {owner_token}"}
+    with remote_client.stream("GET", "/api/events", headers=bh) as r:
+        assert r.status_code == 200
+        assert next(ln for ln in r.iter_lines() if ln.startswith("event:")) == "event: server.hello"
+    assert remote_client.get("/api/events", headers=REMOTE_H).status_code == 401
+
+
+def test_sse_closes_when_session_revoked(local_client, remote_client, owner_password, monkeypatch):
+    from sagareel.api import routes_events
+
+    monkeypatch.setattr(routes_events, "REVALIDATE_SECONDS", 0.2)
+    _login(remote_client, owner_password)
+    sid = next(x["id"] for x in _op(local_client, "session.list").json() if x["ip"] == "1.2.3.4")
+    with remote_client.stream("GET", "/api/events", headers=REMOTE_H) as r:
+        lines = r.iter_lines()
+        assert next(ln for ln in lines if ln.startswith("event:")) == "event: server.hello"
+        assert _op(local_client, "session.revoke", {"id": sid}).status_code == 200
+        rest = list(lines)  # luồng phải tự kết thúc sau lần kiểm lại kế tiếp
+    assert not any(ln.startswith("event:") for ln in rest)
+    assert local_client.app.state.services.bus.subscriber_count == 0
+
+
+def test_sse_stays_open_while_valid(local_client, monkeypatch):
+    from sagareel.api import routes_events
+    from sagareel.services import auth
+
+    monkeypatch.setattr(routes_events, "REVALIDATE_SECONDS", 0.05)
+    calls = []
+    real = auth.principal_still_valid
+
+    def counting(services, principal):
+        calls.append(principal.via)
+        return real(services, principal)
+
+    monkeypatch.setattr(auth, "principal_still_valid", counting)
+    bus = local_client.app.state.services.bus
+
+    async def publish_later():
+        import anyio
+
+        await anyio.sleep(0.3)
+        bus.publish("x", {"n": 1})
+
+    with local_client.stream("GET", "/api/events") as r:
+        lines = r.iter_lines()
+        assert next(ln for ln in lines if ln.startswith("event:")) == "event: server.hello"
+        local_client.portal.start_task_soon(publish_later)
+        assert next(ln for ln in lines if ln.startswith("event:")) == "event: x"
+    assert calls and set(calls) == {"local"}
+
+
+@pytest.mark.parametrize("path", [
+    "/api%2Fops", "/api\\ops", "/API%2fops/system.info", "/media%2F..%2Fapi/health",
+])
+def test_remote_path_variants_protected_http(remote_client, path):
+    r = remote_client.get(REMOTE_BASE + path, headers=REMOTE_H)
+    assert r.status_code == 401 and r.json()["error_code"] == "auth_required"
+
+
+@pytest.mark.parametrize("path, protected", [
+    ("/media/../api/health", True),
+    ("/api/ops/../health", True),
+    ("/api/health/.", True),
+    ("/api%252Fops", True),
+    ("\\api\\ops", True),
+    ("/api/./health", True),
+    ("/assets/../index.html", False),
+    ("/assets/app.js", False),
+    ("/api/health", False),
+    ("/api/auth/login", False),
+    ("/", False),
+])
+def test_is_protected_path_variants(path, protected):
+    assert security.is_protected_path(path) is protected
+
+
+@pytest.mark.parametrize("host", ["localhost.:8990", "user@localhost:8990", "studio.example.com.", "127.0.0.1:8990:1"])
+def test_odd_host_values_rejected(local_client, host):
+    r = local_client.get("/api/health", headers={"Host": host})
+    assert r.status_code == 400 and r.json()["error_code"] == "untrusted_host"
+
+
+def test_websocket_rejected_untrusted_or_unauthenticated(local_client, remote_client):
+    from starlette.websockets import WebSocketDisconnect
+
+    with pytest.raises(WebSocketDisconnect) as ei:
+        with local_client.websocket_connect("/api/ws", headers={"Host": "evil.com"}):
+            pass
+    assert ei.value.code == 1008
+    with pytest.raises(WebSocketDisconnect) as ei:
+        with remote_client.websocket_connect("/api/ws", headers=REMOTE_H):
+            pass
+    assert ei.value.code == 1008
+    with pytest.raises(WebSocketDisconnect) as ei:  # cục bộ nhưng Origin lạ (CSWSH)
+        with local_client.websocket_connect("/api/ws", headers={"Origin": "https://evil.com"}):
+            pass
+    assert ei.value.code == 1008
+
+
+def test_client_ip_trusts_only_configured_header():
+    req = _req(headers={"CF-Connecting-IP": "1.1.1.1", "X-Forwarded-For": "2.2.2.2", "X-Real-IP": "3.3.3.3"})
+    assert security.client_ip(req, "cf-connecting-ip") == "1.1.1.1"
+    assert security.client_ip(req, "") == "127.0.0.1"
+    assert security.client_ip(req, "x-real-ip") == "3.3.3.3"
+    assert security.client_ip(_req(headers={"X-Forwarded-For": "6.6.6.6, 5.5.5.5"}), "x-forwarded-for") == "5.5.5.5"
+    # Kết nối không qua loopback (không phải tunnel trên máy này): không tin header nào.
+    assert security.client_ip(_req(client=("192.168.1.9", 1), headers={"CF-Connecting-IP": "1.1.1.1"}),
+                              "cf-connecting-ip") == "192.168.1.9"

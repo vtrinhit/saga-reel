@@ -7,7 +7,8 @@
    - cookie `sr_session` hợp lệ → vai trò của phiên.
    Đường dẫn được bảo vệ (`security.is_protected_path`: `/api*` trừ health + 3 route auth, `/media*`, OpenAPI/docs)
    mà không có principal → 401 `auth_required`. File SPA luôn được phục vụ (SPA tự hiện màn đăng nhập).
-3. **CSRF** cho method không an toàn (và websocket), trừ khi xác thực bằng Bearer:
+3. **CSRF** cho method không an toàn (và websocket):
+   - `Sec-Fetch-Site: cross-site` → chặn với mọi principal; phần dưới bỏ qua khi xác thực bằng Bearer;
    - có `Origin` thì phải là origin tin cậy (`security.origin_trusted`) — áp cả cho chủ cục bộ: trang lạ mở trong
      trình duyệt của chủ không gửi lệnh ghi tới 127.0.0.1:8990 được;
    - xác thực bằng cookie → header `X-SR-CSRF` phải bằng cookie `sr_csrf` **và** bằng token gắn với phiên
@@ -114,7 +115,12 @@ class SecurityMiddleware:
 
         # (3) CSRF.
         unsafe = scope["type"] == "websocket" or scope.get("method", "GET").upper() not in SAFE_METHODS
-        if not unsafe or (principal is not None and principal.via == "token"):
+        if not unsafe:
+            return None
+        if conn.headers.get("sec-fetch-site", "").strip().lower() == "cross-site":
+            # Trình duyệt khẳng định yêu cầu đến từ site khác: chặn với mọi principal (kể cả Bearer).
+            return security.csrf_failed("Yêu cầu ghi gửi từ một trang web khác (cross-site) bị chặn.")
+        if principal is not None and principal.via == "token":
             return None
         origin = conn.headers.get("origin")
         if origin is not None and not security.origin_trusted(origin, cfg.public_hosts, services.settings.port):
@@ -123,7 +129,7 @@ class SecurityMiddleware:
             principal is not None
             and principal.via == "session"
             and scope["type"] == "http"
-            and security.normalize_path(scope["path"]) != LOGIN_PATH
+            and scope["path"] != LOGIN_PATH  # khớp đúng đường dẫn thô (không nới cho biến thể)
         ):
             header = conn.headers.get(CSRF_HEADER)
             cookie = conn.cookies.get(CSRF_COOKIE)
