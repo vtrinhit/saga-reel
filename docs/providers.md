@@ -295,3 +295,23 @@ cơ chế (`core.uow.bookkeeping_columns`).
 `provider.delete(confirm_token)` (xoá mềm, token hết hạn sau 10 phút), `provider.check(ids?)`, và chạy thử
 `provider.try_image | try_video | try_tts | try_stt | try_llm` — tạo job cùng tên trên lane của kết nối, trả
 `{"job_id"}`; `dry_run=true` (ảnh/video/TTS) chỉ trả `{"estimate": {...}}`.
+
+## Adapter TTS/STT (Task 14)
+
+| Adapter | File | Ghi chú |
+|---|---|---|
+| `edge_tts` | `providers/tts/edge.py` | Miễn phí, không cần URL/khoá. Thời điểm từng từ (`WordBoundary`, 100 ns → ms, chữ NFC). Giọng từ `list_voices()` cache 1 ngày ở `cache_dir/edge_voices.json`. Cache âm thanh `cache_dir/tts/<sha256>.mp3 + .json` (khoá gồm chữ nguyên văn, giọng, rate, pitch, volume, boundary). `NoAudioReceived`/lỗi WebSocket/mạng → `TransientError(retry_after=20·2^attempt ≤ 300)`. Sức khoẻ: có giọng `vi-VN` → `alive`. |
+| `openai_tts` | `providers/tts/openai_tts.py` | `POST {base}/audio/speech` (`model`, `input`, `voice`, `response_format=mp3`, `speed`). Không có thời điểm từng từ. |
+| `openai_stt` | `providers/stt/openai_stt.py` | `POST {base}/audio/transcriptions` multipart (`model`, `response_format=verbose_json`, `timestamp_granularities[]=word`, `language`). |
+
+Phần chung OpenAI (`providers/openai_audio.py`): sức khoẻ = `GET {base}/models` rồi, vì tuỳ chọn `health_speech`
+**mặc định bật**, một yêu cầu thật cực ngắn (TTS 1 ký tự, STT một WAV im lặng tự tạo); tắt tuỳ chọn thì chỉ đọc
+`/models`. Body lỗi "No credentials" → `not_configured`
+(sức khoẻ) / `provider_unavailable` (job). POST trong job có dấu `submitting`; mất kết nối sau khi gửi hoặc 500/504 →
+`JobUnknown` (`openai_tts_job_unknown` / `openai_stt_job_unknown`).
+
+Chưa có kết nối STT nào đang bật → `provider.try_stt` trả `stt_not_configured` (409) kèm gợi ý thêm kết nối STT hoặc
+dán lời thoại thủ công.
+
+Job `provider.try_tts` được tạo với `max_attempts=6` (`provider_jobs.MAX_ATTEMPTS`): lỗi tạm thời của edge-tts
+được thử lại khoảng 10 phút. `ProviderService.build()` truyền `cache_dir` cho adapter nhận tham số đó (edge_tts).
