@@ -753,3 +753,63 @@ def test_try_llm_with_image_requires_vision(client):
 def test_option_types_validated(client, spec, options):
     r = call(client, "provider.create", {**spec, "options": options})
     assert r.status_code == 422 and r.json()["error_code"] == "validation_failed", r.text
+
+
+# --- MaiVideo qua job (Task 11) -----------------------------------------------------------------------------------
+
+
+async def test_try_image_maivideo_unknown_post_needs_attention(client, run_jobs):
+    """POST MaiVideo mất trả lời sau khi gửi → job `needs_attention` (không thử lại, không gửi lại)."""
+    import httpx
+    import respx
+
+    create(client, {"kind": "image", "adapter": "maivideo", "name": "mai", "base_url": "http://mai.test",
+                    "api_key": "mv-SECRET-KEY-4321", "options": {"poll_interval": 0}})
+    with respx.mock(assert_all_called=False) as mock:
+        post = mock.post("http://mai.test/api/v1/image-generation").mock(side_effect=httpx.ReadTimeout("x"))
+        job_id = call(client, "provider.try_image", {"connection": "mai", "prompt": "mèo"}).json()["job_id"]
+        job = await run_jobs(job_id)
+        assert job["status"] == "needs_attention", job
+        assert job["error_code"] == "maivideo_job_unknown" and "clear_attention" in job["hint"]
+        assert job["external_state"]["state"] == "submitting" and job["external_id"] is None
+        assert post.call_count == 1
+        assert "SECRET" not in json.dumps(job, ensure_ascii=False)
+
+
+def test_try_image_is_resumable():
+    """App tắt khi đang poll → job về `queued` và nối lại bằng `external_id` (không thành `interrupted` rồi bị
+    "Chạy lại" xoá `external_id` → gửi trùng job tốn tiền)."""
+    from sagareel.services import jobs, provider_jobs
+
+    assert jobs.get_handler(provider_jobs.TRY_IMAGE).resumable
+
+
+async def test_try_image_maivideo_success_after_429(client, run_jobs):
+    """429 (chưa nhận) → thử lại → POST lần 2 có job_id → poll → tải ảnh → media + spend. Đúng 2 lần POST."""
+    import io
+    import os
+
+    import httpx
+    import respx
+
+    buf = io.BytesIO()
+    Image.frombytes("RGB", (48, 64), os.urandom(48 * 64 * 3)).save(buf, "PNG")
+    png = buf.getvalue()
+    assert len(png) >= 1024
+    cid = create(client, {"kind": "image", "adapter": "maivideo", "name": "mai", "base_url": "http://mai.test",
+                          "api_key": "mv-SECRET-KEY-4321", "options": {"poll_interval": 0}})["id"]
+    with respx.mock(assert_all_called=False) as mock:
+        post = mock.post("http://mai.test/api/v1/image-generation").mock(side_effect=[
+            httpx.Response(429, headers={"Retry-After": "0"}), httpx.Response(200, json={"job_id": "j9"})])
+        mock.get("http://mai.test/api/v1/image-generation/j9").mock(return_value=httpx.Response(
+            200, json={"status": "completed", "images": [{"file_url": "/static/exports/j9.png"}]}))
+        mock.get("http://mai.test/static/exports/j9.png").mock(return_value=httpx.Response(200, content=png))
+        job_id = call(client, "provider.try_image", {"connection": "mai", "prompt": " mèo\n"}).json()["job_id"]
+        job = await run_jobs(job_id)
+    assert job["status"] == "succeeded", job
+    assert post.call_count == 2 and job["external_id"] == "j9"
+    assert json.loads(post.calls.last.request.content)["prompt"] == " mèo\n"
+    with client.app.state.services.db.session() as s:
+        m = s.get(Media, job["result"]["media_ids"][0])
+        assert m.kind == "image" and m.origin == "generated" and (m.width, m.height) == (48, 64)
+        assert [(x.kind, x.connection_id) for x in s.scalars(select(Spend)).all()] == [("image", cid)]
