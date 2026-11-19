@@ -18,6 +18,7 @@ from sagareel.api.routes_ops import build_router
 from sagareel.config import AppSettings, load_settings
 from sagareel.container import Services
 from sagareel.core.errors import AppError, internal_error, payload, validation_failed
+from sagareel.core.resolver import SCHEMA_PATH, Resolver, load_schema
 from sagareel.db.session import Database
 
 __all__ = ["APP_NAME", "create_app"]
@@ -78,6 +79,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         settings=settings,
         boot_id=uuid.uuid4().hex,
         db=Database(settings.db_path),
+        resolver=Resolver(load_schema(SCHEMA_PATH)),
     )
 
     @asynccontextmanager
