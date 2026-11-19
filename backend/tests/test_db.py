@@ -131,3 +131,44 @@ def test_app_startup_migrates(client, settings):
     assert isinstance(services.db, Database)
     assert "job" in inspect(services.db.engine).get_table_names()
     assert settings.db_path.exists()
+
+
+# --- Khoá ghi ngay (BEGIN IMMEDIATE) ---------------------------------------------------------------------------
+
+def _in_txn(s):
+    return s.connection().connection.driver_connection.in_transaction
+
+
+def test_immediate_session_takes_write_lock_at_begin(db):
+    with db.session(immediate=True) as s:
+        s.scalars(select(Template)).all()  # chỉ đọc nhưng đã giữ khoá ghi
+        assert _in_txn(s)
+        with db.engine.connect() as other:
+            other.exec_driver_sql("PRAGMA busy_timeout=0")
+            with pytest.raises(Exception, match="locked"):
+                other.exec_driver_sql("BEGIN IMMEDIATE")
+            other.exec_driver_sql("SELECT 1").scalar()  # đọc vẫn được (WAL)
+        s.add(Template(key="imm", kind="system", body="x"))
+    with db.session() as s:
+        assert s.scalar(select(Template.key)) == "imm"
+
+
+def test_normal_session_stays_deferred_and_pragmas_hold(db):
+    with db.session() as s:
+        s.scalars(select(Template)).all()
+        assert not _in_txn(s)
+        assert s.connection().exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+    with db.session(immediate=True) as s:
+        assert s.connection().exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+        assert s.connection().exec_driver_sql("PRAGMA busy_timeout").scalar() == 5000
+
+
+def test_immediate_session_rolls_back_on_error(db):
+    with pytest.raises(RuntimeError):
+        with db.session(immediate=True) as s:
+            s.add(Template(key="rb", kind="system", body="x"))
+            s.flush()
+            raise RuntimeError
+    with db.session() as s:
+        assert s.scalars(select(Template)).all() == []
+    db.migrate()  # migrate vẫn chạy được (idempotent) khi đã có listener begin

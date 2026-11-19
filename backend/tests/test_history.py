@@ -484,3 +484,44 @@ async def test_history_ops_registered_and_invocable(ctx):
     assert [i["op_name"] for i in listing["items"]] == ["history.redo", "history.undo", "test.create"]
     with pytest.raises(Forbidden):
         await ops.invoke("history.undo", {}, viewer)
+
+
+# --- Tranh chấp ---------------------------------------------------------------------------------------------------
+
+
+def test_concurrent_undo_of_same_change_set_applies_once(ctx, monkeypatch):
+    import threading
+
+    tid = create_template(ctx, body="a")
+    u = update_template(ctx, tid, body="b")
+
+    # Nới rộng khoảng giữa "đọc trạng thái" và "ghi" để hai luồng chắc chắn chồng lên nhau nếu không có khoá ghi.
+    real_check = history._check_conflicts
+    barrier = threading.Barrier(2, timeout=5)
+
+    def slow_check(*args, **kwargs):
+        real_check(*args, **kwargs)
+        threading.Event().wait(0.3)
+
+    monkeypatch.setattr(history, "_check_conflicts", slow_check)
+    results: list = []
+
+    def worker():
+        try:
+            barrier.wait()
+            results.append(history.undo(ctx, u.change_set_id))
+        except Exception as e:  # noqa: BLE001 — ghi lại để khẳng định ở luồng chính
+            results.append(e)
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+
+    oks = [r for r in results if not isinstance(r, Exception)]
+    errs = [r for r in results if isinstance(r, Exception)]
+    assert len(oks) == 1 and len(errs) == 1, results
+    assert isinstance(errs[0], AppError) and errs[0].code == "already_undone"
+    assert [c.op_name for c in all_change_sets(ctx)].count("history.undo") == 1
+    assert get_template(ctx, tid).body == "a"

@@ -31,6 +31,22 @@ def _set_sqlite_pragmas(dbapi_conn, _record) -> None:
         cur.close()
 
 
+# Execution option đánh dấu connection cần khoá ghi ngay khi bắt đầu transaction.
+IMMEDIATE_OPTION = "sagareel_begin_immediate"
+
+
+def _begin_immediate(conn) -> None:
+    """Listener `begin`: với connection mang `IMMEDIATE_OPTION`, mở transaction bằng `BEGIN IMMEDIATE`.
+
+    pysqlite (chế độ mặc định) tự phát `BEGIN` hoãn ngay trước câu DML đầu tiên, nên các câu SELECT trước đó nằm ngoài
+    transaction. Mở sẵn `BEGIN IMMEDIATE` ở đây thì pysqlite thấy đã có transaction và không phát BEGIN nữa;
+    `commit()`/`rollback()` của pysqlite vẫn kết thúc đúng transaction này. Connection thường không bị ảnh hưởng
+    (vẫn hoãn), và `migrate()` (PRAGMA ngoài transaction) giữ nguyên hành vi. Chờ khoá tối đa `busy_timeout`.
+    """
+    if conn.get_execution_options().get(IMMEDIATE_OPTION):
+        conn.exec_driver_sql("BEGIN IMMEDIATE")
+
+
 def sqlite_url(db_path: Path) -> str:
     return f"sqlite:///{Path(db_path).resolve().as_posix()}"
 
@@ -52,12 +68,21 @@ class Database:
         # check_same_thread=False: lifespan, request và worker (to_thread) dùng chung pool ở nhiều luồng.
         self.engine: Engine = create_engine(self.url, connect_args={"check_same_thread": False})
         event.listen(self.engine, "connect", _set_sqlite_pragmas)
+        event.listen(self.engine, "begin", _begin_immediate)
         self._sessionmaker = sessionmaker(bind=self.engine, expire_on_commit=False)
+        self._immediate_sessionmaker = sessionmaker(
+            bind=self.engine.execution_options(**{IMMEDIATE_OPTION: True}), expire_on_commit=False
+        )
 
     @contextmanager
-    def session(self) -> Iterator[Session]:
-        """Phiên DB: commit khi khối kết thúc bình thường, rollback khi có lỗi."""
-        s = self._sessionmaker()
+    def session(self, immediate: bool = False) -> Iterator[Session]:
+        """Phiên DB: commit khi khối kết thúc bình thường, rollback khi có lỗi.
+
+        `immediate=True`: transaction mở bằng `BEGIN IMMEDIATE` ở câu lệnh đầu tiên → giữ khoá ghi từ lúc đọc, các
+        phiên ghi khác chờ (busy_timeout) tới khi phiên này kết thúc. Dùng cho đường ghi kiểu "đọc–kiểm tra–ghi"
+        (UnitOfWork). Phiên thường giữ chế độ hoãn của pysqlite.
+        """
+        s = (self._immediate_sessionmaker if immediate else self._sessionmaker)()
         try:
             yield s
             s.commit()

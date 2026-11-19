@@ -108,7 +108,9 @@ class UnitOfWork(AbstractContextManager):
     def __enter__(self) -> Session:
         if self._cm is not None:
             raise RuntimeError("UnitOfWork chỉ dùng được một lần.")
-        self._cm = self.db.session()
+        # Khoá ghi ngay: chọn đích, kiểm xung đột và snapshot "trước" đều nằm trong khoá ghi (không có tranh chấp
+        # giữa lúc đọc và lúc ghi).
+        self._cm = self.db.session(immediate=True)
         s = self._session = self._cm.__enter__()
         event.listen(s, "before_flush", self._before_flush)
         event.listen(s, "after_flush", self._after_flush)
