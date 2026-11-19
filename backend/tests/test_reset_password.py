@@ -326,3 +326,89 @@ def test_end_to_end_owner_reset_rotates_local_agent_token(settings, make_local_c
 
 def test_module_entry_point_exists():
     assert callable(reset_password.main)
+
+
+# --- Review vòng 1 --------------------------------------------------------------------------------------------------
+
+
+def test_outdated_schema_is_refused_before_prompt(settings, run):
+    from alembic import command
+
+    from sagareel.db.session import alembic_config
+
+    db = Database(settings.db_path)
+    command.upgrade(alembic_config(db.url), "0002")  # DB cũ: chưa có api_token.local_only
+    db.dispose()
+    token_file = settings.data_dir / "local-agent.token"
+    token_file.write_text("sr_" + "o" * 43 + "\n", encoding="utf-8")
+    code, _, err, asked = run(["--data-dir", str(settings.data_dir)], answers=[NEW_PW, NEW_PW])
+    assert code == 2 and err.startswith("db_not_initialized: ")
+    assert "Chạy app một lần (để nâng cấp DB) rồi tắt, sau đó chạy lại lệnh này" in err
+    assert asked == []
+    assert token_file.read_text(encoding="utf-8") == "sr_" + "o" * 43 + "\n"
+
+
+def test_commit_failure_restores_token_file_and_db(seeded, run, monkeypatch):
+    import sqlite3
+
+    from sagareel import local_agent
+
+    old_raw, digest = security.new_secret_token()
+    db = Database(seeded.db_path)
+    with db.session() as s:
+        s.add(ApiToken(name="local-agent", token_hash=digest, role="owner", local_only=True))
+    db.dispose()
+    token_file = seeded.data_dir / "local-agent.token"
+    local_agent.write_token_file(token_file, old_raw)
+    before = _state(seeded)
+
+    def failing_commit(conn):
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(reset_password, "_commit", failing_commit)
+    code, out, err, _ = run(["--data-dir", str(seeded.data_dir), "--password-stdin"], stdin=NEW_PW + "\n")
+    assert code == 2 and err.startswith("db_error: ")
+    assert token_file.read_text(encoding="utf-8").strip() == old_raw  # file trả về như cũ
+    assert _state(seeded) == before  # transaction đã rollback
+
+
+def test_commit_failure_removes_new_token_file_when_none_before(seeded, run, monkeypatch):
+    import sqlite3
+
+    monkeypatch.setattr(reset_password, "_commit",
+                        lambda conn: (_ for _ in ()).throw(sqlite3.OperationalError("disk I/O error")))
+    code, _, err, _ = run(["--data-dir", str(seeded.data_dir), "--password-stdin"], stdin=NEW_PW + "\n")
+    assert code == 2 and err.startswith("db_error: ")
+    assert not (seeded.data_dir / "local-agent.token").exists()
+
+
+def test_token_file_written_after_row_inserted(seeded, run, monkeypatch):
+    """Ghi file sau INSERT (cùng transaction, trước COMMIT): lúc ghi, dòng `local_only` đã có trong transaction."""
+    from sagareel import local_agent
+
+    seen = []
+    real_write = local_agent.write_token_file
+    real_recreate = reset_password._recreate_local_token
+
+    def spy_recreate(conn, path, now):
+        def spy_write(p, raw):
+            n = conn.execute("SELECT COUNT(*) FROM api_token WHERE token_hash = ? AND local_only = 1",
+                             (security.sha256_hex(raw),)).fetchone()[0]
+            seen.append(n)
+            real_write(p, raw)
+
+        monkeypatch.setattr(local_agent, "write_token_file", spy_write)
+        return real_recreate(conn, path, now)
+
+    monkeypatch.setattr(reset_password, "_recreate_local_token", spy_recreate)
+    code, out, err, _ = run(["--data-dir", str(seeded.data_dir), "--password-stdin"], stdin=NEW_PW + "\n")
+    assert code == 0, err
+    assert seen == [1]
+
+
+def test_help_and_output_mention_real_paths_and_all_roles(seeded, run, tmp_path):
+    code, out, _, _ = run(["--help"])
+    assert code == 0 and "mọi vai trò" in out
+    code, out, err, _ = run(["--data-dir", str(seeded.data_dir), "--password-stdin"], stdin=NEW_PW + "\n")
+    assert code == 0, err
+    assert str(seeded.data_dir / "local-agent.token") in out

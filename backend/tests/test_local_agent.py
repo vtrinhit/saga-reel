@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import subprocess
 import sys
 
@@ -376,3 +377,87 @@ def test_migration_0003_marks_existing_local_agent_rows(tmp_path):
                                                                                     "agent1": False}
     finally:
         db.dispose()
+
+
+# --- Review vòng 1 --------------------------------------------------------------------------------------------------
+
+
+def test_kept_token_file_acl_is_reapplied(settings, make_local_client, monkeypatch):
+    app, c = _start(settings, make_local_client)
+    with c:
+        pass
+    calls = []
+    monkeypatch.setattr(local_agent, "_restrict_acl", lambda p: calls.append(p))
+    app, c = _start(settings, make_local_client)
+    with c:
+        pass
+    assert calls == [_token_file(settings)]
+
+
+def test_kept_token_acl_failure_only_warns(settings, make_local_client, monkeypatch, caplog):
+    app, c = _start(settings, make_local_client)
+    with c:
+        raw = _token_file(settings).read_text(encoding="utf-8").strip()
+
+    def boom(p):
+        raise OSError("không được")
+
+    monkeypatch.setattr(local_agent, "_restrict_acl", boom)
+    caplog.set_level(logging.WARNING)
+    app, c = _start(settings, make_local_client)
+    with c:
+        assert _token_file(settings).read_text(encoding="utf-8").strip() == raw
+    assert any(r.levelno == logging.WARNING for r in caplog.records) and raw not in caplog.text
+
+
+def test_concurrent_ensure_keeps_file_and_db_in_sync(settings, make_local_client):
+    import threading
+
+    from sagareel.services import auth
+
+    app, c = _start(settings, make_local_client)
+    with c:
+        services = app.state.services
+        for _ in range(3):
+            _token_file(settings).unlink()
+            barrier = threading.Barrier(4)
+
+            def worker():
+                barrier.wait()
+                auth.ensure_local_agent_token(services)
+
+            threads = [threading.Thread(target=worker) for _ in range(4)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            raw = _token_file(settings).read_text(encoding="utf-8").strip()
+            active = [r for r in _rows(app) if r.revoked_at is None]
+            assert len(active) == 1 and active[0].token_hash == hashlib.sha256(raw.encode()).hexdigest()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="ACL Windows")
+def test_icacls_uses_current_user_sid(tmp_path, monkeypatch):
+    calls = []
+    real_run = local_agent.subprocess.run
+
+    def spy(args, **kw):
+        calls.append(list(args))
+        return real_run(args, **kw)
+
+    monkeypatch.setattr(local_agent.subprocess, "run", spy)
+    local_agent.write_token_file(tmp_path / "local-agent.token", "sr_" + "s" * 43)
+    icacls = [a for a in calls if a[0].lower().endswith("icacls.exe")]
+    assert icacls and icacls[0][-1].startswith("*S-1-") and icacls[0][-1].endswith(":F")
+    assert all(a[0].lower().startswith(os.environ.get("SystemRoot", r"C:\Windows").lower()) for a in calls)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="ACL Windows")
+def test_sid_failure_falls_back_with_warning(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(local_agent, "_sid_cache", [])
+    monkeypatch.setattr(local_agent, "_current_user_sid", lambda: None)
+    caplog.set_level(logging.WARNING)
+    p = tmp_path / "local-agent.token"
+    local_agent.write_token_file(p, "sr_" + "f" * 43)
+    assert p.read_text(encoding="utf-8").strip() == "sr_" + "f" * 43
+    assert any("SID" in r.getMessage() for r in caplog.records)

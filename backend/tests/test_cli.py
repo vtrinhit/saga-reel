@@ -699,3 +699,33 @@ def test_cli_help_mentions_local_token(capsys):
     assert cli_main.main(["--help"], transport=httpx.MockTransport(refuse)) == 0
     out = capsys.readouterr().out
     assert "local-agent.token" in out and "reset-password" in out
+
+
+@pytest.mark.parametrize("url,sent", [
+    ("http://127.0.0.1.attacker.com:8990", False),
+    ("http://localhost@evil.com:8990", False),
+    ("http://[::1]:8990", True),
+    ("http://localhost:8990", True),
+])
+def test_local_token_only_for_real_loopback_urls(capsys, monkeypatch, tmp_path, url, sent):
+    raw = "sr_" + "L" * 43
+    data = tmp_path / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "local-agent.token").write_text(raw, encoding="utf-8")
+    monkeypatch.setenv("SAGAREEL_URL", url)
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("authorization"))
+        if request.url.path == "/api/health":
+            return httpx.Response(200, json={"ok": True, "boot_id": "e" * 32})
+        if request.headers.get("authorization") == f"Bearer {raw}":
+            return httpx.Response(200, json=[])
+        return httpx.Response(401, json={"ok": False, "error_code": "auth_required", "detail": "Cần đăng nhập.",
+                                         "hint": None, "status": 401, "extra": {}})
+
+    code = cli_main.main(["ops", "--json"], transport=httpx.MockTransport(handler))
+    err = capsys.readouterr().err
+    assert (f"Bearer {raw}" in seen) is sent
+    assert code == (0 if sent else 2), err
+    assert raw not in err

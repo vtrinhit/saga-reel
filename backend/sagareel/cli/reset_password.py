@@ -23,7 +23,7 @@ import argparse
 import getpass
 import sqlite3
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -42,7 +42,9 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="sagareel reset-password",
         description=(
             "Đặt lại mật khẩu NGOẠI TUYẾN, ghi thẳng vào cơ sở dữ liệu trong thư mục data (không cần đăng nhập). "
-            "Tắt SagaReel Studio trước khi chạy. Mọi phiên đăng nhập và token API của vai trò đó bị thu hồi."
+            "Tắt SagaReel Studio trước khi chạy. Đặt lại mật khẩu chủ (owner) thu hồi MỌI phiên đăng nhập và token API "
+            "của mọi vai trò, xoá mật khẩu người xem (trừ khi --keep-viewer) và tạo lại token agent cục bộ; "
+            "--role viewer chỉ thu hồi phiên/token của người xem."
         ),
         allow_abbrev=False,
     )
@@ -109,12 +111,14 @@ def _exclusive(db_path: Path) -> Iterator[sqlite3.Connection]:
             raise _not_initialized(db_path) from None
         if not {"auth_secret", "session", "api_token"} <= tables:
             raise _not_initialized(db_path)
+        if not _schema_current(conn, tables):
+            raise _schema_outdated(db_path)
         try:
             yield conn
         except BaseException:
             conn.execute("ROLLBACK")
             raise
-        conn.execute("COMMIT")
+        _commit(conn)
     except sqlite3.Error as e:
         if _is_busy(e):
             raise _app_running(db_path) from None
@@ -122,6 +126,33 @@ def _exclusive(db_path: Path) -> Iterator[sqlite3.Connection]:
                        hint="Tắt app rồi thử lại; nếu vẫn lỗi, sao lưu thư mục data trước khi sửa.") from None
     finally:
         conn.close()
+
+
+def _commit(conn: sqlite3.Connection) -> None:
+    conn.execute("COMMIT")
+
+
+def _migration_head() -> str | None:
+    from alembic.script import ScriptDirectory
+
+    from sagareel.db.session import alembic_config
+
+    return ScriptDirectory.from_config(alembic_config("sqlite://")).get_current_head()
+
+
+def _schema_current(conn: sqlite3.Connection, tables: set[str]) -> bool:
+    """DB đúng phiên bản migration của mã này (`alembic_version` = head) và có các cột lệnh này ghi."""
+    if "alembic_version" not in tables:
+        return False
+    versions = [r[0] for r in conn.execute("SELECT version_num FROM alembic_version")]
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(api_token)")}
+    return versions == [_migration_head()] and "local_only" in columns
+
+
+def _schema_outdated(db_path: Path) -> CliError:
+    return CliError("db_not_initialized",
+                    f"Cơ sở dữ liệu {db_path} chưa được nâng cấp lên phiên bản của SagaReel Studio này.",
+                    hint="Chạy app một lần (để nâng cấp DB) rồi tắt, sau đó chạy lại lệnh này.")
 
 
 def _not_initialized(db_path: Path) -> CliError:
@@ -148,23 +179,38 @@ def _revoke(conn: sqlite3.Connection, role: str | None, now: str) -> tuple[int, 
     return sessions, tokens
 
 
-def _recreate_local_token(conn: sqlite3.Connection, data_dir: Path, now: str) -> bool:
-    """Ghi token agent cục bộ mới vào file rồi thêm dòng `local_only` (chỉ hash). Dòng cũ đã bị thu hồi cùng mọi token.
-    Ghi file lỗi → không thêm dòng (app tạo lại lúc khởi động), trả False. Không bao giờ in token."""
+def _recreate_local_token(conn: sqlite3.Connection, path: Path, now: str) -> tuple[bool, Callable[[], None]]:
+    """Thêm dòng `local_only` (chỉ hash) rồi mới ghi file token — vẫn trong transaction, trước COMMIT. Dòng cũ đã bị
+    thu hồi cùng mọi token. Ghi file lỗi → bỏ dòng vừa thêm (app tạo lại lúc khởi động), trả `(False, …)`.
+
+    Trả kèm hàm khôi phục file như trước khi ghi (gọi khi COMMIT thất bại: file không được giữ token DB không có).
+    Không bao giờ in token."""
     from sagareel import local_agent
     from sagareel.core import security
 
+    previous = local_agent.read_token(path)
     raw, digest = security.new_secret_token()
-    try:
-        local_agent.write_token_file(local_agent.token_path(data_dir), raw)
-    except OSError:
-        return False
     conn.execute(
         "INSERT INTO api_token (name, token_hash, role, expires_at, last_used_at, revoked_at, local_only, created_at)"
         " VALUES (?, ?, 'owner', NULL, NULL, NULL, 1, ?)",
         (local_agent.TOKEN_NAME, digest, now),
     )
-    return True
+    try:
+        local_agent.write_token_file(path, raw)
+    except OSError:
+        conn.execute("DELETE FROM api_token WHERE token_hash = ?", (digest,))
+        return False, lambda: None
+
+    def restore() -> None:
+        try:
+            if previous is not None:
+                local_agent.write_token_file(path, previous)
+            else:
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass  # file lệch DB → app thay token lúc khởi động
+
+    return True, restore
 
 
 # --- Mật khẩu -----------------------------------------------------------------------------------------------------
@@ -228,36 +274,45 @@ def _run(args: argparse.Namespace) -> int:
         password = _read_password(args)
         new_hash = security.hash_password(password)
 
+    from sagareel import local_agent
+
     owner_reset = args.role == "owner"
     viewer_cleared = False
     token_written: bool | None = None  # None = không đụng token cục bộ (reset/xoá viewer)
-    with _exclusive(db_path) as conn:
-        hashes = _hashes(conn)
-        now = _now()
-        if new_hash is None:
-            viewer_cleared = conn.execute("DELETE FROM auth_secret WHERE role = 'viewer'").rowcount > 0
-        else:
-            if args.role == "viewer" and "owner" not in hashes:
-                raise _owner_required()
-            # Mật khẩu trùng vai trò kia (khi vai trò kia còn giữ mật khẩu): đăng nhập thử owner trước → người xem sẽ
-            # thành chủ.
-            other = "viewer" if owner_reset else "owner"
-            other_kept = other in hashes and (not owner_reset or args.keep_viewer)
-            if other_kept and security.verify_password(password, hashes[other]):
-                raise CliError("password_reused", "Mật khẩu chủ sở hữu và mật khẩu người xem phải khác nhau.",
-                               hint="Chọn mật khẩu khác.")
-            if args.role in hashes:
-                conn.execute("UPDATE auth_secret SET password_hash = ? WHERE role = ?", (new_hash, args.role))
-            else:
-                conn.execute("INSERT INTO auth_secret (role, password_hash, created_at) VALUES (?, ?, ?)",
-                             (args.role, new_hash, now))
-            if owner_reset and not args.keep_viewer:
-                # Khôi phục sau xâm nhập: mật khẩu người xem có thể do kẻ xâm nhập đặt.
+    token_file = local_agent.token_path(db_path.parent)
+    restore_token: Callable[[], None] | None = None
+    try:
+        with _exclusive(db_path) as conn:
+            hashes = _hashes(conn)
+            now = _now()
+            if new_hash is None:
                 viewer_cleared = conn.execute("DELETE FROM auth_secret WHERE role = 'viewer'").rowcount > 0
-        # Đặt lại mật khẩu chủ = thu hồi MỌI phiên và MỌI token của mọi vai trò; còn lại chỉ vai trò đó.
-        sessions, tokens = _revoke(conn, None if owner_reset else args.role, now)
-        if owner_reset:
-            token_written = _recreate_local_token(conn, db_path.parent, now)
+            else:
+                if args.role == "viewer" and "owner" not in hashes:
+                    raise _owner_required()
+                # Mật khẩu trùng vai trò kia (khi vai trò kia còn giữ mật khẩu): đăng nhập thử owner trước → người
+                # xem sẽ thành chủ.
+                other = "viewer" if owner_reset else "owner"
+                other_kept = other in hashes and (not owner_reset or args.keep_viewer)
+                if other_kept and security.verify_password(password, hashes[other]):
+                    raise CliError("password_reused", "Mật khẩu chủ sở hữu và mật khẩu người xem phải khác nhau.",
+                                   hint="Chọn mật khẩu khác.")
+                if args.role in hashes:
+                    conn.execute("UPDATE auth_secret SET password_hash = ? WHERE role = ?", (new_hash, args.role))
+                else:
+                    conn.execute("INSERT INTO auth_secret (role, password_hash, created_at) VALUES (?, ?, ?)",
+                                 (args.role, new_hash, now))
+                if owner_reset and not args.keep_viewer:
+                    # Khôi phục sau xâm nhập: mật khẩu người xem có thể do kẻ xâm nhập đặt.
+                    viewer_cleared = conn.execute("DELETE FROM auth_secret WHERE role = 'viewer'").rowcount > 0
+            # Đặt lại mật khẩu chủ = thu hồi MỌI phiên và MỌI token của mọi vai trò; còn lại chỉ vai trò đó.
+            sessions, tokens = _revoke(conn, None if owner_reset else args.role, now)
+            if owner_reset:
+                token_written, restore_token = _recreate_local_token(conn, token_file, now)
+    except BaseException:
+        if restore_token is not None:  # COMMIT/khối lỗi sau khi đã ghi file → trả file về như cũ
+            restore_token()
+        raise
 
     if new_hash is None:
         head = ("Đã xoá mật khẩu người xem (viewer)." if viewer_cleared
@@ -272,9 +327,9 @@ def _run(args: argparse.Namespace) -> int:
         elif viewer_cleared:
             print("Đã xoá mật khẩu người xem (viewer); đặt lại sau nếu cần.")
         if token_written:
-            print("Đã tạo token agent cục bộ mới (data/local-agent.token).")
+            print(f"Đã tạo token agent cục bộ mới ({token_file}).")
     if token_written is False:
-        print("warning: Không ghi được file token agent cục bộ (data/local-agent.token); app sẽ tạo lại khi khởi động.",
+        print(f"warning: Không ghi được file token agent cục bộ ({token_file}); app sẽ tạo lại khi khởi động.",
               file=sys.stderr)
     return EXIT_OK
 

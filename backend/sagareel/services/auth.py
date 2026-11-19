@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeVar
@@ -474,6 +475,9 @@ def _revoke_local_agent_rows(s: Session, now: datetime) -> int:
     ).rowcount or 0
 
 
+_LOCAL_AGENT_LOCK = threading.Lock()
+
+
 def ensure_local_agent_token(services: Services) -> str:
     """Bảo đảm `<data>/local-agent.token` chứa token API owner còn hiệu lực (tên `local-agent`, không hạn).
 
@@ -482,13 +486,20 @@ def ensure_local_agent_token(services: Services) -> str:
     được file → thu hồi dòng cũ, không tạo dòng mới (không để token sống mà không ai giữ). Trả `kept|created|failed`;
     **không bao giờ** trả, log hay in token thô.
     """
+    with _LOCAL_AGENT_LOCK:  # khởi động và đổi mật khẩu chủ có thể chạy song song: file và DB phải khớp nhau
+        return _ensure_local_agent_token(services)
+
+
+def _ensure_local_agent_token(services: Services) -> str:
     path = local_agent.token_path(services.settings.data_dir)
     raw = local_agent.read_token(path)
     if raw is not None:
         with services.db.session() as s:
             row = s.scalars(select(ApiToken).where(ApiToken.token_hash == security.sha256_hex(raw))).first()
-            if _local_agent_row_valid(row):
-                return "kept"
+            valid = _local_agent_row_valid(row)
+        if valid:
+            local_agent.restrict_existing(path)  # file giữ nguyên: vẫn thu quyền lại (lỗi chỉ cảnh báo)
+            return "kept"
     raw, digest = security.new_secret_token()
     try:
         local_agent.write_token_file(path, raw)

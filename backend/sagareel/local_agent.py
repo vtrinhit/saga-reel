@@ -56,15 +56,55 @@ def read_local_token(data_dir: Path | str | None = None) -> str | None:
     return read_token(token_path(resolve_data_dir(data_dir=data_dir)))
 
 
-def _restrict_acl(path: Path) -> None:
-    """Windows: bỏ quyền kế thừa, chỉ người dùng hiện tại được truy cập. POSIX: quyền 0600 đã đặt lúc tạo file."""
-    if sys.platform != "win32":
-        return
+_SID_RE = re.compile(rb"S-1-[0-9]+(?:-[0-9]+)+")
+_sid_cache: list[str] = []
+
+
+def _system32(exe: str) -> str:
+    """Đường dẫn tuyệt đối trong System32 (không tra PATH: Git Bash có `whoami` GNU, và tránh chương trình giả)."""
+    return os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", exe)
+
+
+def _current_user_sid() -> str | None:
+    """SID của người dùng hiện tại (`whoami /user`), cache theo tiến trình; không lấy được → None."""
+    if _sid_cache:
+        return _sid_cache[0]
+    try:
+        r = subprocess.run(
+            [_system32("whoami.exe"), "/user", "/fo", "csv", "/nh"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=_ICACLS_TIMEOUT_S,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = _SID_RE.search(r.stdout or b"") if r.returncode == 0 else None
+    if m is None:
+        return None
+    _sid_cache.append(m.group(0).decode("ascii"))
+    return _sid_cache[0]
+
+
+def _acl_principal() -> str:
+    """`*S-1-…` (SID, không phụ thuộc tên/ngôn ngữ); không lấy được SID → `DOMAIN\\user` (kèm cảnh báo)."""
+    sid = _current_user_sid()
+    if sid:
+        return f"*{sid}"
+    logger.warning("Không lấy được SID người dùng hiện tại; thu quyền file token cục bộ theo tên người dùng.")
     user = getpass.getuser()
     domain = os.environ.get("USERDOMAIN")
-    principal = f"{domain}\\{user}" if domain else user
+    return f"{domain}\\{user}" if domain else user
+
+
+def _restrict_acl(path: Path) -> None:
+    """Windows: bỏ quyền kế thừa, chỉ người dùng hiện tại (theo SID) được truy cập. POSIX: quyền 0600 đặt lúc tạo
+    file, đặt lại ở đây cho file có sẵn."""
+    if sys.platform != "win32":
+        os.chmod(path, 0o600)
+        return
     r = subprocess.run(
-        ["icacls", str(path), "/inheritance:r", "/grant:r", f"{principal}:F"],
+        [_system32("icacls.exe"), str(path), "/inheritance:r", "/grant:r", f"{_acl_principal()}:F"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -78,6 +118,14 @@ def _restrict_acl(path: Path) -> None:
             path,
             r.returncode,
         )
+
+
+def restrict_existing(path: Path) -> None:
+    """Thu quyền lại file token đã có (vd. bị chép/sửa quyền). Lỗi chỉ cảnh báo."""
+    try:
+        _restrict_acl(Path(path))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Không giới hạn được quyền truy cập file token cục bộ %s (%s).", path, type(e).__name__)
 
 
 def write_token_file(path: Path, raw: str) -> None:
