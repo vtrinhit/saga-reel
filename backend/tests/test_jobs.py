@@ -1004,7 +1004,7 @@ async def test_job_retry_never_wipes_submitting_marker(svc, op_ctx):
     # đường duy nhất: clear_attention(resubmit) — kể cả job đã dừng còn mang dấu
     cancelled = insert_job(svc, "test.sleep", status="cancelled", external_state=marker, attempt=2)
     out = await ops.invoke("job.clear_attention", {"id": cancelled, "action": "resubmit"}, op_ctx)
-    assert out["status"] == "queued" and out["external_state"] == {} and out["attempt"] == 0
+    assert out["status"] == "queued" and out["external_state"] == {"gen": 1} and out["attempt"] == 0
     # job đã dừng không mang dấu thì clear_attention vẫn từ chối
     plain = insert_job(svc, "test.sleep", status="failed")
     with pytest.raises(AppError):
@@ -1017,16 +1017,81 @@ async def test_job_retry_keeps_accepted_provider_job_unless_force_new(svc, op_ct
     hai); `force_new` mới xoá để tạo job trả phí mới."""
     ext = {"state": "submitted", "client_ref": "r-1"}
     kept = insert_job(svc, "test.sleep", status=st, external_id="p-1", external_state=ext, attempt=2)
-    out = (await ops.invoke("job.retry", {"ids": [kept]}, op_ctx))["items"][0]
-    assert (out["status"], out["attempt"], out["external_id"], out["external_state"]) == ("queued", 0, "p-1", ext)
+    if st == "succeeded":  # đã xong mà nối lại = tải lại kết quả cũ → từ chối, chỉ force_new
+        with pytest.raises(AppError) as ei:
+            await ops.invoke("job.retry", {"ids": [kept]}, op_ctx)
+        assert (ei.value.code, ei.value.status) == ("already_succeeded", 409) and "force_new" in ei.value.hint
+        assert status(svc, kept) == "succeeded" and load(svc, kept).external_state == ext
+    else:
+        out = (await ops.invoke("job.retry", {"ids": [kept]}, op_ctx))["items"][0]
+        assert (out["status"], out["attempt"], out["external_id"], out["external_state"]) == ("queued", 0, "p-1", ext)
     fresh = insert_job(svc, "test.sleep", status=st, external_id="p-2", external_state=ext)
     out = (await ops.invoke("job.retry", {"ids": [fresh], "force_new": True}, op_ctx))["items"][0]
-    assert (out["status"], out["external_id"], out["external_state"]) == ("queued", None, {})
+    assert (out["status"], out["external_id"], out["external_state"]) == ("queued", None, {"gen": 1})
     assert "trả phí mới" in logs(svc, fresh)
-    # Không có external_id: như cũ — trạng thái provider cũ bị xoá (dấu đã xoá, client_ref…)
-    plain = insert_job(svc, "test.sleep", status=st, external_state={"state": None, "client_ref": "r-3"})
+    # Provider không giữ job: như cũ — trạng thái provider cũ bị xoá (dấu đã xoá, client_ref…), chỉ giữ thế hệ `gen`
+    plain = insert_job(svc, "test.sleep", status=st, external_state={"state": None, "client_ref": "r-3", "gen": 2})
     out = (await ops.invoke("job.retry", {"ids": [plain]}, op_ctx))["items"][0]
-    assert (out["external_id"], out["external_state"]) == (None, {})
+    assert (out["external_id"], out["external_state"]) == (None, {"gen": 2})
+
+
+OPENAI_DONE = {"state": "completed", "result_file": "out/a.png"}  # adapter đồng bộ: đã tạo (đã trả tiền), không id
+
+
+@pytest.mark.parametrize("st", ["failed", "cancelled", "interrupted"])
+async def test_retry_of_job_held_by_state_without_external_id(svc, op_ctx, st):
+    """`state` khác None/submitting (vd. openai_images `completed`) = provider giữ job dù không có external_id."""
+    kept = insert_job(svc, "test.sleep", status=st, external_state=OPENAI_DONE)
+    _add_spend(svc, kept)
+    out = (await ops.invoke("job.retry", {"ids": [kept]}, op_ctx))["items"][0]
+    assert (out["status"], out["external_state"]) == ("queued", OPENAI_DONE)  # nối lại: dùng file đã tạo
+    assert _spend_rows(svc) == [(kept, 1.0)]
+    with svc.db.session() as s:
+        s.get(Job, kept).status = st
+    with pytest.raises(AppError) as ei:
+        await ops.invoke("job.retry", {"ids": [kept], "params_patch": {"prompt": "mới"}}, op_ctx)
+    assert ei.value.code == "params_patch_requires_new_job"
+    out = (await ops.invoke("job.retry", {"ids": [kept], "force_new": True}, op_ctx))["items"][0]
+    assert out["external_state"] == {"gen": 1}
+    assert _spend_rows(svc) == [(None, 1.0)]  # dòng đã trả tiền tách khỏi job, vẫn tính
+
+
+async def test_retry_succeeded_job_held_by_state_needs_force_new(svc, op_ctx):
+    done = insert_job(svc, "test.sleep", status="succeeded", external_state=OPENAI_DONE)
+    with pytest.raises(AppError) as ei:
+        await ops.invoke("job.retry", {"ids": [done]}, op_ctx)
+    assert ei.value.code == "already_succeeded"
+    out = (await ops.invoke("job.retry", {"ids": [done], "force_new": True}, op_ctx))["items"][0]
+    assert (out["status"], out["external_state"]) == ("queued", {"gen": 1})
+
+
+@pytest.mark.parametrize("action", ["resubmit", "fail"])
+async def test_clear_attention_of_job_held_by_state_detaches_spend(svc, op_ctx, action):
+    a = insert_job(svc, "test.sleep", status="needs_attention", external_state=OPENAI_DONE)
+    _add_spend(svc, a)
+    out = await ops.invoke("job.clear_attention", {"id": a, "action": action}, op_ctx)
+    assert _spend_rows(svc) == [(None, 1.0)]
+    assert out["external_state"] == ({"gen": 1} if action == "resubmit" else {})
+
+
+async def test_generation_is_monotonic_across_resets(svc, op_ctx):
+    """`gen` chỉ tăng (force_new, clear_attention resubmit) và không bao giờ mất khi đặt lại."""
+    a = insert_job(svc, "test.sleep", status="failed", external_id="p-1", external_state={"state": "submitted"})
+    for expected in (1, 2):
+        out = (await ops.invoke("job.retry", {"ids": [a], "force_new": True}, op_ctx))["items"][0]
+        assert out["external_state"] == {"gen": expected}
+        with svc.db.session() as s:
+            s.get(Job, a).status = "failed"
+    with svc.db.session() as s:
+        j = s.get(Job, a)
+        j.status, j.external_state = "needs_attention", {"gen": 2, "state": "submitting"}
+    out = await ops.invoke("job.clear_attention", {"id": a, "action": "resubmit"}, op_ctx)
+    assert out["external_state"] == {"gen": 3}
+    with svc.db.session() as s:
+        j = s.get(Job, a)
+        j.status, j.external_state = "needs_attention", {"gen": 3, "state": "submitting"}
+    out = await ops.invoke("job.clear_attention", {"id": a, "action": "fail"}, op_ctx)
+    assert out["external_state"] == {"gen": 3}
 
 
 async def test_job_retry_params_patch_on_accepted_job_requires_force_new(svc, op_ctx):
@@ -1097,7 +1162,8 @@ async def test_job_clear_attention(svc, op_ctx):
     await ops.invoke("job.clear_attention", {"id": a, "action": "resubmit"}, op_ctx)
     await ops.invoke("job.clear_attention", {"id": b, "action": "fail"}, op_ctx)
     ja, jb = load(svc, a), load(svc, b)
-    assert ja.status == "queued" and ja.external_state == {} and ja.external_id is None and ja.error_code is None
+    # resubmit: lần gửi mới → thế hệ mới (clientRef mới, provider không gộp về job cũ)
+    assert ja.status == "queued" and ja.external_state == {"gen": 1} and ja.external_id is None and ja.error_code is None
     assert jb.status == "failed" and jb.external_state == {} and jb.finished_at is not None
     with pytest.raises(AppError) as ei:
         await ops.invoke("job.clear_attention", {"id": a, "action": "fail"}, op_ctx)

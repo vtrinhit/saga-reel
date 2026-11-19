@@ -484,6 +484,41 @@ async def test_dedup_to_finished_job_with_missing_file_resubmits_with_new_ref(ad
     assert result.path.is_file()
 
 
+@pytest.mark.parametrize("client_ref, gen, expected", [
+    (None, 0, "sagareel:job:42"),
+    (None, 2, "sagareel:job:42:g2"),
+    ("proj7:scene03", 0, "proj7:scene03"),
+    ("proj7:scene03", 1, "proj7:scene03:g1"),
+])
+@respx.mock
+async def test_client_ref_carries_generation(req, sample_mp4, http, client_ref, gen, expected):
+    """force_new / clear_attention(resubmit) tăng `gen`: clientRef mới để GrokTele không gộp về job cũ."""
+    run = FakeRun(client_ref=client_ref)
+    if gen:
+        run.external = {"gen": gen}
+    post = respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted())
+    respx.get(f"{BASE}/grok/jobs/job_1").mock(side_effect=succeeded_copying(sample_mp4, post))
+    await make_adapter(http).generate(req, run)
+    assert body_of(post.calls.last)["clientRef"] == expected
+    assert run.external["client_ref"] == expected and run.external.get("gen", 0) == gen
+
+
+@respx.mock
+async def test_new_generation_dedup_to_finished_job_without_file_still_resubmits(adapter, req, sample_mp4):
+    """Lần gửi đầu của một thế hệ (`external_state` chỉ có `gen`) vẫn là "lần gửi mới": job cũ trùng clientRef đã xong
+    mà mất file → gửi lại một lần bằng ref mới."""
+    run = FakeRun()
+    run.external = {"gen": 1}
+    post = respx.post(f"{BASE}/grok/jobs")
+    post.side_effect = [accepted("job_old", dedup=True), accepted("job_new")]
+    respx.get(f"{BASE}/grok/jobs/job_old").mock(return_value=old_job_done_without_file(req))
+    respx.get(f"{BASE}/grok/jobs/job_new").mock(side_effect=succeeded_copying(sample_mp4, post, "job_new"))
+    result = await adapter.generate(req, run)
+    refs = [body_of(c)["clientRef"] for c in post.calls]
+    assert refs[0] == "proj7:scene03:g1" and refs[1].startswith("proj7:scene03:g1:")
+    assert result.path.is_file()
+
+
 # --- Poll: lỗi, huỷ -----------------------------------------------------------------------------------------------
 
 

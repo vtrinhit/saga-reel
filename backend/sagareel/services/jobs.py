@@ -86,6 +86,26 @@ def drop_submit_marker(external_state: dict | None) -> dict:
     return state
 
 
+GEN_KEY = "gen"  # thế hệ gửi của job: chỉ tăng (force_new, clear_attention resubmit), giữ qua mọi lần đặt lại
+
+
+def provider_holds_job(job: Job) -> bool:
+    """Provider đã giữ (và đã/sẽ tính tiền) job: có `external_id`, hoặc `external_state.state` khác None/`submitting`
+    (vd. `submitted`; adapter đồng bộ như openai_images ghi `completed` + `result_file` mà không có id)."""
+    return bool(job.external_id) or (job.external_state or {}).get(SUBMIT_MARKER_KEY) not in (None, SUBMIT_MARKER)
+
+
+def generation(external_state: dict | None) -> int:
+    try:
+        return max(0, int((external_state or {}).get(GEN_KEY) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _gen_state(gen: int) -> dict:
+    return {GEN_KEY: gen} if gen else {}
+
+
 def has_submit_marker(external_id: str | None, external_state: dict | None) -> bool:
     """Đã đánh dấu `submitting` mà chưa có `external_id` → không biết provider đã nhận job hay chưa."""
     return not external_id and (external_state or {}).get(SUBMIT_MARKER_KEY) == SUBMIT_MARKER
@@ -392,13 +412,20 @@ def retry_job(
                 f"Đã có job #{twin} đang hoạt động cho cùng nội dung (client_ref).",
                 hint=f"Theo dõi hoặc huỷ job #{twin} trước khi chạy lại.",
             )
-    resume = bool(job.external_id) and not force_new
-    new_paid = bool(job.external_id) and force_new
+    holds = provider_holds_job(job)
+    resume = holds and not force_new
+    new_paid = holds and force_new
+    if resume and job.status == "succeeded":
+        raise Conflict(
+            f"Job #{job_id} đã xong và provider đã giữ kết quả; chạy lại thường chỉ lấy lại đúng kết quả cũ.",
+            hint="Muốn tạo lại thì chạy lại với force_new=true (tạo job trả phí mới).",
+            extra={"job_id": job_id},
+            code="already_succeeded",
+        )
     if resume and params_patch:
         raise AppError(
             "params_patch_requires_new_job",
-            f"Job #{job_id} đã được provider nhận (external_id {job.external_id}); chạy lại sẽ nối lại đúng job đó nên "
-            "tham số sửa đổi không có tác dụng.",
+            f"Job #{job_id} đã được provider nhận; chạy lại sẽ nối lại đúng job đó nên tham số sửa đổi không có tác dụng.",
             hint="Muốn đổi prompt/tham số thì chạy lại với force_new=true (tạo job trả phí mới); bỏ params_patch để "
                  "chỉ nối lại job cũ (không tốn thêm).",
             status=422,
@@ -408,13 +435,15 @@ def retry_job(
     # của lần mới không bao giờ xoá được chúng (vẫn được tính vào ngân sách).
     if new_paid or (job.status == "succeeded" and not resume):
         _budget().detach(session, job.id)
+    gen = generation(job.external_state)
     _reset_for_run(job)
     job.attempt = 0
     job.result = {}
     job.cost_actual = {}
     if not resume:
         job.external_id = None
-        job.external_state = {}
+        # Giữ thế hệ gửi qua mọi lần đặt lại; force_new = thế hệ mới (clientRef mới phía provider).
+        job.external_state = _gen_state(gen + 1 if force_new else gen)
     if params_patch:
         job.params = {**(job.params or {}), **params_patch}
     session.flush()
@@ -461,10 +490,13 @@ def clear_attention(
     # Dòng chi tiêu có thể đã trả tiền thì giữ trong sổ (tách khỏi job): provider đã nhận (external_id), hoặc người
     # dùng cho thất bại (giữ chỗ mập mờ — thận trọng). Chỉ `resubmit` một job chỉ mang dấu `submitting` (người dùng xác
     # nhận provider chưa tạo) mới để lần gửi mới thay chỗ giữ đó.
-    if job.external_id or action == "fail":
+    marker_only = has_submit_marker(job.external_id, job.external_state)
+    if not (marker_only and action == "resubmit"):
         _budget().detach(session, job.id)
+    gen = generation(job.external_state)
     job.external_id = None
-    job.external_state = {}
+    # resubmit = lần gửi mới → thế hệ mới (adapter dựng clientRef mới, provider không gộp về job cũ); fail giữ thế hệ.
+    job.external_state = _gen_state(gen + 1 if action == "resubmit" else gen)
     if action == "resubmit":
         _reset_for_run(job)
         job.attempt = 0

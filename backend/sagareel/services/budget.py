@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from sagareel.core.errors import AppError
 from sagareel.core.resolver import Resolver, default_resolver
 from sagareel.db.models import Job, ProviderConnection, Spend
+from sagareel.services.jobs import provider_holds_job
 from sagareel.services.settings import global_layer
 
 FAKE_PREFIX = "fake_"
@@ -146,10 +147,11 @@ def reserve(
     """Giữ chỗ cho job: bỏ chỗ cũ của chính job này, `check`, rồi chèn dòng `spend`. Gọi trong phiên giữ khoá ghi
     (`db.session(immediate=True)`) để hai job không cùng lọt trần; vượt trần → `budget_exceeded` (không ghi gì).
 
-    Job đã được provider nhận (`job.external_id`): tiền đã/sẽ bị tính → không xoá dòng cũ của job (trả lại dòng đó để
-    `finalize` chốt khi xong), không kiểm tra trần; chưa có dòng nào thì ghi mới."""
-    accepted = session.scalar(select(Job.external_id).where(Job.id == job_id))
-    if accepted:
+    Provider đã giữ job (`jobs.provider_holds_job`: `external_id`, hoặc `state` khác None/`submitting` như
+    `completed` của adapter đồng bộ): tiền đã/sẽ bị tính → không xoá dòng cũ của job (trả lại dòng đó để `finalize`
+    chốt khi xong), không kiểm tra trần; chưa có dòng nào thì ghi mới."""
+    job = session.get(Job, job_id)
+    if job is not None and provider_holds_job(job):
         row = session.scalars(
             select(Spend).where(Spend.job_id == job_id, Spend.kind == kind).order_by(Spend.id)
         ).first()

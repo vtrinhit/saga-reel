@@ -172,7 +172,7 @@ async def _paid(run: JobRun, adapter: Adapter, kind: str, units: float, generate
     - provider có thể đã nhận job (`provider_may_hold_job`, vd. nối lại sau khi tắt app): không giữ chỗ lại (dòng cũ
       vẫn còn) và không bao giờ thất bại vì `budget_exceeded`;
     - chỉ trả chỗ khi chắc chắn provider không nhận (lỗi mà không có `external_id`/dấu `submitting`), kể cả khi người
-      dùng huỷ; tắt app (`CancelledError` mà `run.cancelled` chưa đặt) không trả chỗ — job nối lại sau;
+      dùng huỷ; tắt app (`CancelledError` khi `run.shutting_down`, người dùng không huỷ) không trả chỗ — nối lại sau;
     - giữ chỗ chạy trong luồng riêng: bị huỷ giữa chừng thì chờ luồng ghi xong rồi mới trả (không sót dòng).
     """
     reserving: asyncio.Future | None = None
@@ -185,7 +185,9 @@ async def _paid(run: JobRun, adapter: Adapter, kind: str, units: float, generate
     except BaseException as e:
         if reserving is not None:
             await _settle(reserving)
-        shutdown = isinstance(e, asyncio.CancelledError) and not run.cancelled.is_set()
+        # Như worker: CancelledError khi worker đang tắt (và người dùng không huỷ) = tắt app → giữ chỗ; mọi CancelledError
+        # khác (người dùng huỷ, handler tự ném) mà provider chưa nhận → trả chỗ.
+        shutdown = isinstance(e, asyncio.CancelledError) and run.shutting_down and not run.cancelled.is_set()
         if not shutdown and not provider_may_hold_job(run):
             with contextlib.suppress(Exception):
                 await asyncio.shield(anyio.to_thread.run_sync(_release, run.services, run.job_id))

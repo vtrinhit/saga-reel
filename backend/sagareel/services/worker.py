@@ -123,6 +123,12 @@ class JobRun:
 
     # --- API cho handler ----------------------------------------------------------------------------------------
 
+    @property
+    def shutting_down(self) -> bool:
+        """Worker đang tắt (app dừng): `CancelledError` lúc này là tắt app — job sẽ được nối lại/gián đoạn, không phải
+        lỗi hay người dùng huỷ."""
+        return self._worker._stopping
+
     def _off_loop(self) -> bool:
         try:
             return asyncio.get_running_loop() is not self._loop

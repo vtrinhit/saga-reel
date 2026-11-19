@@ -261,7 +261,8 @@ class MultiKitVideoAdapter(VideoAdapter):
         out.parent.mkdir(parents=True, exist_ok=True)
 
         external = dict(run.external) if run is not None else {}
-        fresh = not external  # chưa có trạng thái provider nào: lần gửi đầu (hoặc sau job.retry / clear_attention)
+        # Chưa có trạng thái provider nào (ngoài thế hệ `gen`): lần gửi đầu (hoặc sau job.retry / clear_attention).
+        fresh = not {k: v for k, v in external.items() if k != "gen"}
         ref = str(external.get("client_ref") or self._base_ref(run))
         # Chỉ poll thẳng khi job đã được nhận (`external_id`) và lần gửi gần nhất không dang dở/bị từ chối. Dấu
         # `submitting` còn đó (vd. POST với ref mới hết giờ) hoặc dấu đã xoá (`state` = None: GrokTele chắc chắn không
@@ -313,9 +314,16 @@ class MultiKitVideoAdapter(VideoAdapter):
 
     @staticmethod
     def _base_ref(run: JobRun | None) -> str:
+        """clientRef của lần gửi: thế hệ `gen` (tăng khi force_new / clear_attention resubmit) thêm hậu tố `:g<gen>` để
+        GrokTele không gộp lần gửi mới về job cũ cùng clientRef."""
         if run is None:
             return f"sagareel:direct:{uuid.uuid4().hex}"
-        return run.client_ref or f"sagareel:job:{run.job_id}"
+        base = run.client_ref or f"sagareel:job:{run.job_id}"
+        try:
+            gen = int((run.external or {}).get("gen") or 0)
+        except (TypeError, ValueError):
+            gen = 0
+        return f"{base}:g{gen}" if gen > 0 else base
 
     async def _clear_marker(self, run: JobRun | None) -> None:
         if run is not None:

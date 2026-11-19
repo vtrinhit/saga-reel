@@ -844,6 +844,8 @@ class Ctl:
         if not run.external_id:
             if self.mode == "hang_before_submit":
                 await asyncio.sleep(30)
+            if self.mode == "self_cancel":  # lỗi lạ: CancelledError không do huỷ/tắt app
+                raise asyncio.CancelledError()
             await run.save_external(None, state="submitting")
             self.submits += 1
             if self.mode == "reject":  # chắc chắn không nhận: xoá dấu rồi ném
@@ -997,6 +999,15 @@ async def test_resume_after_stop_reserves_nothing_and_never_fails_on_budget(serv
     assert len(spends(services)) == 2
 
 
+async def test_handler_raised_cancel_outside_shutdown_releases_reservation(services, ctl):
+    """CancelledError mà worker không tắt và người dùng không huỷ = lỗi (job failed): trả chỗ (provider chưa nhận)."""
+    ctl.mode = "self_cancel"
+    job_id = submit_try(services, ctl)
+    await run_idle(services)
+    assert job_row(services, job_id).status == "failed"
+    assert spends(services) == []
+
+
 async def test_definite_rejection_releases_reservation(services, ctl):
     ctl.mode = "reject"
     job_id = submit_try(services, ctl)
@@ -1085,6 +1096,14 @@ def test_reserve_never_drops_or_blocks_row_of_accepted_job(session):
     session.flush()
     budget.reserve(session, "image", 1, other.id, conn.id)  # đã tiêu tiền: ghi, không ném budget_exceeded
     assert budget.spent(session, "image") == 3
+    # Adapter đồng bộ (openai_images): `state="completed"` không có external_id — provider vẫn giữ job (đã trả tiền)
+    done = Job(type="provider.try_image", status="running", lane="L", params={},
+               external_state={"state": "completed", "result_file": "a.png"})
+    session.add(done)
+    session.flush()
+    paid = budget.record(session, "image", 1, done.id, conn.id)
+    assert budget.reserve(session, "image", 1, done.id, conn.id).id == paid.id
+    assert budget.spent(session, "image") == 4
 
 
 async def test_force_new_retry_keeps_earlier_spend_counted(services, ctl):
