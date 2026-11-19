@@ -38,8 +38,9 @@ from sagareel.db.models import LlmTask, ProviderConnection, Template
 from sagareel.providers import registry
 from sagareel.providers.base import CapabilityError, Connection, LLMRequest, LLMResult, ProviderUnavailable
 from sagareel.services import jobs, media
-from sagareel.services.jobs import JobFailed, TransientError, job_handler
-from sagareel.services.providers import to_connection
+from sagareel.services.jobs import JobFailed, TransientError
+from sagareel.services.provider_jobs import provider_job
+from sagareel.services.providers import redact_secret, to_connection
 
 if TYPE_CHECKING:
     from sagareel.container import Services
@@ -368,6 +369,8 @@ async def run_task(
     attempts: list[dict] = []
 
     def record(a: dict) -> None:
+        if a.get("error"):  # thông báo lỗi của adapter có thể lọt khoá: che trước khi vào log/kết quả/tóm tắt lỗi
+            a["error"] = redact_secret(str(a["error"]), conn.api_key)
         attempts.append(a)
         if log is not None:
             log("info" if a["ok"] else "warning", _call_line(p.task_key, a))
@@ -476,7 +479,14 @@ def _job_inputs(services: Services, job_id: int, media_ids: list[int]) -> tuple[
         return project_id, paths
 
 
-@job_handler(JOB_TYPE)
+def _all_api_keys(services: Services, run: JobRun) -> list[str]:
+    """Khoá API của mọi kết nối (đọc lúc lỗi): `llm.run` thử nhiều kết nối theo chuỗi dự phòng, cấu hình đọc lại mỗi
+    lần gọi — che hết cho chắc."""
+    with services.db.session() as s:
+        return [k for k in s.scalars(select(ProviderConnection.api_key)) if k]
+
+
+@provider_job(JOB_TYPE, secrets=_all_api_keys)
 async def llm_run_job(run: JobRun) -> dict:
     p = run.params
     services = run.services

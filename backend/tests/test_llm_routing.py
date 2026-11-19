@@ -481,6 +481,35 @@ async def test_llm_run_logs_llm_call_and_resets_deltas_on_fallback(client_with_b
     assert len(resets) == 1
 
 
+LLM_KEY = "sk-LLM-SECRET-7777"
+
+
+@pytest.mark.parametrize("mode", ["crash", "rejected"])
+async def test_llm_run_never_leaks_api_key_into_job_or_logs(client, app_services, run_jobs, monkeypatch, caplog, mode):
+    """Lỗi adapter lọt khoá API (lỗi lạ có traceback, hoặc lỗi chuẩn có thông báo kèm khoá): job_log, lỗi job, kết quả
+    và log ứng dụng của job `llm.run` không bao giờ chứa khoá (như job provider `provider_job`)."""
+    from sagareel.providers import registry
+    from sagareel.services.jobs import JobFailed
+
+    async def leaky_chat(self, req, on_delta=None):
+        if mode == "crash":
+            raise RuntimeError(f"boom: Authorization: Bearer {self.conn.api_key}")
+        raise JobFailed("provider_rejected", f"Provider từ chối khoá {self.conn.api_key}.")
+
+    monkeypatch.setattr(registry.get("fake_llm"), "chat", leaky_chat)
+    ok(client, "provider.create", {"kind": "llm", "adapter": "fake_llm", "name": "leaky", "api_key": LLM_KEY})
+    set_route(client, "write_script", connection="leaky")
+    caplog.set_level("DEBUG")
+    job_id = ok(client, "llm.run", {"task": "write_script", "variables": {"input": "x"}})["job_id"]
+    job = await run_jobs(job_id)
+    assert job["status"] == "failed", job
+    logs = json.dumps(ok(client, "job.logs", {"id": job_id}), ensure_ascii=False)
+    assert ("boom" in logs) if mode == "crash" else ("Provider từ chối khoá" in logs)  # lỗi vẫn được ghi…
+    assert LLM_KEY not in logs  # …nhưng đã che khoá
+    assert LLM_KEY not in json.dumps(job, ensure_ascii=False)
+    assert LLM_KEY not in caplog.text
+
+
 async def test_provider_rejection_404_falls_back(services):
     import httpx
     import respx

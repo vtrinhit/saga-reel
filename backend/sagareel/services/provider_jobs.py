@@ -22,7 +22,7 @@ import functools
 import json
 import logging
 import traceback
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -97,10 +97,21 @@ def _secret_of(services: Services, connection_id: Any) -> str:
         return ""
 
 
-def _redacted(e: Exception, secret: str) -> Exception:
-    """Che `secret` trong lỗi: lỗi chuẩn được sửa tại chỗ; lỗi lạ → `ProviderCrash` (traceback đã che vào log)."""
+def _connection_secrets(services: Services, run: JobRun) -> list[str]:
+    """Mặc định: khoá API của kết nối `params.connection_id` của job."""
+    return [_secret_of(services, run.params.get("connection_id"))]
+
+
+def redact_all(text: str, secrets: Sequence[str]) -> str:
+    for secret in secrets:
+        text = redact_secret(text, secret)
+    return text
+
+
+def _redacted(e: Exception, secrets: Sequence[str]) -> Exception:
+    """Che mọi `secrets` trong lỗi: lỗi chuẩn được sửa tại chỗ; lỗi lạ → `ProviderCrash` (traceback đã che vào log)."""
     def r(text: str | None) -> str | None:
-        return redact_secret(text, secret) if text is not None else None
+        return redact_all(text, secrets) if text is not None else None
 
     if isinstance(e, (JobFailed, NeedsAttention, TransientError)):
         e.msg = r(e.msg)
@@ -117,10 +128,15 @@ def _redacted(e: Exception, secret: str) -> Exception:
 
 
 def provider_job(
-    type_: str, *, resumable: bool = False
+    type_: str,
+    *,
+    resumable: bool = False,
+    secrets: Callable[[Services, JobRun], Sequence[str]] = _connection_secrets,
 ) -> Callable[[Callable[[JobRun], Awaitable[dict]]], Callable[[JobRun], Awaitable[dict]]]:
-    """`job_handler(type_, resumable=...)` kèm che khoá API của kết nối (`params.connection_id`) trong mọi lỗi thoát ra.
+    """`job_handler(type_, resumable=...)` kèm che khoá API trong mọi lỗi thoát ra.
 
+    Khoá cần che lấy từ `secrets(services, run)` (đồng bộ, chạy trong thread, đọc lúc lỗi xảy ra) — mặc định khoá của
+    kết nối `params.connection_id`; job dùng nhiều kết nối (vd. `llm.run` với chuỗi dự phòng) truyền hàm riêng.
     `resumable=True` cho handler mà adapter nối lại được từ `external_id`/dấu `submitting` mà không POST lại.
     """
 
@@ -130,10 +146,11 @@ def provider_job(
             try:
                 return await fn(run)
             except Exception as e:
-                secret = await anyio.to_thread.run_sync(_secret_of, run.services, run.params.get("connection_id"))
-                if not secret:
+                found = await anyio.to_thread.run_sync(secrets, run.services, run)
+                found = [s for s in found if s]
+                if not found:
                     raise
-                out = _redacted(e, secret)
+                out = _redacted(e, found)
                 if out is e:
                     raise
                 raise out from None
