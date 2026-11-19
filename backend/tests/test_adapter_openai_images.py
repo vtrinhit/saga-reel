@@ -122,6 +122,21 @@ async def test_resume_with_submitting_state_does_not_post(make, tmp_path, run_ct
 
 
 @respx.mock
+async def test_resume_after_success_never_reposts(make, tmp_path):
+    """Job nối lại sau khi ảnh đã tạo (vd. app tắt lúc đăng ký media): trả lại file cũ, hoặc hỏi người dùng."""
+    route = respx.post(GEN).mock(return_value=httpx.Response(200, json=B64))
+    run = RunStub(tmp_path / "work")
+    first = await make().generate(make_req(tmp_path), run)
+    assert run.external["result_file"] == str(first.paths[0])
+    again = await make().generate(make_req(tmp_path), run)
+    assert again.paths == first.paths and route.call_count == 1
+    first.paths[0].unlink()  # media.prepare đã chuyển file đi
+    with pytest.raises(JobUnknown):
+        await make().generate(make_req(tmp_path), run)
+    assert route.call_count == 1
+
+
+@respx.mock
 async def test_rejection_and_gateway_clear_state(make, tmp_path, run_ctx):
     respx.post(GEN).mock(return_value=httpx.Response(400, json={"error": {"message": "safety system"}}))
     with pytest.raises(ProviderJobError) as e:

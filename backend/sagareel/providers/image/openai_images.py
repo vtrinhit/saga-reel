@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+from pathlib import Path
 from typing import Any, ClassVar
 
 import anyio
@@ -116,8 +117,18 @@ class OpenAIImagesAdapter(ImageAdapter):
         paid.check_resume()
         model = req.model or self.conn.default_model or DEFAULT_MODEL
         fields: dict[str, Any] = {"model": model, "prompt": req.prompt, "n": 1, "size": self._size(req.aspect)}
+        meta = {"adapter": self.adapter_id, "model": model, "size": fields["size"],
+                "endpoint": "edits" if req.refs else "generations", "prompt_received": req.prompt,
+                "refs": len(req.refs)}
+        if run is not None and run.external.get("state") == "completed":
+            # Lần chạy trước đã tạo xong (và đã tính tiền) rồi dừng giữa chừng: không bao giờ gửi lại.
+            done = Path(str(run.external.get("result_file") or ""))
+            if run.external.get("result_file") and done.is_file():
+                return ImageResult(paths=[done], meta={**meta, "resumed": True})
+            raise paid.unknown("Lần chạy trước đã tạo ảnh (đã có thể bị tính tiền) nhưng file kết quả không còn; "
+                               "không tự gửi lại.")
         refs = await anyio.to_thread.run_sync(_paid.read_refs, list(req.refs))
-        endpoint = "edits" if refs else "generations"
+        endpoint = meta["endpoint"]
         fp = _paid.fingerprint({**fields, "endpoint": endpoint}, [data for _, data in refs])
         url = f"{self.base}/images/{endpoint}"
         if run is not None:
@@ -138,12 +149,9 @@ class OpenAIImagesAdapter(ImageAdapter):
             image = await self._image_bytes(c, resp, paid)
         path = await _paid.write_atomic(req.out_dir, image, _paid.sniff_ext(image))
         if run is not None:
-            await run.save_external(None, state="completed")
+            await run.save_external(None, state="completed", result_file=str(path))
             run.progress(100.0, stage="Đã tạo ảnh")
-        return ImageResult(paths=[path], meta={
-            "adapter": self.adapter_id, "model": model, "size": fields["size"], "endpoint": endpoint,
-            "prompt_received": req.prompt, "refs": len(req.refs),
-        })
+        return ImageResult(paths=[path], meta=meta)
 
     async def _image_bytes(self, c: httpx.AsyncClient, resp: httpx.Response, paid: _paid.PaidPost) -> bytes:
         """Ảnh từ trả lời 2xx. Trả lời hỏng/không tải được ảnh → giữ dấu, `JobUnknown` (đã có thể bị tính tiền)."""
