@@ -37,7 +37,8 @@ Thư mục `<kind>/` mới cần một `__init__.py` (có thể rỗng) để `d
      Khoá trùng trong `options` của kết nối ghi đè (`adapter.capabilities()`); op chạy thử từ chối giá trị ngoài danh
      sách bằng `capability_mismatch`.
 3. Cài đặt `async check_health() -> Health` — gọi endpoint **rẻ, không tốn tiền**. Thiếu URL/khoá →
-   `Health(status="not_configured", ...)`; không kết nối được → `dead`; ổn → `alive` kèm `capabilities` thật.
+   `Health(status="not_configured", ...)`; không kết nối được, 401/403 → `dead`; 429 hoặc 5xx/cổng → `unknown` (có
+   thể chỉ tạm thời); ổn → `alive` kèm `capabilities` thật.
 4. Cài đặt phương thức theo kind:
 
    | Kind | Phương thức |
@@ -60,9 +61,86 @@ Thư mục `<kind>/` mới cần một `__init__.py` (có thể rỗng) để `d
 - **Không I/O trong `__init__`**: adapter được dựng rẻ, nhiều lần. Khởi động app không gọi provider nào.
 - **HTTP**: dùng `async with self.client() as c:` — trả `self.http` nếu người gọi đưa (test), ngược lại mở client tạm
   với `base_url` của kết nối.
-- **Job dài/tốn tiền** (ảnh, video): ngay khi provider trả id, gọi `await run.save_external(id, phase="submitted")`
-  trước khi poll, để khởi động lại nối tiếp đúng job thay vì gửi lại. `run` có thể là `None` khi gọi trực tiếp.
+- **Job dài/tốn tiền** (ảnh, video): theo vòng đời dấu gửi (khoá `state`, xem mục dưới) — ngay khi provider trả id,
+  gọi `await run.save_external(id, state="submitted")` trước khi poll, để khởi động lại nối tiếp đúng job thay vì gửi
+  lại. `run` có thể là `None` khi gọi trực tiếp.
 - Tôn trọng `run.cancelled` (asyncio.Event) trong vòng poll.
+
+## Vòng đời dấu gửi (`external_state.state`)
+
+Áp dụng cho mọi POST tốn tiền (MaiVideo, openai_images, multikit). `run.save_external(...)` đã ghi bền khi trả về.
+
+| Bước | `external_id` | `state` | Ghi chú |
+|---|---|---|---|
+| Ngay trước POST | — | `"submitting"` | kèm `fingerprint` (ảnh) hoặc `client_ref` (multikit) |
+| Provider trả id | id | `"submitted"` | ghi log mã job **trước** khi lưu |
+| Chắc chắn chưa nhận (từ chối kết nối, cổng 502/503/521/522/523/525/526/530, 429, 4xx) | — | `None` (xoá dấu) | rồi mới ném `TransientError` / `ProviderJobError` |
+| Mập mờ (đã gửi mà mất trả lời, 500/504/520/524, JSON hỏng/thiếu id) | — | giữ `"submitting"` | `JobUnknown` → `needs_attention` |
+
+Lần chạy sau: có `external_id` → chỉ poll, không POST. `state == "submitting"` mà không có `external_id` → hàng đợi
+**không bao giờ** tự chạy lại; mọi kết quả không thành công đưa job về `needs_attention`, người dùng chọn
+`job.clear_attention(action=resubmit|fail)`. Riêng multikit gửi lại được vì GrokTele chống trùng theo `clientRef`.
+
+## Adapter thật
+
+### `maivideo` — ảnh MaiVideo (PixVerse Image API), tính tiền mỗi job được nhận
+
+- **Cấu hình**: `base_url` (mặc định `https://maivideo.top`), `api_key` (bắt buộc, header `X-API-Key`),
+  `default_model` (`gpt-image-2.0`), `detail_level` (`low|medium|high`; `xhigh|max` chỉ với `gpt-image-2.5`),
+  `poll_interval` (10 s), `timeout_s` (1800 s), `max_reference_images` (9).
+- **Năng lực**: tỉ lệ `9:16, 16:9, 1:1, 4:5, 3:4`; độ phân giải `1080p, 1440p, 2160p` (nhận cả `1K/2K/4K`); tối đa
+  9 ảnh tham chiếu (gửi dạng data URL theo đúng thứ tự). Sức khoẻ đọc `GET /api/v1/image-generation/models` (danh mục
+  model, độ phân giải, tỉ lệ, mức chi tiết, `max_prompt_length`, `quota`).
+- **Luồng**: `POST /api/v1/image-generation` → `job_id` → poll `GET .../{job_id}` (404 → tra `GET .../status?job_ids=`)
+  tới `completed|partial` → tải `images[].file_url` (khoá chỉ gửi về cùng máy chủ MaiVideo).
+- **Lỗi → trạng thái job**: thiếu khoá → `failed/provider_unavailable`; quá số ảnh tham chiếu → `capability_mismatch`;
+  POST theo bảng dấu gửi ở trên; job `error|failed` → `failed/provider_failed`; MaiVideo báo không còn job 3 lần liên
+  tiếp → `needs_attention/maivideo_job_missing`; poll quá `timeout_s` hoặc tải ảnh lỗi → `TransientError` **giữ**
+  `external_id` (lần sau chỉ poll/tải lại); lưu mã job thất bại do lỗi DB → `needs_attention/maivideo_job_unknown`, thông
+  báo có mã job để đối chiếu trên MaiVideo.
+- **Sức khoẻ**: không khoá → `not_configured`; 401/403 hoặc không kết nối được → `dead`; 429 và 5xx/cổng → `unknown`;
+  `quota.remaining = 0` nhưng `available` còn → vẫn `alive`.
+
+### `openai_images` — ảnh qua API tương thích OpenAI Images
+
+- **Cấu hình**: `base_url` (kết thúc `/v1`, mặc định `https://api.openai.com/v1`), `api_key` (tuỳ chọn, Bearer),
+  `default_model` (`gpt-image-1`), `size` (bỏ trống = theo tỉ lệ), `max_refs` (16).
+- **Năng lực**: tỉ lệ `1:1, 9:16, 4:5, 3:4, 16:9` → `1024x1024 / 1024x1536 / 1536x1024`; có ảnh tham chiếu thì gọi
+  `/images/edits` (multipart, mỗi ảnh một phần `image[]` theo thứ tự), không có thì `/images/generations`.
+- **Lỗi → trạng thái job**: API đồng bộ (không mã job) nhưng vẫn tính tiền khi mất trả lời → cùng bảng dấu gửi, mã
+  `openai_images_job_unknown`. Nối lại sau khi đã có ảnh thì không gửi lại.
+- **Sức khoẻ**: `GET {base}/models`; thiếu `base_url` → `not_configured`; 401/403, 4xx khác hoặc không kết nối được →
+  `dead`; 429 và 5xx/cổng → `unknown`.
+
+### `multikit` — video Grok qua GrokTele / MultiKit
+
+- **Cấu hình**: `base_url` (GrokTele `http://127.0.0.1:8888`, MultiKit `http://127.0.0.1:17890`), `api_key` (tuỳ chọn,
+  Bearer), `poll_interval` (4 s), `timeout_s` (7200 s).
+- **Năng lực**: thời lượng `6, 10, 15` s; `480p, 720p, 1080p`; tỉ lệ `9:16, 16:9` (tỉ lệ khác quy về nút gần nhất:
+  dọc/vuông → 9:16, ngang → 16:9); cần ảnh đầu vào; video có tiếng.
+- **Luồng**: dấu `submitting` + `client_ref` → `POST /grok/jobs` (202 `jobId`) → poll `GET /grok/jobs/{id}` tới
+  `succeeded` → file phải có và > 5 KB → probe. `clientRef` ổn định nên POST lại chỉ nhận lại job cũ (`deduplicated`).
+- **Lỗi → trạng thái job**: từ chối kết nối → `provider_unavailable` (xoá dấu); 401/403, 409 `no_account_available` →
+  `provider_unavailable`; 429, cổng 502/503/… → `TransientError` (xoá dấu); 5xx khác hoặc mất kết nối sau khi gửi →
+  `TransientError` giữ dấu; 507/`disk_full` → `provider_disk_full`; 4xx khác → `provider_<kind>` (vd. `moderated`);
+  202 thiếu `jobId` → `needs_attention/multikit_job_unknown`; job bị huỷ phía GrokTele lúc SagaReel tắt →
+  `needs_attention/remote_cancelled`; 404 khi poll → `provider_not_found`; quá `timeout_s` → `TransientError` (chờ
+  tiếp đúng job cũ).
+- **Sức khoẻ**: `GET /health` rồi `GET /grok/accounts`; ≥ 1 tài khoản dùng được → `alive`; không → `dead` kèm
+  `label: status (reason)` (đã che số điện thoại/@username, không bao giờ đưa `telegramUser`).
+
+### `openai_compat`, `edge_tts`, `openai_tts`, `openai_stt`
+
+Chưa có trong nhánh này (Task 13/14 chưa gộp); mục tài liệu sẽ bổ sung sau khi gộp.
+
+## Số liệu đo thực tế (2026-11-19)
+
+- **MaiVideo** có thể giữ job ở `queued` **hơn 10 phút** rồi mới xong, và vẫn tính tiền dù client đã bỏ cuộc → poll mặc
+  định 1800 s; quá hạn thì giữ `external_id`, lần sau chỉ poll, không POST lại.
+- **GrokTele** âm thầm nâng `480p` lên **720p**; MP4 trả về là H.264 24 fps + AAC 48 kHz stereo **kèm một luồng ảnh bìa
+  `mjpeg` (`attached_pic`)** — `media.probe` bỏ qua luồng này khi đọc kích thước/codec. Một job 6 s mất ~176 s.
+- **edge-tts** (7.3.1): giọng `vi-VN` thỉnh thoảng lỗi `NoAudioReceived` phía máy chủ (rany2/edge-tts#512); thử lại vài
+  phút sau thường được. Mốc thời gian từng từ cần `boundary="WordBoundary"`.
 
 ## Lỗi chuẩn (`providers.base`)
 
