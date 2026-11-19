@@ -1,11 +1,12 @@
 /**
- * Định tuyến LLM (ops `llm.*` của Task 13). Op chưa có trong `schema.d.ts` lúc sinh kiểu → mọi chỗ đọc payload nằm
- * ở đây, viết theo bản `ops/llm_ops.py` của Task 13 (đang gộp song song) và chịu được biến thể nhỏ:
+ * Định tuyến LLM (ops `llm.*`). Params có kiểu từ `schema.d.ts`; kết quả các op này chưa khai báo kiểu ở backend
+ * (OpenAPI để `unknown`) → mọi chỗ đọc payload nằm ở đây và chịu được biến thể nhỏ:
  * - `llm.task_list` → `{items: [{key, label, description, template_key, route: {connection, model, params},
  *   fallbacks: [route], effective_routes: [route]}]}`
  * - `llm.models({connection})` → `{connection, models: [string | {id|name}]}`
  * - `llm.task_update({key, route, fallbacks})` — `route: null` = về mặc định.
  */
+import type { OpParams } from '../api/ops';
 
 export interface LlmRoute {
   connection: string | null;
@@ -93,7 +94,7 @@ export function buildTaskUpdate(
   key: string,
   route: RouteDraft,
   fallbacks: RouteDraft[],
-): { ok: true; params: Record<string, unknown> } | { ok: false; errors: Record<string, string> } {
+): { ok: true; params: OpParams<'llm.task_update'> } | { ok: false; errors: Record<string, string> } {
   const errors: Record<string, string> = {};
   const conv = (d: RouteDraft, at: string) => {
     const p = parseParams(d.params);

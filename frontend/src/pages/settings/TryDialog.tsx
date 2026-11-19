@@ -39,25 +39,26 @@ function caps(adapter: Adapter | undefined, conn: Connection): Record<string, un
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 
 /** Params của `provider.try_<kind>`; luôn truyền `connection` rõ ràng (không dựa vào kết nối mặc định). */
-function tryParams(conn: Connection, f: TryForm, dryRun: boolean): Record<string, unknown> {
-  const base: Record<string, unknown> = { connection: conn.id };
+/** Gọi op `provider.try_<kind>` đúng kiểu của từng loại kết nối (params lấy từ `schema.d.ts`). */
+function callTry(conn: Connection, f: TryForm, dryRun: boolean): Promise<unknown> {
+  const connection = conn.id;
   switch (conn.kind) {
     case 'image':
-      return { ...base, prompt: f.prompt, aspect: f.aspect || null, dry_run: dryRun };
+      return callOp('provider.try_image', { connection, prompt: f.prompt, aspect: f.aspect || undefined, dry_run: dryRun });
     case 'video':
-      return {
-        ...base,
+      return callOp('provider.try_video', {
+        connection,
         prompt: f.prompt,
         image_media_id: Number(f.mediaId),
-        duration: f.duration ? Number(f.duration) : null,
+        duration: f.duration ? Number(f.duration) : undefined,
         dry_run: dryRun,
-      };
+      });
     case 'tts':
-      return { ...base, text: f.text, voice: f.voice.trim() || null, dry_run: dryRun };
+      return callOp('provider.try_tts', { connection, text: f.text, voice: f.voice.trim() || undefined, dry_run: dryRun });
     case 'llm':
-      return { ...base, prompt: f.prompt, model: f.model.trim() || null };
+      return callOp('provider.try_llm', { connection, prompt: f.prompt, model: f.model.trim() || undefined });
     case 'stt':
-      return { ...base, audio_media_id: Number(f.mediaId) };
+      return callOp('provider.try_stt', { connection, audio_media_id: Number(f.mediaId) });
   }
 }
 
@@ -132,7 +133,6 @@ export function TryDialog({ conn, adapter, onClose }: TryDialogProps) {
   const set = (k: keyof TryForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   // Gọi op từ handler (không từ effect): việc trả phí không bao giờ bị gửi hai lần vì effect chạy lại.
-  const op = `provider.try_${conn.kind}` as 'provider.try_image';
   const estimate = () => {
     if (!formReady(conn, form) || state.step !== 'form') return;
     if (!dryRun) {
@@ -140,14 +140,14 @@ export function TryDialog({ conn, adapter, onClose }: TryDialogProps) {
       return;
     }
     dispatch({ type: 'submit', dryRun: true });
-    callOp(op, tryParams(conn, form, true) as never)
+    callTry(conn, form, true)
       .then((r) => dispatch({ type: 'estimated', estimate: (r as { estimate: TryEstimate }).estimate }))
       .catch((e) => dispatch({ type: 'failed', error: toApiError(e) }));
   };
   const runNow = () => {
     if (state.step !== 'estimate' && state.step !== 'confirm') return;
     dispatch({ type: 'run' });
-    callOp(op, tryParams(conn, form, false) as never)
+    callTry(conn, form, false)
       .then((r) => dispatch({ type: 'started', jobId: (r as { job_id: number }).job_id }))
       .catch((e) => dispatch({ type: 'failed', error: toApiError(e) }));
   };

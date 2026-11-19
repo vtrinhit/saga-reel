@@ -3,7 +3,8 @@ import { ArrowRight, CircleAlert, Hourglass, Pencil, Plus, Save, Trash } from 'l
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useIsViewer } from '../../api/auth';
-import { callOpLoose, hasOp, useOpsCatalog } from '../../api/catalog';
+import { hasOp, useOpsCatalog } from '../../api/catalog';
+import { callOp } from '../../api/ops';
 import { toApiError, type ApiError } from '../../api/client';
 import { useConnections } from '../../api/hooks';
 import type { Connection } from '../../api/types';
@@ -47,7 +48,7 @@ function ModelPicker({
 }) {
   const models = useQuery({
     queryKey: ['llm', 'models', connection],
-    queryFn: async () => normalizeModels(await callOpLoose('llm.models', { connection })),
+    queryFn: async () => normalizeModels(await callOp('llm.models', { connection })),
     enabled: !!connection,
     staleTime: 5 * 60_000,
     retry: false,
@@ -161,7 +162,7 @@ function TaskDrawer({ task, connections, onClose }: { task: LlmTask | null; conn
         return null;
       }
       setErrors({});
-      return callOpLoose('llm.task_update', r.params);
+      return callOp('llm.task_update', r.params);
     },
     onSuccess: (res) => {
       if (res == null) return;
@@ -281,7 +282,7 @@ export function SettingsLlm() {
   const conns = useConnections();
   const tasks = useQuery({
     queryKey: tasksKey,
-    queryFn: async () => normalizeTasks(await callOpLoose('llm.task_list', {})),
+    queryFn: async () => normalizeTasks(await callOp('llm.task_list', {})),
     enabled: available,
   });
   const [editing, setEditing] = useState<LlmTask | null>(null);

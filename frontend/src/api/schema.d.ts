@@ -285,7 +285,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Chạy lại job đã xong/thất bại/huỷ/gián đoạn (về queued, attempt=0, gộp params_patch) */
+        /** Chạy lại job đã xong/thất bại/huỷ/gián đoạn (về queued, attempt=0, gộp params_patch); job provider đã nhận thì nối lại job cũ, force_new=true để tạo job trả phí mới */
         post: operations["job.retry"];
         delete?: never;
         options?: never;
@@ -304,6 +304,91 @@ export interface paths {
         put?: never;
         /** Chờ tới khi mọi job rời queued/running — tức đã kết thúc (succeeded/failed/cancelled) hoặc dừng chờ người quyết định (needs_attention, interrupted, waiting_*) — hoặc hết giờ; trả trạng thái từng job và timed_out */
         post: operations["job.wait"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/llm.models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Danh sách model của một kết nối LLM (hỏi provider, không tốn tiền) */
+        post: operations["llm.models"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/llm.run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Chạy một công việc LLM (job; stream llm.delta, kết quả {text, data, route, usage}) */
+        post: operations["llm.run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/llm.task_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Thêm công việc LLM mới (dùng một template có sẵn) */
+        post: operations["llm.task_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/llm.task_list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Danh sách công việc LLM, định tuyến (kết nối + model + dự phòng) và route hiệu lực */
+        post: operations["llm.task_list"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/llm.task_update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sửa công việc LLM: định tuyến, chuỗi dự phòng, nhãn, template (có hiệu lực ngay) */
+        post: operations["llm.task_update"];
         delete?: never;
         options?: never;
         head?: never;
@@ -440,6 +525,23 @@ export interface paths {
         put?: never;
         /** Chi tiết một kết nối provider (khoá API bị che) */
         post: operations["provider.get"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/provider.import_env": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Nhập kết nối provider từ .env.local (chỉ tạo kết nối chưa có theo tên); confirm=false chỉ xem trước */
+        post: operations["provider.import_env"];
         delete?: never;
         options?: never;
         head?: never;
@@ -661,6 +763,74 @@ export interface paths {
         put?: never;
         /** Thông tin ứng dụng: tên, phiên bản, boot_id, số thao tác đã đăng ký */
         post: operations["system.info"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/template.get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Nội dung một template prompt (kèm bản cài sẵn nếu có) */
+        post: operations["template.get"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/template.list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Danh sách template prompt (không kèm nội dung; dùng template.get) */
+        post: operations["template.list"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/template.reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Đưa template về nội dung cài sẵn */
+        post: operations["template.reset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/template.update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sửa nội dung template prompt (create_if_missing để tạo mới); kiểm tra cú pháp */
+        post: operations["template.update"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1000,6 +1170,15 @@ export interface components {
              */
             change_set_id?: number | null;
         };
+        /** ImportEnvParams */
+        ImportEnvParams: {
+            /**
+             * Confirm
+             * @description false = chỉ xem trước những gì sẽ được tạo (không ghi)
+             * @default false
+             */
+            confirm: boolean;
+        };
         /** JobClearAttentionParams */
         JobClearAttentionParams: {
             /** Id */
@@ -1011,7 +1190,7 @@ export interface components {
             action: "resubmit" | "fail";
             /**
              * Params Patch
-             * @description Chỉ với resubmit: gộp vào params trước khi gửi lại
+             * @description Chỉ với resubmit: gộp vào params trước khi gửi lại; chỉ khoá đã có, không có connection_id
              */
             params_patch?: {
                 [key: string]: unknown;
@@ -1076,11 +1255,17 @@ export interface components {
             ids: number[];
             /**
              * Params Patch
-             * @description Gộp vào params trước khi chạy lại (vd. sửa prompt)
+             * @description Gộp vào params trước khi chạy lại (vd. sửa prompt); chỉ khoá đã có, không có connection_id
              */
             params_patch?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Force New
+             * @description Job đã được provider nhận (có external_id): mặc định chạy lại nối tiếp đúng job đó (không tốn thêm); true = xoá external_id/external_state để tạo job trả phí mới
+             * @default false
+             */
+            force_new: boolean;
         };
         /** JobWaitParams */
         JobWaitParams: {
@@ -1175,6 +1360,14 @@ export interface components {
             items: components["schemas"]["MediaOut"][];
             /** Next Cursor */
             next_cursor?: number | null;
+        };
+        /** ModelsParams */
+        ModelsParams: {
+            /**
+             * Connection
+             * @description Tên hoặc id kết nối LLM
+             */
+            connection: number | string;
         };
         /** ProviderCheckParams */
         ProviderCheckParams: {
@@ -1295,6 +1488,48 @@ export interface components {
         };
         /** ResolvedList */
         ResolvedList: components["schemas"]["Resolved"][];
+        /** RouteSpec */
+        RouteSpec: {
+            /**
+             * Connection
+             * @description Tên (hoặc id) kết nối LLM
+             */
+            connection?: string | number | null;
+            /**
+             * Model
+             * @description Bỏ trống = model mặc định của kết nối
+             */
+            model?: string | null;
+            /**
+             * Params
+             * @description Tham số gửi kèm, vd. temperature, max_tokens
+             */
+            params?: {
+                [key: string]: unknown;
+            };
+        };
+        /** RunParams */
+        RunParams: {
+            /**
+             * Task
+             * @description Key công việc LLM, vd. write_script
+             */
+            task: string;
+            /**
+             * Variables
+             * @description Biến của template (thường có `input`)
+             */
+            variables?: {
+                [key: string]: unknown;
+            };
+            /** @description Định tuyến riêng cho lần chạy này */
+            override?: components["schemas"]["RouteSpec"] | null;
+            /**
+             * Images Media Ids
+             * @description Ảnh gửi kèm (vision)
+             */
+            images_media_ids?: number[];
+        };
         /** SessionInfo */
         SessionInfo: {
             /** Id */
@@ -1416,6 +1651,91 @@ export interface components {
         };
         /** SystemInfoParams */
         SystemInfoParams: Record<string, never>;
+        /** TaskCreateParams */
+        TaskCreateParams: {
+            /**
+             * Key
+             * @description snake_case, duy nhất
+             */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Template Key */
+            template_key: string;
+            /**
+             * Needs Vision
+             * @default false
+             */
+            needs_vision: boolean;
+            /**
+             * Json Mode
+             * @default false
+             */
+            json_mode: boolean;
+            route?: components["schemas"]["RouteSpec"] | null;
+            /** Fallbacks */
+            fallbacks?: components["schemas"]["RouteSpec"][];
+        };
+        /** TaskUpdateParams */
+        TaskUpdateParams: {
+            /** Key */
+            key: string;
+            /** @description null = về mặc định (kết nối LLM đang bật đầu tiên) */
+            route?: components["schemas"]["RouteSpec"] | null;
+            /**
+             * Fallbacks
+             * @description Thay toàn bộ chuỗi dự phòng
+             */
+            fallbacks?: components["schemas"]["RouteSpec"][] | null;
+            /** Label */
+            label?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Template Key */
+            template_key?: string | null;
+        };
+        /** TemplateKeyParams */
+        TemplateKeyParams: {
+            /** Key */
+            key: string;
+        };
+        /** TemplateListParams */
+        TemplateListParams: {
+            /** Kind */
+            kind?: string | null;
+        };
+        /** TemplateUpdateParams */
+        TemplateUpdateParams: {
+            /** Key */
+            key: string;
+            /**
+             * Body
+             * @description Nội dung Jinja; lưu nguyên văn
+             */
+            body: string;
+            /**
+             * Locked
+             * @description Khoá: LLM không được sửa
+             */
+            locked?: boolean | null;
+            /**
+             * Create If Missing
+             * @description Tạo template mới nếu chưa có key này
+             * @default false
+             */
+            create_if_missing: boolean;
+            /**
+             * Kind
+             * @description Loại (chỉ dùng khi tạo mới)
+             * @default llm
+             */
+            kind: string;
+        };
         /** TokenCreateParams */
         TokenCreateParams: {
             /**
@@ -2317,6 +2637,216 @@ export interface operations {
             };
         };
     };
+    "llm.models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelsParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "llm.run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "llm.task_create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskCreateParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "llm.task_list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["EmptyParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "llm.task_update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskUpdateParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
     "media.get": {
         parameters: {
             query?: never;
@@ -2621,6 +3151,48 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ProviderIdParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "provider.import_env": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ImportEnvParams"];
             };
         };
         responses: {
@@ -3177,6 +3749,174 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemInfo"];
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "template.get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateKeyParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "template.list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TemplateListParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "template.reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateKeyParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "template.update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateUpdateParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */

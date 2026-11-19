@@ -72,8 +72,8 @@ export function ProviderForm({ open, onClose, adapters, conn, kind }: ProviderFo
       if (!adapter || !v) return null;
       const r = buildSubmit(adapter, v, conn ?? undefined);
       setErrors(r.errors);
-      if (r.update) return (await callOp('provider.update', r.update as never)) as Connection;
-      if (r.create) return (await callOp('provider.create', r.create as never)) as Connection;
+      if (r.update) return (await callOp('provider.update', r.update)) as Connection;
+      if (r.create) return (await callOp('provider.create', r.create)) as Connection;
       return null;
     },
     onSuccess: (saved) => {

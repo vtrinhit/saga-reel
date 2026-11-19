@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../api/client';
-import type { TryEstimate } from '../api/types';
+import type { ProviderKind, TryEstimate } from '../api/types';
 import { estimateRows, INITIAL, supportsDryRun, tryReducer, type TryState } from './tryFlow';
 
 const est = (over: Partial<TryEstimate> = {}): TryEstimate => ({
@@ -20,7 +20,8 @@ const err = new ApiError({ code: 'budget_exceeded', detail: 'Vượt ngân sách
 
 describe('supportsDryRun', () => {
   it('chỉ ảnh, video, TTS có ước tính trước (dry_run)', () => {
-    expect(['image', 'video', 'tts', 'llm', 'stt'].filter((k) => supportsDryRun(k as never))).toEqual(['image', 'video', 'tts']);
+    const kinds: ProviderKind[] = ['image', 'video', 'tts', 'llm', 'stt'];
+    expect(kinds.filter((k) => supportsDryRun(k))).toEqual(['image', 'video', 'tts']);
   });
 });
 
