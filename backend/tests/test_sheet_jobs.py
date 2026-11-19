@@ -231,3 +231,51 @@ def test_take_score_and_describe(client, svc, setup, tmp_path):
     out = ok(client, "asset.describe_from_image", {"media_id": img, "hint": "An"})
     job = wait(client, [out["job_id"]])[0]
     assert job["status"] == "succeeded" and job["result"]["data"]["lock_word"] == "navy coat"
+
+
+def test_cancel_anchor_already_sent_stops_follow_views(client, svc, setup, monkeypatch):
+    """Task BF (bug M1): huỷ job anchor đã gửi provider (skipped) → các góc follow không được xếp hàng khi xong."""
+    import threading
+
+    gate = threading.Event()
+    original = FakeImageAdapter.generate
+
+    async def slow(self, req, run=None):
+        import anyio
+
+        await anyio.to_thread.run_sync(gate.wait, 30)
+        return await original(self, req, run)
+
+    monkeypatch.setattr(FakeImageAdapter, "generate", slow)
+
+    async def held(job_id):  # provider đã nhận lượt này: không huỷ được
+        return False
+
+    monkeypatch.setattr(svc.worker, "cancel", held)
+    look = setup["look_id"]
+    out = ok(client, "sheet.generate", {"look_id": look, "views": ["anchor", "profile", "back"],
+                                        "connection": "fake-img"})
+    res = ok(client, "job.cancel", {"ids": out["job_ids"]})
+    assert res["skipped"] == out["job_ids"] and res["follow_cancelled"] == out["job_ids"] and res["message"]
+    gate.set()
+    job = wait(client, out["job_ids"])[0]
+    assert job["status"] == "succeeded" and job["result"]["follow_jobs"] == []
+    with svc.db.session() as s:
+        views = {t.view for t in s.scalars(select(Take).where(Take.owner_type == "variant", Take.owner_id == look))}
+    assert views == {"anchor"}
+
+
+def test_sheet_select_records_actor_one_selected_per_view(client, svc, setup):
+    look = setup["look_id"]
+    first = ok(client, "sheet.generate", {"look_id": look, "views": ["anchor"], "connection": "fake-img"})
+    wait(client, first["job_ids"])
+    second = ok(client, "sheet.generate", {"look_id": look, "views": ["anchor"], "connection": "fake-img"})
+    wait(client, second["job_ids"])
+    t1, t2 = first["take_ids"][0], second["take_ids"][0]
+    with svc.db.session() as s:
+        assert s.get(Take, t1).selected_by == "system:library" or s.get(Take, t1).selected_by.startswith("system")
+        s.get(Take, t2).media_id = s.get(Take, t1).media_id  # hai take cùng media (ảnh giả trùng nội dung)
+    ok(client, "sheet.select", {"look_id": look, "view": "anchor", "take_id": t2})
+    listing = ok(client, "sheet.list", {"look_id": look})["views"]["anchor"]
+    sel = [t for t in listing if t["selected"]]
+    assert [t["id"] for t in sel] == [t2] and sel[0]["selected_by"] == "user:owner"
