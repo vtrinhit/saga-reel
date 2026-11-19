@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -14,11 +15,13 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from sagareel import APP_NAME, __version__
 from sagareel import ops as ops_pkg
+from sagareel.api.routes_events import build_router as build_events_router
 from sagareel.api.routes_ops import build_router
 from sagareel.config import AppSettings, load_settings
 from sagareel.container import Services
 from sagareel.core.errors import AppError, internal_error, payload, validation_failed
 from sagareel.core.resolver import SCHEMA_PATH, Resolver, load_schema
+from sagareel.core.events import EventBus
 from sagareel.db.session import Database
 
 __all__ = ["APP_NAME", "create_app"]
@@ -80,10 +83,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         boot_id=uuid.uuid4().hex,
         db=Database(settings.db_path),
         resolver=Resolver(load_schema(SCHEMA_PATH)),
+        bus=EventBus(),
     )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        services.bus.bind_loop(asyncio.get_running_loop())  # publish từ thread worker chuyển về loop này
         try:
             # Truy cập DB từ code async luôn qua thread (không chặn event loop).
             await anyio.to_thread.run_sync(services.db.migrate)
@@ -107,4 +112,5 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     ops_pkg.load_all()
     app.include_router(build_router())
+    app.include_router(build_events_router())
     return app
