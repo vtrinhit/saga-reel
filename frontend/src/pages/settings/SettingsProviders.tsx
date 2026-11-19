@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { FlaskConical, Pencil, Plug, Plus, RefreshCw } from 'lucide-react';
+import { FlaskConical, Pencil, Plug, Plus, RefreshCw, Trash } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toApiError } from '../../api/client';
 import { applyHealthEvent, qk, useAdapters, useConnections } from '../../api/hooks';
@@ -10,6 +10,7 @@ import { ConfirmDelete } from '../../components/ui/ConfirmDelete';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { IconButton } from '../../components/ui/IconButton';
+import { Modal } from '../../components/ui/Modal';
 import { SkeletonRows, SkeletonZone } from '../../components/ui/Skeleton';
 import { StatusPill } from '../../components/ui/StatusPill';
 import { formatCount } from '../../lib/format';
@@ -57,21 +58,47 @@ function ConnectionRow({
     },
   });
 
-  const remove = async () => {
+  // Xoá: delete_preview trước; có tác động (việc đang chờ, cài đặt trỏ tới tên này) → hộp nói rõ rồi mới xoá.
+  const [impact, setImpact] = useState<DeletePreview | null>(null);
+  const [impactNote, setImpactNote] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const hasImpact = (p: DeletePreview) => p.impact.active_jobs > 0 || p.impact.used_by_settings.length > 0;
+  const preview = async () => (await callOp('provider.delete_preview', { id: conn.id })) as DeletePreview;
+
+  const doDelete = async (p: DeletePreview) => {
+    setDeleting(true);
     try {
-      const preview = (await callOp('provider.delete_preview', { id: conn.id })) as DeletePreview;
-      await callOp('provider.delete', { id: conn.id, confirm_token: preview.confirm_token });
+      await callOp('provider.delete', { id: conn.id, confirm_token: p.confirm_token });
+      setImpact(null);
       await qc.invalidateQueries({ queryKey: qk.connections });
-      const used = preview.impact.used_by_settings;
-      toast({
-        message:
-          `Đã xoá kết nối ${conn.name}.` +
-          (preview.impact.active_jobs ? ` ${formatCount(preview.impact.active_jobs)} việc đang chờ trên kết nối này sẽ thất bại.` : '') +
-          (used.length ? ` Cài đặt ${used.join(', ')} đang trỏ tới tên này.` : ''),
-      });
+      toast({ message: `Đã xoá kết nối ${conn.name}.` });
     } catch (e) {
       const err = toApiError(e);
-      toast({ tone: 'error', message: `Không xoá được ${conn.name}: ${err.detail}` });
+      if (err.code === 'confirm_required') {
+        // Tác động đổi giữa lúc xem và lúc xoá (hoặc token hết hạn): xem lại, hỏi lại.
+        try {
+          setImpact(await preview());
+          setImpactNote('Tác động đã thay đổi kể từ lúc xem — kiểm tra lại trước khi xoá.');
+        } catch (e2) {
+          toast({ tone: 'error', message: `Không xoá được ${conn.name}: ${toApiError(e2).detail}` });
+        }
+      } else {
+        toast({ tone: 'error', message: `Không xoá được ${conn.name}: ${err.detail}` });
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const remove = async () => {
+    try {
+      const p = await preview();
+      if (hasImpact(p)) {
+        setImpactNote(null);
+        setImpact(p);
+      } else await doDelete(p);
+    } catch (e) {
+      toast({ tone: 'error', message: `Không xem được tác động khi xoá ${conn.name}: ${toApiError(e).detail}` });
     }
   };
 
@@ -104,6 +131,40 @@ function ConnectionRow({
         <IconButton icon={Pencil} label={`Sửa ${conn.name}`} onClick={onEdit} />
         <ConfirmDelete what={`kết nối ${conn.name}`} onConfirm={remove} />
       </div>
+      <Modal
+        open={impact != null}
+        role="alertdialog"
+        title={`Xoá kết nối ${conn.name}?`}
+        onClose={deleting ? undefined : () => setImpact(null)}
+        actions={
+          <>
+            <Button onClick={() => setImpact(null)} disabled={deleting}>
+              Giữ lại
+            </Button>
+            <Button variant="danger" armed icon={Trash} loading={deleting} onClick={() => impact && void doDelete(impact)}>
+              Xoá kết nối
+            </Button>
+          </>
+        }
+      >
+        {impact ? (
+          <ul className="grid list-disc gap-1.5 pl-5">
+            {impact.impact.active_jobs > 0 ? (
+              <li>
+                {formatCount(impact.impact.active_jobs)} việc đang chờ hoặc đang chạy trên kết nối này sẽ thất bại.
+              </li>
+            ) : null}
+            {impact.impact.used_by_settings.length ? (
+              <li>
+                Cài đặt đang trỏ tới tên này:{' '}
+                <span className="font-mono text-xs">{impact.impact.used_by_settings.join(', ')}</span> — việc mới dùng các
+                cài đặt đó sẽ báo thiếu kết nối cho tới khi bạn chọn kết nối khác.
+              </li>
+            ) : null}
+            {impactNote ? <li className="text-warn">{impactNote}</li> : null}
+          </ul>
+        ) : null}
+      </Modal>
     </li>
   );
 }

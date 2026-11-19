@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Check, CircleAlert, Copy, KeyRound, Lock, Plus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { authKeys, login, useAuthStatus, type AuthStatus } from '../../api/auth';
-import { toApiError, type ApiError } from '../../api/client';
+import { resumeSession, toApiError, type ApiError } from '../../api/client';
+import { useSession } from '../../api/session';
 import { qk } from '../../api/hooks';
 import { callOp } from '../../api/ops';
 import type { components } from '../../api/schema';
@@ -57,6 +58,8 @@ function PasswordForm({ role, status }: { role: Role; status: AuthStatus | null 
       if (role === 'owner') {
         try {
           await login(pw, false);
+          // Một request khác có thể đã nhận 401 trong lúc này và mở modal phiên hết hạn: đóng nó, gửi lại hàng chờ.
+          if (useSession.getState().expired) resumeSession();
         } catch {
           // không đăng nhập lại được: modal "Phiên đã hết hạn" sẽ hỏi khi cần
         }
@@ -178,7 +181,6 @@ function CreatedTokenModal({ token, onClose }: { token: TokenCreated; onClose: (
     <Modal
       open
       title={`Token ${token.name}`}
-      onClose={onClose}
       actions={
         <>
           <Button icon={copied ? Check : Copy} tone={copied ? 'success' : undefined} onClick={() => void copy()} data-autofocus>

@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { Layers, MoreHorizontal, Pause, Play, RotateCw, ScrollText, XOctagon } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import { toApiError } from '../api/client';
 import { qk, useConnections } from '../api/hooks';
@@ -222,11 +222,21 @@ export function Jobs() {
   const jobs = useMemo(() => flattenPages(q.data?.pages ?? []), [q.data]);
   const paused = q.data?.pages[0]?.paused ?? false;
 
+  // Khoảng cách từ đầu trang tới đầu danh sách (đo sau khi vẽ, không đọc ref trong lúc render).
+  const [listTop, setListTop] = useState(0);
+  // Mỗi lần vẽ (khối lô, banner tạm dừng… có thể đổi chiều cao phía trên); chỉ đặt state khi khác.
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const top = Math.round(el.getBoundingClientRect().top + window.scrollY);
+    if (top !== listTop) setListTop(top);
+  });
+
   const v = useWindowVirtualizer({
     count: jobs.length,
     estimateSize: () => rowH,
     overscan: 8,
-    scrollMargin: listRef.current?.offsetTop ?? 0,
+    scrollMargin: listTop,
   });
   useEffect(() => v.measure(), [rowH]);
 

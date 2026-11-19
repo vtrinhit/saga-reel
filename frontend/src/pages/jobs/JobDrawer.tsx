@@ -301,7 +301,7 @@ export function JobDrawer({ jobId, onClose, startRetry = false }: { jobId: numbe
               <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-sm bg-bg-2 p-2.5 font-mono text-xs">{job.params.prompt}</pre>
             </div>
           ) : null}
-          <LogViewer jobId={job.id} />
+          <LogViewer key={job.id} jobId={job.id} />
         </div>
       )}
     </Drawer>

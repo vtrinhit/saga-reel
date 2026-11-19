@@ -43,7 +43,6 @@ export function LogViewer({ jobId }: { jobId: number }) {
   useEffect(() => {
     if (initial.data) setLines((cur) => mergeLogs(cur, initial.data));
   }, [initial.data]);
-  useEffect(() => setLines([]), [jobId]);
 
   useServerEvent('job.log', (e) => {
     const l = e.data as JobLog | null;
