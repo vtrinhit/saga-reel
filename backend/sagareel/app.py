@@ -14,6 +14,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from sagareel import APP_NAME, __version__
 from sagareel import ops as ops_pkg
+from sagareel.api.routes_media import router as media_router
 from sagareel.api.routes_ops import build_router
 from sagareel.config import AppSettings, load_settings
 from sagareel.container import Services
@@ -105,4 +106,5 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     ops_pkg.load_all()
     app.include_router(build_router())
+    app.include_router(media_router)
     return app
