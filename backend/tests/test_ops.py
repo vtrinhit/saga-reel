@@ -175,6 +175,18 @@ def test_rest_returns_handler_result(client):
     assert r.json() == {"n": 8, "op": "test.echo_async"}
 
 
+def test_rest_uses_context_from_request_for_role(client, monkeypatch):
+    from sagareel.api import routes_ops
+
+    def viewer_ctx(request):
+        return OpContext(services=request.app.state.services, actor="user:guest", role="viewer")
+
+    monkeypatch.setattr(routes_ops, "context_from_request", viewer_ctx)
+    r = client.post("/api/ops/test.echo_int", json={"n": 1})
+    assert r.status_code == 403 and r.json()["error_code"] == "forbidden"
+    assert client.post("/api/ops/test.echo_async", json={"n": 1}).status_code == 200
+
+
 def test_system_info_without_body(client):
     r = client.post("/api/ops/system.info")
     assert r.status_code == 200
