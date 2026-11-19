@@ -44,3 +44,7 @@ sagareel = ["defaults/**/*", "db/migrations/**/*", "assets/**/*"]
 testpaths = ["backend/tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    # fastapi.testclient → starlette.testclient vẫn dùng httpx (khuyên chuyển httpx2); chỉ bỏ qua đúng cảnh báo này.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
