@@ -1,18 +1,25 @@
 """Kho media: đăng ký file (khử trùng theo sha256), tra cứu, đường dẫn trên đĩa, thumbnail.
 
-Bố cục trên đĩa: `<data_dir>/media/<yyyy>/<mm>/<sha256[:2]>/<sha256>.<ext>`; `Media.path` lưu đường dẫn POSIX tương
-đối so với `data_dir`. `register` không nhận `settings`: `data_dir` mặc định là thư mục chứa file SQLite của phiên
-(đúng bố cục `AppSettings`: `db_path = data_dir / "sagareel.db"`, `media_dir = data_dir / "media"`).
+Bố cục trên đĩa: `<settings.media_dir>/<yyyy>/<mm>/<sha256[:2]>/<sha256>.<ext>`; `Media.path` lưu đường dẫn POSIX
+tương đối so với `settings.data_dir`, và mọi lần đọc đều giải theo `settings.data_dir` (một nguồn sự thật duy nhất).
+
+Đăng ký chia hai bước vì một UnitOfWork giữ khoá ghi SQLite suốt khối của nó:
+1. `prepare(...)` — KHÔNG cần session: băm sha256, probe (ffprobe ≤ 60 s), đặt file vào kho (có thể chép khác ổ).
+2. `record(session, prepared)` — ngắn, chỉ DB: tra trùng sha + chèn bản ghi; không đụng file.
+Sau `record`, gọi `reconcile(prepared, media)` NGOÀI transaction để dọn bản sao thừa khi trùng sha.
+`register(...)` ghép cả ba cho tiện — tuyệt đối không gọi bên trong `ctx.uow()`.
 """
 
 from __future__ import annotations
 
 import builtins
 import contextlib
+import errno
 import hashlib
 import mimetypes
 import os
 import shutil
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, get_args
@@ -60,27 +67,52 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def session_data_dir(session: Session) -> Path:
-    """Thư mục data suy từ file SQLite mà phiên đang dùng."""
-    database = session.get_bind().url.database
-    if not database or database == ":memory:":
-        raise RuntimeError("Phiên DB không gắn với file SQLite; hãy truyền data_dir cho media.register.")
-    return Path(database).resolve().parent
+def _is_cross_device(e: OSError) -> bool:
+    # Windows: ERROR_NOT_SAME_DEVICE (17); POSIX: EXDEV.
+    return e.errno == errno.EXDEV or getattr(e, "winerror", None) == 17
+
+
+def _store_failed(detail: str) -> AppError:
+    return AppError("media_store_failed", detail, hint="Kiểm tra quyền ghi và dung lượng ổ đĩa.", status=500)
 
 
 def _place(src: Path, dest: Path, *, move: bool) -> None:
-    """Đưa `src` tới `dest` một cách nguyên tử (copy sang `.part` cùng thư mục rồi `os.replace`)."""
+    """Đưa `src` tới `dest`. `move`: đổi tên; chỉ khi khác ổ đĩa mới chép (`.part` + `os.replace`) rồi xoá nguồn.
+
+    Lỗi nào cũng thành `AppError("media_store_failed")`; không bao giờ để lại file trong kho mà người gọi không biết.
+    """
+    if dest.is_file() and dest.stat().st_size == src.stat().st_size:
+        # Tên file là sha256 nội dung → bản trong kho giống hệt; không ghi đè (Windows: có thể đang được phục vụ).
+        if move:
+            try:
+                src.unlink()
+            except OSError as e:
+                raise _store_failed(f"{src.name} đã có trong kho media nhưng không xoá được file nguồn.") from e
+        return
     dest.parent.mkdir(parents=True, exist_ok=True)
     if move:
         try:
-            os.replace(src, dest)  # cùng ổ đĩa: đổi tên tức thì
+            os.replace(src, dest)
             return
-        except OSError:
-            pass  # khác ổ đĩa → copy rồi xoá nguồn
-    with ffmpeg.atomic_output(dest) as part:
-        shutil.copy2(src, part)
+        except OSError as e:
+            if not _is_cross_device(e):
+                raise _store_failed(f"Không chuyển được {src.name} vào kho media ({e.strerror or e}).") from e
+    existed = dest.exists()
+    try:
+        with ffmpeg.atomic_output(dest) as part:
+            shutil.copy2(src, part)
+    except OSError as e:
+        raise _store_failed(f"Không chép được {src.name} vào kho media ({e.strerror or e}).") from e
     if move:
-        src.unlink()
+        try:
+            src.unlink()
+        except OSError as e:
+            if not existed:  # bỏ bản vừa chép để nguồn vẫn là bản duy nhất
+                with contextlib.suppress(OSError):
+                    dest.unlink()
+            raise _store_failed(
+                f"Đã chép {src.name} vào kho media nhưng không xoá được file nguồn ({e.strerror or e})."
+            ) from e
 
 
 def _probe_fields(path: Path, kind: str) -> tuple[int | None, int | None, int | None, dict[str, Any]]:
@@ -101,63 +133,119 @@ def _probe_fields(path: Path, kind: str) -> tuple[int | None, int | None, int | 
     return None, None, None, {}
 
 
-def register(
-    session: Session,
+@dataclass(frozen=True)
+class PreparedMedia:
+    """File đã nằm trong kho, chờ `record` ghi bản ghi. `path` tương đối so với `data_dir` (POSIX)."""
+
+    sha256: str
+    kind: str
+    origin: str
+    mime: str
+    width: int | None
+    height: int | None
+    duration_ms: int | None
+    size: int
+    meta: dict[str, Any]
+    path: str
+    stored_path: Path
+    data_dir: Path
+
+
+def prepare(
     path: Path,
     *,
     kind: MediaKind,
+    media_dir: Path,
     origin: str,
-    project_id: int | None = None,
     meta: dict | None = None,
     move: bool = True,
     data_dir: Path | None = None,
-) -> Media:
-    """Đưa file vào kho media và ghi bản ghi `Media` (flush, không commit — người gọi quản lý transaction).
+) -> PreparedMedia:
+    """Bước chậm, không cần session: băm, probe, đặt file vào `media_dir/<yyyy>/<mm>/<sha[:2]>/<sha>.<ext>`.
 
-    Trùng sha256 với bản ghi đã có → trả lại bản ghi cũ (bản nguồn bị bỏ nếu `move=True`).
+    `data_dir` (gốc của `Media.path`) mặc định là thư mục cha của `media_dir` — truyền `settings.data_dir` khi có.
+    Probe chạy trước khi chuyển file: probe lỗi thì file nguồn vẫn còn nguyên.
     """
     if kind not in KINDS:
         raise ValueError(f"kind không hợp lệ: {kind!r} (cần một trong {sorted(KINDS)})")
     src = Path(path)
     if not src.is_file():
         raise NotFound(f"Không tìm thấy file {src.name} để đăng ký vào kho media.")
-    root = Path(data_dir) if data_dir is not None else session_data_dir(session)
+    media_dir = Path(media_dir).resolve()
+    root = Path(data_dir).resolve() if data_dir is not None else media_dir.parent
+    if not media_dir.is_relative_to(root):
+        raise ValueError(f"media_dir {media_dir} phải nằm trong data_dir {root}")
+
     digest = sha256_file(src)
-
-    existing = session.scalars(select(Media).where(Media.sha256 == digest).order_by(Media.id).limit(1)).first()
-    if existing is not None:
-        stored = root / existing.path
-        if not stored.is_file():  # file của bản ghi cũ bị mất → đặt lại bằng bản này
-            _place(src, stored, move=move)
-        elif move and src.resolve() != stored.resolve():
-            src.unlink()
-        return existing
-
+    width, height, duration_ms, probe_meta = _probe_fields(src, kind)
     now = datetime.now(timezone.utc)
-    ext = src.suffix.lower()
-    rel = Path("media", f"{now:%Y}", f"{now:%m}", digest[:2], f"{digest}{ext}")
-    dest = root / rel
-    width, height, duration_ms, probe_meta = _probe_fields(src, kind)  # probe trước khi chuyển: lỗi thì nguồn còn
+    dest = media_dir / f"{now:%Y}" / f"{now:%m}" / digest[:2] / f"{digest}{src.suffix.lower()}"
     _place(src, dest, move=move)
 
     full_meta = dict(meta or {})
     if probe_meta:
         full_meta["probe"] = probe_meta
+    return PreparedMedia(
+        sha256=digest, kind=kind, origin=origin, mime=guess_mime(src), width=width, height=height,
+        duration_ms=duration_ms, size=dest.stat().st_size, meta=full_meta,
+        path=dest.relative_to(root).as_posix(), stored_path=dest, data_dir=root,
+    )
+
+
+def record(session: Session, prepared: PreparedMedia, *, project_id: int | None = None) -> Media:
+    """Bước ngắn, chỉ DB (an toàn trong UnitOfWork): trùng sha → trả bản ghi cũ, ngược lại chèn mới (flush).
+
+    Không đọc/ghi file. Bản ghi trùng có cùng đường dẫn được ưu tiên (không sinh bản sao thừa).
+    """
+    rows = session.scalars(select(Media).where(Media.sha256 == prepared.sha256).order_by(Media.id)).all()
+    if rows:
+        return next((m for m in rows if m.path == prepared.path), rows[0])
     m = Media(
-        project_id=project_id,
-        kind=kind,
-        path=rel.as_posix(),
-        mime=guess_mime(src),
-        width=width,
-        height=height,
-        duration_ms=duration_ms,
-        size=dest.stat().st_size,
-        sha256=digest,
-        origin=origin,
-        meta=full_meta,
+        project_id=project_id, kind=prepared.kind, path=prepared.path, mime=prepared.mime, width=prepared.width,
+        height=prepared.height, duration_ms=prepared.duration_ms, size=prepared.size, sha256=prepared.sha256,
+        origin=prepared.origin, meta=dict(prepared.meta),
     )
     session.add(m)
     session.flush()
+    return m
+
+
+def reconcile(prepared: PreparedMedia, media: Media) -> None:
+    """Gọi sau `record`, ngoài transaction: nếu `record` trả bản ghi cũ ở đường dẫn khác thì bản vừa đặt là thừa —
+    xoá nó, hoặc dùng nó thay file của bản ghi cũ nếu file đó đã mất."""
+    if media.path == prepared.path:
+        return
+    target = prepared.data_dir / media.path
+    if target.is_file():
+        with contextlib.suppress(FileNotFoundError):
+            prepared.stored_path.unlink()
+    else:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(prepared.stored_path, target)
+
+
+def register(
+    session: Session,
+    path: Path,
+    *,
+    kind: MediaKind,
+    origin: str,
+    settings: AppSettings,
+    project_id: int | None = None,
+    meta: dict | None = None,
+    move: bool = True,
+) -> Media:
+    """Tiện ích ghép `prepare` → `record` → `reconcile` (flush, không commit).
+
+    KHÔNG gọi bên trong `ctx.uow()`: `prepare` băm/probe/chép file và có thể mất tới hàng chục giây trong khi UoW giữ
+    khoá ghi SQLite. Trong luồng có UoW: `prepare` trước, mở UoW ngắn để `record`, rồi `reconcile` sau khi commit.
+    """
+    prepared = prepare(
+        path, kind=kind, media_dir=settings.media_dir, origin=origin, meta=meta, move=move,
+        data_dir=settings.data_dir,
+    )
+    m = record(session, prepared, project_id=project_id)
+    reconcile(prepared, m)
     return m
 
 

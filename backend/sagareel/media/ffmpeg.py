@@ -3,10 +3,11 @@
 - Luôn chèn `-nostdin -hide_banner -y -progress pipe:1 -nostats` trước tham số của người gọi.
 - Đọc stdout (khối `key=value` của `-progress`) để báo phần trăm; stderr được đọc song song vào một đuôi có giới hạn
   (không đọc thì ffmpeg nói nhiều sẽ làm đầy pipe và treo).
-- Huỷ / timeout / task bị cancel → terminate, chờ ngắn, kill, luôn đợi tiến trình thoát rồi mới xoá file `.part`
+- Huỷ / timeout / task bị cancel → terminate, chờ ngắn, kill, luôn đợi tiến trình thoát hẳn rồi mới trả/ném lỗi
   (Windows không xoá được file mà tiến trình còn giữ).
-- Người gọi ghi vào file tạm do `atomic_output(path)` cấp (`<tên>.<token>.part.<ext>`), thành công thì đổi tên
-  thành `path`. Phần mở rộng thật nằm cuối để ffmpeg chọn đúng muxer.
+- `run()` không tự xoá file nào. Người gọi ghi vào file tạm do `atomic_output(path)` cấp
+  (`<tên>.<token>.part.<ext>`): thành công thì đổi tên thành `path`, lỗi thì `atomic_output` xoá `.part`.
+  Phần mở rộng thật nằm cuối để ffmpeg chọn đúng muxer.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ import shutil
 import subprocess
 import sys
 from collections import deque
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 
 from sagareel.core.errors import AppError
@@ -29,6 +30,8 @@ logger = logging.getLogger("sagareel.ffmpeg")
 
 GLOBAL_ARGS = ("-nostdin", "-hide_banner", "-y", "-progress", "pipe:1", "-nostats")
 STDERR_TAIL_LINES = 40
+MAX_LINE_BYTES = 8192
+_READ_CHUNK = 64 * 1024
 _STOP_GRACE_S = 3.0
 
 
@@ -65,10 +68,6 @@ def popen_kwargs() -> dict:
 def part_path(path: Path) -> Path:
     """`a.mp4` → `a.<token>.part.mp4` (token ngẫu nhiên: hai lần ghi cùng đích không giẫm lên nhau)."""
     return path.with_name(f"{path.stem}.{secrets.token_hex(4)}.part{path.suffix}")
-
-
-def is_part_file(path: Path) -> bool:
-    return ".part." in path.name or path.name.endswith(".part")
 
 
 def _unlink_quiet(path: Path) -> None:
@@ -114,7 +113,7 @@ async def _read_progress(
 ) -> None:
     block: dict[str, str] = {}
     last: float | None = None
-    async for raw in stream:
+    async for raw in iter_lines(stream):
         line = raw.decode("utf-8", "replace").strip()
         key, sep, value = line.partition("=")
         if not sep:
@@ -135,8 +134,27 @@ async def _read_progress(
         on_progress(pct)
 
 
+async def iter_lines(stream: asyncio.StreamReader, max_line: int = MAX_LINE_BYTES) -> AsyncIterator[bytes]:
+    """Các dòng (đã bỏ ký tự xuống dòng CR/LF) đọc theo khối.
+
+    `StreamReader.readline` ném ValueError với dòng > 64 KB và ngừng đọc → ffmpeg treo vì pipe đầy. Ở đây dòng quá
+    dài chỉ bị cắt còn `max_line` byte đầu, phần còn lại vẫn được đọc (bỏ đi) cho tới hết dòng.
+    """
+    buf = bytearray()
+    while chunk := await stream.read(_READ_CHUNK):
+        start = 0
+        while (nl := chunk.find(b"\n", start)) != -1:
+            buf += chunk[start:nl][: max(0, max_line - len(buf))]
+            yield bytes(buf).rstrip(b"\r")
+            buf.clear()
+            start = nl + 1
+        buf += chunk[start:][: max(0, max_line - len(buf))]
+    if buf:
+        yield bytes(buf).rstrip(b"\r")
+
+
 async def _read_tail(stream: asyncio.StreamReader, tail: deque[str]) -> None:
-    async for raw in stream:
+    async for raw in iter_lines(stream):
         line = raw.decode("utf-8", "replace").rstrip()
         if line:
             tail.append(line)
@@ -154,17 +172,6 @@ async def _stop(proc: asyncio.subprocess.Process) -> None:
         with contextlib.suppress(ProcessLookupError):
             proc.kill()
         await proc.wait()
-
-
-def _output_parts(args: list[str]) -> list[Path]:
-    """Các đối số đầu ra dạng file `.part` (không phải đầu vào sau `-i`) — xoá khi thất bại."""
-    out = []
-    for i, a in enumerate(args):
-        if i > 0 and args[i - 1] == "-i":
-            continue
-        if not a.startswith("-") and is_part_file(Path(a)):
-            out.append(Path(a))
-    return out
 
 
 async def run(
@@ -199,7 +206,6 @@ async def run(
     tasks = [t for t in (stdout_task, stderr_task, wait_task, cancel_task) if t is not None]
 
     reason: str | None = None
-    ok = False
     try:
         watch = {wait_task, stdout_task} | ({cancel_task} if cancel_task is not None else set())
         deadline = asyncio.get_running_loop().time() + timeout
@@ -235,13 +241,9 @@ async def run(
             raise FFmpegError(f"ffmpeg chạy quá {timeout:g} giây nên đã bị dừng.", tail_text, code="ffmpeg_timeout")
         if proc.returncode != 0:
             raise FFmpegError(f"ffmpeg thất bại (mã thoát {proc.returncode}).", tail_text)
-        ok = True
     finally:
         if proc.returncode is None:  # task bị cancel từ ngoài, hoặc lỗi bất ngờ
             await asyncio.shield(_stop(proc))
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        if not ok:
-            for p in _output_parts(args):
-                _unlink_quiet(p)
