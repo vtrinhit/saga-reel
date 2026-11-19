@@ -140,3 +140,20 @@ subtitle.mode:
   default: outline
   choices: [outline, karaoke_fill, word_pop]
   description: Kiểu hiện phụ đề — chữ viền, karaoke tô từ đã đọc, hoặc phóng từ đang đọc.
+# --- task s (render, Task E) ---
+render.cache_max_gb:
+  type: float
+  default: 30
+  description: Trần dung lượng cache dựng phim (GB); vượt thì xoá segment/khối ít dùng nhất (LRU).
+render.min_free_gb:
+  type: float
+  default: 10
+  description: Dung lượng ổ trống tối thiểu (GB) giữ lại khi dựng; thiếu thì dọn cache trước.
+render.chunk_target_s:
+  type: int
+  default: 60
+  description: Độ dài mục tiêu của một khối dựng tăng dần (giây), cắt ở ranh giới clip.
+render.scene_max_s:
+  type: int
+  default: 180
+  description: Cảnh dài hơn số giây này được tách thành nhiều khối dựng.

@@ -192,10 +192,15 @@ def test_seed_defaults_inserts_tasks_and_templates_idempotently(tmp_db):
         tasks = {t.key: t for t in s.scalars(select(LlmTask)).all()}
         templates = {t.key: t for t in s.scalars(select(Template)).all()}
         assert set(tasks) == {t["key"] for t in llm.default_tasks()}
-        assert set(templates) == {p.stem for p in llm.TEMPLATES_DIR.glob("*.md")}
+        from sagareel.compile import compiler
+
+        md = {p.stem for p in llm.TEMPLATES_DIR.glob("*.md")}
+        assert set(templates) == md | set(compiler.TEMPLATE_KINDS)
         for key, t in templates.items():
-            assert t.kind == llm.TEMPLATE_KIND
-            assert t.body == llm.builtin_template(key)
+            if key in md:
+                assert t.kind == llm.TEMPLATE_KIND and t.body == llm.builtin_template(key)
+            else:
+                assert t.kind == compiler.TEMPLATE_KINDS[key] and t.body == compiler.builtin_body(key)
             assert t.builtin_hash == llm.body_hash(t.body)
         assert tasks["analyze_channel"].needs_vision and tasks["analyze_channel"].json_mode
         assert llm.normalize_route(tasks["outline"].route)["connection"] is None
@@ -229,6 +234,27 @@ def test_seed_defaults_does_not_overwrite_user_edit(tmp_db, tmp_path, monkeypatc
         assert caption.builtin_hash == llm.body_hash(caption.body)
         assert s.scalars(select(LlmTask).where(LlmTask.key == "caption")).one().label == "Caption riêng"
         assert s.scalars(select(LlmTask).where(LlmTask.key == "dialogue")).one()  # công việc bị xoá được chèn lại
+
+
+def test_seed_defaults_compiler_templates_keep_user_edit(tmp_db, tmp_path, monkeypatch):
+    from sagareel.compile import compiler
+
+    seed_defaults(tmp_db)
+    with tmp_db.session() as s:
+        s.scalars(select(Template).where(Template.key == "image.synced")).one().body = "Của tôi {{ prompt }}"
+    new_dir = tmp_path / "j2"
+    shutil.copytree(compiler.TEMPLATES_DIR, new_dir)
+    for p in new_dir.glob("*.j2"):
+        p.write_text(p.read_text("utf-8") + "\nmoi\n", "utf-8")
+    monkeypatch.setattr(compiler, "TEMPLATES_DIR", new_dir)
+    seed_defaults(tmp_db)
+    with tmp_db.session() as s:
+        img = s.scalars(select(Template).where(Template.key == "image.synced")).one()
+        mot = s.scalars(select(Template).where(Template.key == "motion.synced")).one()
+        assert img.body == "Của tôi {{ prompt }}"
+        assert img.builtin_hash == llm.body_hash(compiler.builtin_body("image.synced"))
+        assert mot.body.endswith("moi\n") and mot.kind == "motion"
+        assert compiler.template_body(s, "image.synced") == ("Của tôi {{ prompt }}", "db")
 
 
 def test_seed_defaults_keeps_soft_deleted_template(tmp_db):
