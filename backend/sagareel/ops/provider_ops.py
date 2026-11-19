@@ -327,6 +327,7 @@ async def provider_check(ctx: OpContext, p: ProviderCheckParams) -> dict:
 # --- Chạy thử ---------------------------------------------------------------------------------------------------------
 
 _DEFAULT_KEYS = {"image": "image.connection", "video": "video.connection", "tts": "tts.connection"}
+STT_NOT_CONFIGURED_HINT = "Thêm kết nối STT qua API trong Settings, hoặc dán lời thoại thủ công"
 
 
 def _target(ctx: OpContext, kind: str, connection: int | str | None) -> tuple[Connection, bool, Adapter]:
@@ -341,6 +342,9 @@ def _target(ctx: OpContext, kind: str, connection: int | str | None) -> tuple[Co
                     ProviderConnection.kind == kind, ProviderConnection.deleted_at.is_(None),
                     ProviderConnection.enabled.is_(True),
                 ).order_by(ProviderConnection.id).limit(1))
+        if connection is None and kind == "stt":
+            raise AppError("stt_not_configured", "Chưa có kết nối nhận dạng lời (STT) nào đang bật.",
+                           hint=STT_NOT_CONFIGURED_HINT, status=409)
         if connection is None:
             raise AppError("no_connection", f"Chưa có kết nối {kind} nào.",
                            hint="Thêm kết nối trong Cài đặt → Provider (provider.create).", status=422)
