@@ -11,10 +11,9 @@
 
 from __future__ import annotations
 
-import threading
-import time
-from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TypeVar
 from datetime import datetime, timedelta
 
 import anyio
@@ -25,7 +24,7 @@ from sagareel.container import Services
 from sagareel.core import security
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, Forbidden, NotFound, ValidationFailed
-from sagareel.core.security import Principal
+from sagareel.core.security import LoginLimiter, Principal, RateKey, too_many_attempts  # noqa: F401 (tái xuất)
 from sagareel.db.base import utcnow
 from sagareel.db.models import ApiToken, AuthSecret, AuthSession
 from sagareel.services.settings import global_layer
@@ -168,74 +167,36 @@ def principal_still_valid(services: Services, principal: Principal | None) -> bo
 # --- Đăng nhập ----------------------------------------------------------------------------------------------------
 
 
-def too_many_attempts(retry_after: int) -> AppError:
-    return AppError(
-        "too_many_attempts",
-        "Nhập sai mật khẩu quá nhiều lần. Vui lòng thử lại sau.",
-        hint=f"Thử lại sau khoảng {retry_after} giây.",
-        status=429,
-        extra={"retry_after": retry_after},
-    )
+# Thay được trong test (ghi lại độ trễ thay vì ngủ thật).
+_sleep = anyio.sleep
+
+T = TypeVar("T")
 
 
-class LoginLimiter:
-    """Chống dò mật khẩu, cửa sổ 60 s.
+async def guarded_verify(services: Services, rate: RateKey | None, check: Callable[[], T | None]) -> T | None:
+    """Chạy `check` (kiểm mật khẩu, scrypt) qua bộ chống dò: hạn mức theo khoá (429), làm chậm theo peer, tối đa 3
+    lần kiểm đồng thời. `check` trả None/False = sai (tính một lần sai); giá trị khác = đúng (trả chỗ)."""
+    limiter = services.login_limiter
+    if rate is None:  # không qua HTTP (CLI trong tiến trình): coi như cục bộ
+        rate = RateKey("local:-", "", True)
+    tickets = []
+    if rate.key:
+        tickets.append(limiter.acquire(rate.key))
+    if not rate.local:
+        ticket, delay = limiter.reserve_peer(rate.peer)
+        tickets.append(ticket)
+        if delay > 0:
+            await _sleep(delay)
+    result = await anyio.to_thread.run_sync(check, limiter=limiter.verify_limiter)
+    if result is not None and result is not False:
+        for t in tickets:
+            limiter.release(t)
+    return result
 
-    - **Theo IP** (`security.client_ip`, chỉ tin header `remote.client_ip_header`): cứng 5 lần sai/phút → 429. Lần thử
-      được "giữ chỗ" trước khi kiểm mật khẩu (gửi đồng thời cũng không vượt được); đăng nhập đúng thì trả chỗ.
-    - **Theo kết nối nguồn (peer)**: sau tunnel mọi client chung peer 127.0.0.1, nên ở mức này **không từ chối** (từ
-      chối = kẻ tấn công khoá được chủ ngoài cửa) mà **làm chậm dần**: mỗi lần sai quá `free` lần trong cửa sổ thêm
-      `step` giây, tối đa `max_delay`. Mật khẩu đúng vẫn qua. Request cục bộ (`is_local`) không bị tính, không bị chậm.
-    """
 
-    def __init__(
-        self, per_ip: int = 5, window: float = 60.0, free: int = 5, step: float = 0.1, max_delay: float = 3.0
-    ) -> None:
-        self.per_ip, self.window = per_ip, window
-        self.free, self.step, self.max_delay = free, step, max_delay
-        self._lock = threading.Lock()
-        self._ip: dict[str, deque[float]] = {}
-        self._peer: dict[str, deque[float]] = {}
-
-    def _prune(self, table: dict[str, deque[float]], key: str, now: float) -> deque[float]:
-        if len(table) > 10_000:
-            for k in [k for k, dq in table.items() if not dq or dq[-1] <= now - self.window]:
-                del table[k]
-        dq = table.setdefault(key, deque())
-        while dq and dq[0] <= now - self.window:
-            dq.popleft()
-        return dq
-
-    def acquire(self, ip: str) -> tuple[str, float]:
-        """Giữ chỗ một lần thử cho `ip`; đã đủ 5 lần sai (kể cả đang thử) trong 60 s → `too_many_attempts`."""
-        now = time.monotonic()
-        with self._lock:
-            dq = self._prune(self._ip, ip, now)
-            if len(dq) >= self.per_ip:
-                raise too_many_attempts(max(1, int(dq[0] + self.window - now) + 1))
-            dq.append(now)
-        return ip, now
-
-    def release(self, ticket: tuple[str, float]) -> None:
-        ip, stamp = ticket
-        with self._lock:
-            dq = self._ip.get(ip)
-            if dq is not None:
-                try:
-                    dq.remove(stamp)
-                except ValueError:
-                    pass
-
-    def delay(self, peer: str) -> float:
-        """Số giây phải chờ trước khi kiểm mật khẩu, theo số lần sai gần đây từ `peer`."""
-        with self._lock:
-            n = len(self._prune(self._peer, peer, time.monotonic()))
-        return min(self.max_delay, self.step * max(0, n - self.free))
-
-    def record_peer_failure(self, peer: str) -> None:
-        now = time.monotonic()
-        with self._lock:
-            self._prune(self._peer, peer, now).append(now)
+def _read_hashes(services: Services) -> dict[str, str]:
+    with services.db.session() as s:
+        return {r.role: r.password_hash for r in s.scalars(select(AuthSecret))}
 
 
 @dataclass(frozen=True)
@@ -259,21 +220,7 @@ def invalid_credentials() -> AppError:
     return AppError("invalid_credentials", "Mật khẩu không đúng.", status=401)
 
 
-def login(services: Services, password: str, remember: bool, ip: str, user_agent: str) -> LoginResult:
-    """Thử mật khẩu chủ rồi (nếu bật vai trò người xem) mật khẩu người xem; đúng → tạo phiên mới."""
-    cfg = load_access_config(services)  # không dùng cache: quyết định vai trò theo trạng thái mới nhất
-    with services.db.session() as s:
-        hashes = {r.role: r.password_hash for r in s.scalars(select(AuthSecret))}
-    if "owner" not in hashes:
-        raise password_not_set()
-    role: str | None = None
-    if security.verify_password(password, hashes["owner"]):
-        role = "owner"
-    elif cfg.allow_viewer and "viewer" in hashes and security.verify_password(password, hashes["viewer"]):
-        role = "viewer"
-    if role is None:
-        raise invalid_credentials()
-
+def _create_session(services: Services, role: str, remember: bool, ip: str, user_agent: str) -> LoginResult:
     raw, digest = security.new_session_token()
     expires_at = utcnow() + (REMEMBER_TTL if remember else SESSION_TTL)
     with services.db.session() as s:
@@ -282,6 +229,29 @@ def login(services: Services, password: str, remember: bool, ip: str, user_agent
             ip=ip[:64], user_agent=user_agent[:USER_AGENT_MAX],
         ))
     return LoginResult(role=role, raw_token=raw, expires_at=expires_at, remember=remember)
+
+
+async def login(
+    services: Services, password: str, remember: bool, ip: str, user_agent: str, rate: RateKey | None
+) -> LoginResult:
+    """Thử mật khẩu chủ rồi (nếu bật vai trò người xem) mật khẩu người xem; đúng → tạo phiên mới."""
+    # Không dùng cache: quyết định vai trò theo trạng thái mới nhất.
+    cfg = await anyio.to_thread.run_sync(load_access_config, services)
+    hashes = await anyio.to_thread.run_sync(_read_hashes, services)
+    if "owner" not in hashes:
+        raise password_not_set()
+
+    def check() -> str | None:
+        if security.verify_password(password, hashes["owner"]):
+            return "owner"
+        if cfg.allow_viewer and "viewer" in hashes and security.verify_password(password, hashes["viewer"]):
+            return "viewer"
+        return None
+
+    role = await guarded_verify(services, rate, check)
+    if role is None:
+        raise invalid_credentials()
+    return await anyio.to_thread.run_sync(_create_session, services, role, remember, ip, user_agent)
 
 
 def logout(services: Services, raw: str) -> None:
@@ -314,17 +284,18 @@ def invalid_current_password() -> AppError:
     )
 
 
-def set_password(ctx: OpContext, role: str, password: str, current_password: str | None = None) -> dict:
+async def set_password(ctx: OpContext, role: str, password: str, current_password: str | None = None) -> dict:
     """Đặt/đổi mật khẩu một vai trò.
 
     - Mật khẩu chủ lần đầu chỉ đặt được từ máy cục bộ; mật khẩu người xem cần có mật khẩu chủ trước.
-    - Vai trò đã có mật khẩu (đổi mật khẩu) → bắt buộc `current_password` = mật khẩu **chủ** hiện tại; đổi xong thu hồi
-      mọi phiên **và** token API của vai trò đó (kể cả phiên đang gọi — đăng nhập lại bằng mật khẩu mới).
+    - Vai trò đã có mật khẩu (đổi mật khẩu) → bắt buộc `current_password` = mật khẩu **chủ** hiện tại (kiểm qua cùng
+      bộ chống dò với đăng nhập); đổi xong thu hồi mọi phiên **và** token API của vai trò đó (kể cả phiên đang gọi).
+    - Mọi lần chạy scrypt đi qua `login_limiter.verify_limiter`.
     """
     _no_token(ctx, "đặt mật khẩu")
     services = ctx.services
-    with services.db.session() as s:
-        hashes = {r.role: r.password_hash for r in s.scalars(select(AuthSecret))}
+    verify_limiter = services.login_limiter.verify_limiter
+    hashes = await anyio.to_thread.run_sync(_read_hashes, services)
     if "owner" not in hashes:
         if ctx.via != "local":
             raise Forbidden(
@@ -335,15 +306,32 @@ def set_password(ctx: OpContext, role: str, password: str, current_password: str
         if role != "owner":
             raise Forbidden("Hãy đặt mật khẩu chủ sở hữu trước.", code="owner_password_required")
     changing = role in hashes
-    if changing and not (current_password and security.verify_password(current_password, hashes["owner"])):
-        raise invalid_current_password()
-    other = "viewer" if role == "owner" else "owner"
-    if other in hashes and security.verify_password(password, hashes[other]):
-        raise ValidationFailed(
-            "Mật khẩu chủ sở hữu và mật khẩu người xem phải khác nhau.",
-            extra={"errors": [{"loc": ["password"], "msg": "Trùng mật khẩu của vai trò khác.", "type": "duplicate"}]},
+    if changing:
+        owner_hash = hashes["owner"]
+        ok = await guarded_verify(
+            services,
+            ctx.rate_key,
+            lambda: bool(current_password) and security.verify_password(current_password, owner_hash),
         )
-    new_hash = security.hash_password(password)  # băm ngoài transaction ghi
+        if not ok:
+            raise invalid_current_password()
+    other = "viewer" if role == "owner" else "owner"
+    if other in hashes:
+        same = await anyio.to_thread.run_sync(
+            security.verify_password, password, hashes[other], limiter=verify_limiter
+        )
+        if same:
+            raise ValidationFailed(
+                "Mật khẩu chủ sở hữu và mật khẩu người xem phải khác nhau.",
+                extra={"errors": [{"loc": ["password"], "msg": "Trùng mật khẩu của vai trò khác.", "type": "duplicate"}]},
+            )
+    new_hash = await anyio.to_thread.run_sync(security.hash_password, password, limiter=verify_limiter)
+    result = await anyio.to_thread.run_sync(_store_password, services, role, new_hash, changing)
+    invalidate(services)
+    return result
+
+
+def _store_password(services: Services, role: str, new_hash: str, changing: bool) -> dict:
     now = utcnow()
     revoked_tokens = 0
     with services.db.session() as s:
@@ -361,7 +349,6 @@ def set_password(ctx: OpContext, role: str, password: str, current_password: str
             revoked_tokens = s.execute(
                 update(ApiToken).where(ApiToken.role == role, ApiToken.revoked_at.is_(None)).values(revoked_at=now)
             ).rowcount
-    invalidate(services)
     return {"role": role, "revoked_sessions": revoked or 0, "revoked_tokens": revoked_tokens or 0}
 
 

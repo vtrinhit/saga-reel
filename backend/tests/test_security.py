@@ -52,9 +52,11 @@ def remote_client(app, local_client):
         c.close()
 
 
-def _extra_client(app, base_url, port, headers=None) -> TestClient:
-    """Client phụ dùng chung app (không chạy lại lifespan — lifespan do `local_client` giữ)."""
-    return TestClient(app, base_url=base_url, client=("127.0.0.1", port), headers=headers)
+def _extra_client(local_client, base_url, port, headers=None) -> TestClient:
+    """Client phụ dùng chung app và event loop của `local_client` (không chạy lại lifespan)."""
+    c = TestClient(local_client.app, base_url=base_url, client=("127.0.0.1", port), headers=headers)
+    c.portal = local_client.portal
+    return c
 
 
 def _op(client, name, body=None, headers=None):
@@ -309,19 +311,19 @@ def test_spa_paths_not_blocked(remote_client):
 def test_remote_status_unauthenticated(remote_client):
     s = remote_client.get("/api/auth/status", headers=REMOTE_H).json()
     assert s == {"authenticated": False, "role": None, "via": None, "local": False,
-                 "password_set": {"owner": False, "viewer": False}}
+                 "password_set": {"owner": False, "viewer": False}, "password_required_warning": True}
 
 
 def test_local_status(local_client):
     s = local_client.get("/api/auth/status").json()
     assert s == {"authenticated": True, "role": "owner", "via": "local", "local": True,
-                 "password_set": {"owner": False, "viewer": False}}
+                 "password_set": {"owner": False, "viewer": False}, "password_required_warning": True}
 
 
 def test_local_status_after_password_is_session(local_client, owner_password):
     s = local_client.get("/api/auth/status").json()
     assert s == {"authenticated": True, "role": "owner", "via": "session", "local": True,
-                 "password_set": {"owner": True, "viewer": False}}
+                 "password_set": {"owner": True, "viewer": False}, "password_required_warning": False}
 
 
 def test_public_host_change_takes_effect_immediately(local_client, remote_client):
@@ -383,7 +385,7 @@ def test_login_not_remember_is_browser_session_with_12h_db_expiry(remote_client,
 
 def test_secure_cookie_on_public_host_even_over_http(local_client, owner_password, app):
     # Tunnel nói http với app nhưng trình duyệt dùng https: Host công khai → luôn Secure.
-    c = _extra_client(app, BASE, 50002, {"CF-Connecting-IP": "5.6.7.8"})
+    c = _extra_client(local_client, BASE, 50002, {"CF-Connecting-IP": "5.6.7.8"})
     r = _login(c, owner_password)
     c.close()
     assert r.status_code == 200
@@ -596,7 +598,7 @@ def test_bearer_on_media_and_events(remote_client, owner_token):
 
 def test_require_login_local_default_on(local_client, owner_password, app):
     # nginx `proxy_pass http://127.0.0.1:8990` không gắn header → trông như máy cục bộ: vẫn phải đăng nhập.
-    fresh = _extra_client(app, BASE, 50003)
+    fresh = _extra_client(local_client, BASE, 50003)
     r = _op(fresh, "system.info")
     assert r.status_code == 401 and r.json()["error_code"] == "auth_required"
     s = fresh.get("/api/auth/status").json()
@@ -668,14 +670,14 @@ def test_security_check_crash_returns_standard_500(local_client, monkeypatch):
 @pytest.fixture
 def sleeps(monkeypatch) -> list[float]:
     """Ghi lại độ trễ chống dò mật khẩu thay vì ngủ thật."""
-    from sagareel.api import routes_auth
+    from sagareel.services import auth
 
     recorded: list[float] = []
 
     async def fake_sleep(seconds):
         recorded.append(seconds)
 
-    monkeypatch.setattr(routes_auth, "_sleep", fake_sleep)
+    monkeypatch.setattr(auth, "_sleep", fake_sleep)
     return recorded
 
 
@@ -688,12 +690,30 @@ def test_rate_limit_ignores_untrusted_ip_headers(remote_client, owner_password):
     assert r.status_code == 429
 
 
-def test_rate_limit_without_trusted_header_uses_socket_peer(local_client, remote_client, owner_password):
+def test_loopback_fallback_slows_but_never_locks_out(local_client, remote_client, owner_password, sleeps):
+    # Không có header tin cậy (proxy không gắn / header cấu hình rỗng): mọi khách từ xa chung peer 127.0.0.1 →
+    # không từ chối cứng (sẽ khoá được chủ), chỉ làm chậm dần.
     assert _op(local_client, "settings.set_global", {"values": {"remote.client_ip_header": ""}}).status_code == 200
-    for i in range(5):
+    for i in range(10):
         assert _login(remote_client, "sai", headers={"CF-Connecting-IP": f"10.0.0.{i}"}).status_code == 401
     r = _login(remote_client, owner_password, headers={"CF-Connecting-IP": "10.0.0.99"})
-    assert r.status_code == 429
+    assert r.status_code == 200 and r.json()["role"] == "owner"
+    assert sleeps and 0 < sleeps[-1] <= 3.0
+
+
+def test_remote_junk_cannot_fill_local_bucket(local_client, remote_client, owner_password, sleeps):
+    assert _op(local_client, "settings.set_global", {"values": {"remote.client_ip_header": ""}}).status_code == 200
+    for i in range(10):
+        assert _login(remote_client, "sai", headers={"CF-Connecting-IP": f"10.0.1.{i}"}).status_code == 401
+    n = len(sleeps)
+    r = local_client.post("/api/auth/login", json={"password": owner_password})
+    assert r.status_code == 200 and len(sleeps) == n  # cục bộ: bucket riêng, không bị làm chậm
+    # Bucket cục bộ vẫn có hạn mức cứng của riêng nó.
+    for _ in range(5):
+        assert local_client.post("/api/auth/login", json={"password": "sai-cuc-bo"}).status_code == 401
+    assert local_client.post("/api/auth/login", json={"password": owner_password}).status_code == 429
+    r = _login(remote_client, owner_password, headers={"CF-Connecting-IP": "10.0.1.99"})
+    assert r.status_code == 200
 
 
 def test_junk_flood_slows_but_never_blocks_owner(remote_client, owner_password, sleeps):
@@ -709,15 +729,32 @@ def test_login_limiter_delay_is_capped():
 
     lim = LoginLimiter()
     assert lim.delay("127.0.0.1") == 0
-    for _ in range(5):
-        lim.record_peer_failure("127.0.0.1")
-    assert lim.delay("127.0.0.1") == 0  # 5 lần đầu miễn phí
-    lim.record_peer_failure("127.0.0.1")
-    assert lim.delay("127.0.0.1") == pytest.approx(0.1)
+    delays = [lim.reserve_peer("127.0.0.1")[1] for _ in range(7)]
+    assert delays[:6] == [0, 0, 0, 0, 0, 0]  # 5 lần đầu miễn phí (đếm cả lần đang chạy)
+    assert delays[6] == pytest.approx(0.1)
     for _ in range(500):
-        lim.record_peer_failure("127.0.0.1")
+        lim.reserve_peer("127.0.0.1")
     assert lim.delay("127.0.0.1") == 3.0
     assert lim.delay("10.0.0.1") == 0  # peer khác không bị ảnh hưởng
+    ticket, _ = lim.reserve_peer("10.0.0.2")
+    lim.release(ticket)  # đúng mật khẩu: trả chỗ
+    assert lim.delay("10.0.0.2") == 0
+
+
+def test_login_limiter_tables_are_capped():
+    from sagareel.services.auth import LoginLimiter
+
+    lim = LoginLimiter(max_keys=3)
+    for i in range(10):
+        lim.acquire(f"ip:10.0.0.{i}")
+        lim.reserve_peer(f"10.0.0.{i}")
+    assert lim.table_size("key") == 3 and lim.table_size("peer") == 3
+    # Khoá mới nhất vẫn còn đếm.
+    for _ in range(4):
+        lim.acquire("ip:10.0.0.9")
+    with pytest.raises(AppError) as ei:
+        lim.acquire("ip:10.0.0.9")
+    assert ei.value.code == "too_many_attempts"
 
 
 def test_local_login_failures_not_counted_for_peer(local_client, remote_client, owner_password, sleeps):
@@ -849,3 +886,106 @@ def test_client_ip_trusts_only_configured_header():
     # Kết nối không qua loopback (không phải tunnel trên máy này): không tin header nào.
     assert security.client_ip(_req(client=("192.168.1.9", 1), headers={"CF-Connecting-IP": "1.1.1.1"}),
                               "cf-connecting-ip") == "192.168.1.9"
+
+
+# --- Fix round 2 --------------------------------------------------------------------------------------------------
+
+
+def test_trusted_header_last_line_and_last_item():
+    raw_req = Request({
+        "type": "http", "method": "GET", "path": "/", "client": ("127.0.0.1", 1),
+        "headers": [(b"host", b"127.0.0.1:8990"), (b"cf-connecting-ip", b"9.9.9.9"),
+                    (b"cf-connecting-ip", b"6.6.6.6, 1.1.1.1")],
+        "app": SimpleNamespace(state=SimpleNamespace(services=SimpleNamespace(settings=SimpleNamespace(port=8990)))),
+    })
+    assert security.trusted_client_ip(raw_req, "cf-connecting-ip") == "1.1.1.1"
+    assert security.rate_key(raw_req, "cf-connecting-ip").key == "ip:1.1.1.1"
+
+
+@pytest.mark.parametrize("value", ["not-an-ip", "", "1.2.3.4.5", "<script>", "1.1.1.1, rac"])
+def test_trusted_header_non_ip_falls_back(value):
+    req = _req(headers={"CF-Connecting-IP": value})
+    assert security.trusted_client_ip(req, "cf-connecting-ip") is None
+    rk = security.rate_key(req, "cf-connecting-ip")
+    assert rk.key is None and rk.peer == "127.0.0.1" and rk.local is False  # loopback → chỉ làm chậm
+    assert security.client_ip(req, "cf-connecting-ip") == "127.0.0.1"
+
+
+def test_rate_key_kinds():
+    assert security.rate_key(_req(), "cf-connecting-ip") == security.RateKey("local:127.0.0.1", "127.0.0.1", True)
+    assert security.rate_key(_req(client=("192.168.1.9", 1), host="studio.example.com"), "").key == "ip:192.168.1.9"
+    assert security.rate_key(_req(headers={"CF-Connecting-IP": "2001:db8::1"}), "cf-connecting-ip").key == \
+        "ip:2001:db8::1"
+
+
+def test_invalid_trusted_header_value_does_not_bypass(remote_client, owner_password, sleeps):
+    # Giá trị rác ở header tin cậy không tạo khoá mới (không lách được hạn mức theo khoá): rơi về làm chậm theo peer.
+    for i in range(8):
+        assert _login(remote_client, "sai", headers={"CF-Connecting-IP": f"rac-{i}"}).status_code == 401
+    assert sleeps and sleeps[-1] > 0
+    assert remote_client.app.state.services.login_limiter.table_size("key") <= 2  # chỉ local + không có "rac-*"
+
+
+def test_set_password_current_check_is_rate_limited(local_client, owner_password):
+    body = {"role": "owner", "password": "mat-khau-moi-000"}
+    for _ in range(5):
+        r = _op(local_client, "auth.set_password", {**body, "current_password": "sai-roi-123"})
+        assert r.status_code == 403 and r.json()["error_code"] == "invalid_current_password"
+    r = _op(local_client, "auth.set_password", {**body, "current_password": owner_password})
+    assert r.status_code == 429 and r.json()["error_code"] == "too_many_attempts"
+
+
+def test_login_verification_concurrency_is_bounded(local_client, owner_password, monkeypatch, sleeps):
+    import threading
+    import time
+
+    import anyio
+    import httpx
+
+    active = peak = 0
+    lock = threading.Lock()
+    real_verify = security.verify_password
+
+    def slow_verify(pw, stored):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        try:
+            time.sleep(0.02)
+            return real_verify(pw, stored)
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(security, "verify_password", slow_verify)
+    cookie = f"sr_session={local_client.cookies['sr_session']}; sr_csrf={local_client.cookies['sr_csrf']}"
+    csrf = local_client.cookies["sr_csrf"]
+    app = local_client.app
+    statuses: list[int] = []
+    authed: dict = {}
+
+    async def run():
+        transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 50010))
+        async with httpx.AsyncClient(transport=transport, base_url="https://127.0.0.1:8990") as ac:
+            async def bad(i):
+                r = await ac.post("/api/auth/login", json={"password": "sai"},
+                                  headers={"Host": PUBLIC, "CF-Connecting-IP": f"203.0.113.{i}"})
+                statuses.append(r.status_code)
+
+            async def cookie_request():
+                await anyio.sleep(0.1)  # giữa lúc đang bị dò dồn dập
+                t = time.monotonic()
+                r = await ac.post("/api/ops/system.info", json={}, headers={"Cookie": cookie, "X-SR-CSRF": csrf})
+                authed.update(status=r.status_code, seconds=time.monotonic() - t, active_after=active)
+
+            async with anyio.create_task_group() as tg:
+                for i in range(50):
+                    tg.start_soon(bad, i)
+                tg.start_soon(cookie_request)
+
+    local_client.portal.call(run)
+    assert statuses == [401] * 50
+    assert 1 <= peak <= 3
+    assert authed["status"] == 200 and authed["seconds"] < 1.0
+    assert authed["active_after"] > 0  # vẫn đang dò khi request cookie đã xong

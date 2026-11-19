@@ -40,8 +40,8 @@ class SetPasswordResult(BaseModel):
     result=SetPasswordResult,
     viewer=False,
 )
-def auth_set_password(ctx: OpContext, p: SetPasswordParams) -> dict:
-    return auth.set_password(ctx, p.role, p.password, p.current_password)
+async def auth_set_password(ctx: OpContext, p: SetPasswordParams) -> dict:
+    return await auth.set_password(ctx, p.role, p.password, p.current_password)
 
 
 class TokenInfo(BaseModel):

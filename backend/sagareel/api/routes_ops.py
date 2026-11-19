@@ -33,7 +33,11 @@ def context_from_request(request: Request) -> OpContext:
     if principal is None:
         raise security.auth_required()
     return OpContext(
-        services=request.app.state.services, actor=principal.actor, role=principal.role, via=principal.via
+        services=request.app.state.services,
+        actor=principal.actor,
+        role=principal.role,
+        via=principal.via,
+        rate_key=getattr(request.state, "rate_key", None),
     )
 
 

@@ -93,6 +93,8 @@ class SecurityMiddleware:
         if host is None or host not in cfg.trusted_hosts:
             return security.untrusted_host()
 
+        state["rate_key"] = security.rate_key(conn, cfg.client_ip_header)
+
         # (2) Xác thực.
         protected = security.is_protected_path(scope["path"])
         principal: Principal | None = None

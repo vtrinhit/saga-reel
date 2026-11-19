@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from sagareel.container import Services
 
@@ -23,6 +23,8 @@ class OpContext:
     run_overrides: dict = field(default_factory=dict)
     # Cách principal được xác thực: "local" | "session" | "token"; None = không qua HTTP (coi như không cục bộ).
     via: str | None = None
+    # Khoá chống dò mật khẩu của request (`core.security.RateKey`); None = không qua HTTP.
+    rate_key: Any = None
 
     def uow(self, summary: str = "", *, op_name: str | None = None) -> UnitOfWork:
         """UnitOfWork với actor/project của context; op name lấy từ `current_op` (do `invoke` đặt) nếu không truyền."""

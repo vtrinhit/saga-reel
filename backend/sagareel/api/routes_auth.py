@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from sagareel.api.middleware import CSRF_COOKIE, SESSION_COOKIE
 from sagareel.core import security
-from sagareel.core.errors import AppError, ErrorPayload
+from sagareel.core.errors import ErrorPayload
 from sagareel.services import auth
 
 _ERRORS: dict[int | str, dict[str, Any]] = {"default": {"model": ErrorPayload, "description": "Lỗi chuẩn"}}
@@ -27,10 +27,6 @@ _ERRORS: dict[int | str, dict[str, Any]] = {"default": {"model": ErrorPayload, "
 class LoginBody(BaseModel):
     password: str = Field(min_length=1, max_length=1024)
     remember: bool = False
-
-
-# Thay được trong test (ghi lại độ trễ thay vì ngủ thật).
-_sleep = anyio.sleep
 
 
 def _secure(request: Request, cfg: auth.AccessConfig) -> bool:
@@ -59,29 +55,17 @@ def _clear_cookies(response: JSONResponse, secure: bool) -> None:
 
 def build_router() -> APIRouter:
     router = APIRouter(prefix="/api/auth", tags=["auth"])
-    limiter = auth.LoginLimiter()  # mỗi app một bộ đếm
 
     @router.post("/login", summary="Đăng nhập bằng mật khẩu (chủ sở hữu hoặc người xem)", responses=_ERRORS)
     async def login(request: Request, body: LoginBody) -> JSONResponse:
         services = request.app.state.services
         cfg = await auth.access_config_async(services)
-        local = security.is_local(request)
         ip = security.client_ip(request, cfg.client_ip_header)
-        peer = request.client.host if request.client else ""
-        ticket = limiter.acquire(ip)  # lần thứ 6 sai trong 1 phút từ IP này → 429 trước khi kiểm mật khẩu
-        if not local:
-            delay = limiter.delay(peer)  # nhiều lần sai từ cùng nguồn (vd. tunnel) → chậm dần, không từ chối
-            if delay > 0:
-                await _sleep(delay)
-        try:
-            result = await anyio.to_thread.run_sync(
-                auth.login, services, body.password, body.remember, ip, request.headers.get("user-agent", "")
-            )
-        except AppError:
-            if not local:
-                limiter.record_peer_failure(peer)
-            raise
-        limiter.release(ticket)  # đúng mật khẩu: không tính vào số lần sai
+        rate = getattr(request.state, "rate_key", None) or security.rate_key(request, cfg.client_ip_header)
+        # Chống dò: hạn mức theo khoá (429), làm chậm theo peer, tối đa 3 lần kiểm scrypt đồng thời.
+        result = await auth.login(
+            services, body.password, body.remember, ip, request.headers.get("user-agent", ""), rate
+        )
         response = JSONResponse({
             "ok": True,
             "role": result.role,
@@ -111,6 +95,8 @@ def build_router() -> APIRouter:
             "via": principal.via if principal else None,
             "local": security.is_local(request),
             "password_set": auth.password_status(cfg),
+            # Chưa có mật khẩu chủ: ai tới được cổng cục bộ cũng là chủ → UI cảnh báo "đừng mở ra Internet".
+            "password_required_warning": not cfg.owner_password_set,
         }
 
     return router

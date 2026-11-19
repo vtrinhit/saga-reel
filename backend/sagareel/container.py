@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from sagareel.config import AppSettings
 from sagareel.core.resolver import Resolver, default_resolver
 from sagareel.core.events import EventBus
-from sagareel.core.security import TTLCache
+from sagareel.core.security import LoginLimiter, TTLCache
 from sagareel.db.session import Database
 
 
@@ -23,3 +23,5 @@ class Services:
     bus: EventBus = field(default_factory=EventBus, kw_only=True)
     # Cấu hình truy cập (`remote.*` + mật khẩu đã đặt chưa) cho middleware bảo mật; TTL 5 s, xoá khi đổi.
     auth_cache: TTLCache = field(default_factory=lambda: TTLCache(5.0), kw_only=True)
+    # Chống dò mật khẩu (đăng nhập + đổi mật khẩu) và giới hạn số lần kiểm scrypt đồng thời.
+    login_limiter: LoginLimiter = field(default_factory=LoginLimiter, kw_only=True)

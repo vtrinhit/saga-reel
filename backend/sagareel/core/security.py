@@ -21,10 +21,12 @@ import re
 import secrets
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import unquote, urlsplit
 
+import anyio
 from starlette.requests import HTTPConnection
 
 from sagareel.core.errors import AppError
@@ -223,21 +225,67 @@ def is_local(request: HTTPConnection) -> bool:
     return not has_forwarding_headers(request)
 
 
-def client_ip(conn: HTTPConnection, trusted_header: str = "") -> str:
-    """IP của client để giới hạn đăng nhập sai và ghi vào phiên.
+def _valid_ip(value: str | None) -> str | None:
+    """Chuỗi IP chuẩn hoá, hoặc None nếu không phải IP."""
+    try:
+        return str(ipaddress.ip_address((value or "").strip()))
+    except ValueError:
+        return None
 
-    Chỉ tin đúng **một** header do tunnel/proxy ghi đè (`remote.client_ip_header`, mặc định `cf-connecting-ip`), và
-    chỉ khi kết nối đến từ loopback (tunnel chạy trên máy này). X-Forwarded-For / X-Real-IP không bao giờ được dùng
-    (kẻ tấn công tự đặt được). Header có nhiều giá trị → lấy giá trị cuối (do proxy gần nhất thêm). Không có header
-    (hoặc `trusted_header` rỗng) → IP socket. Không bao giờ dùng để quyết định quyền.
+
+def trusted_client_ip(conn: HTTPConnection, trusted_header: str) -> str | None:
+    """IP thật của client lấy từ header tin cậy (`remote.client_ip_header`), hoặc None.
+
+    Chỉ tin đúng **một** header do tunnel/proxy ghi đè, và chỉ khi kết nối đến từ loopback (tunnel trên máy này).
+    Nhiều dòng header hoặc nhiều giá trị cách dấu phẩy → lấy giá trị **cuối** (proxy gần nhất thêm vào). Giá trị không
+    phải IP → coi như không có header. X-Forwarded-For / X-Real-IP không bao giờ được tin trừ khi chính nó là header
+    đã cấu hình.
+    """
+    name = trusted_header.strip().lower()
+    peer = conn.client.host if conn.client else ""
+    if not name or not _is_loopback_ip(peer):
+        return None
+    values = conn.headers.getlist(name)
+    if not values:
+        return None
+    return _valid_ip(values[-1].split(",")[-1])
+
+
+def client_ip(conn: HTTPConnection, trusted_header: str = "") -> str:
+    """IP để ghi vào phiên (hiển thị): IP từ header tin cậy, không có thì IP socket. Không dùng để quyết định quyền."""
+    peer = conn.client.host if conn.client else ""
+    return trusted_client_ip(conn, trusted_header) or peer[:64]
+
+
+@dataclass(frozen=True)
+class RateKey:
+    """Khoá chống dò mật khẩu của một request (middleware tính, đặt ở `request.state.rate_key`).
+
+    - `key`: khoá hạn mức cứng (5 lần sai/phút → 429); `None` = chỉ làm chậm (không từ chối).
+    - `peer`: IP socket (bộ đếm làm chậm dần); `local`: request cục bộ → không bị làm chậm, không tính vào `peer`.
+    """
+
+    key: str | None
+    peer: str
+    local: bool
+
+
+def rate_key(conn: HTTPConnection, trusted_header: str) -> RateKey:
+    """- cục bộ → `local:<peer>` (bucket riêng: lưu lượng từ xa không bao giờ lấp được);
+    - có IP hợp lệ từ header tin cậy → `ip:<ip>`;
+    - không có, peer là loopback (proxy không gắn header, tunnel không đặt header đã cấu hình, header rỗng) → `None`:
+      mọi khách từ xa chung peer này, từ chối cứng = khoá được chủ ngoài cửa, nên chỉ làm chậm;
+    - kết nối trực tiếp không qua loopback → `ip:<peer>`.
     """
     peer = conn.client.host if conn.client else ""
-    name = trusted_header.strip().lower()
-    if name and _is_loopback_ip(peer):
-        value = conn.headers.get(name, "").split(",")[-1].strip()
-        if value:
-            return value[:64]
-    return peer[:64]
+    if is_local(conn):
+        return RateKey(f"local:{peer}", peer, True)
+    ip = trusted_client_ip(conn, trusted_header)
+    if ip:
+        return RateKey(f"ip:{ip}", peer, False)
+    if _is_loopback_ip(peer) or _valid_ip(peer) is None:
+        return RateKey(None, peer, False)
+    return RateKey(f"ip:{_valid_ip(peer)}", peer, False)
 
 
 def origin_trusted(origin: str, public_hosts: frozenset[str], port: int) -> bool:
@@ -328,6 +376,108 @@ def csrf_failed(detail: str) -> AppError:
         hint="Tải lại trang rồi thử lại. Yêu cầu ghi từ trình duyệt phải gửi header `X-SR-CSRF` bằng cookie `sr_csrf`.",
         status=403,
     )
+
+
+# --- Chống dò mật khẩu --------------------------------------------------------------------------------------------
+
+
+def too_many_attempts(retry_after: int) -> AppError:
+    return AppError(
+        "too_many_attempts",
+        "Nhập sai mật khẩu quá nhiều lần. Vui lòng thử lại sau.",
+        hint=f"Thử lại sau khoảng {retry_after} giây.",
+        status=429,
+        extra={"retry_after": retry_after},
+    )
+
+
+Ticket = tuple[str, str, float]  # (bảng, khoá, mốc thời gian)
+
+
+class LoginLimiter:
+    """Chống dò mật khẩu (đăng nhập và `current_password` của `auth.set_password`), cửa sổ 60 s. Mỗi app một bộ.
+
+    - **Theo khoá** (`RateKey.key`): cứng 5 lần/phút → 429. Lần thử được giữ chỗ trước khi kiểm (gửi đồng thời không
+      vượt được); đúng mật khẩu thì trả chỗ.
+    - **Theo peer** (IP socket, trừ request cục bộ): không bao giờ từ chối — chậm dần. Lần thử đang chạy cũng được giữ
+      chỗ trước khi ngủ, nên N request song song tự làm chậm nhau: độ trễ = `step × max(0, n − free)` (n = số lần
+      sai + đang thử khác trong cửa sổ), tối đa `max_delay`. Mật khẩu đúng vẫn qua.
+    - **Kiểm mật khẩu** (scrypt) chạy trong `verify_limiter` riêng (`anyio.CapacityLimiter(3)`): không chiếm pool thread
+      chung, xác thực cookie/token vẫn nhanh khi bị dò dồn dập.
+    - Bảng khoá giới hạn `max_keys` (bỏ khoá cũ nhất khi đầy).
+    """
+
+    def __init__(
+        self,
+        per_key: int = 5,
+        window: float = 60.0,
+        free: int = 5,
+        step: float = 0.1,
+        max_delay: float = 3.0,
+        max_keys: int = 10_000,
+        verify_concurrency: int = 3,
+    ) -> None:
+        self.per_key, self.window = per_key, window
+        self.free, self.step, self.max_delay = free, step, max_delay
+        self.max_keys = max_keys
+        self.verify_limiter = anyio.CapacityLimiter(verify_concurrency)
+        self._lock = threading.Lock()
+        self._tables: dict[str, dict[str, deque[float]]] = {"key": {}, "peer": {}}
+
+    def table_size(self, table: str) -> int:
+        with self._lock:
+            return len(self._tables[table])
+
+    def _bucket(self, table: str, key: str, now: float) -> deque[float]:
+        t = self._tables[table]
+        dq = t.pop(key, None)  # lấy ra rồi chèn lại: khoá vừa dùng nằm cuối (LRU)
+        if dq is None:
+            if len(t) >= self.max_keys:
+                for k in [k for k, d in t.items() if not d or d[-1] <= now - self.window]:
+                    del t[k]
+                while len(t) >= self.max_keys:
+                    del t[next(iter(t))]
+            dq = deque()
+        t[key] = dq
+        while dq and dq[0] <= now - self.window:
+            dq.popleft()
+        return dq
+
+    def acquire(self, key: str) -> Ticket:
+        """Giữ chỗ một lần thử cho `key`; đã đủ 5 (kể cả đang thử) trong 60 s → `too_many_attempts`."""
+        now = time.monotonic()
+        with self._lock:
+            dq = self._bucket("key", key, now)
+            if len(dq) >= self.per_key:
+                raise too_many_attempts(max(1, int(dq[0] + self.window - now) + 1))
+            dq.append(now)
+        return "key", key, now
+
+    def reserve_peer(self, peer: str) -> tuple[Ticket, float]:
+        """Giữ chỗ trong bộ đếm của `peer`; trả (vé, số giây phải chờ trước khi kiểm mật khẩu)."""
+        now = time.monotonic()
+        with self._lock:
+            dq = self._bucket("peer", peer, now)
+            n = len(dq)
+            dq.append(now)
+        return ("peer", peer, now), min(self.max_delay, self.step * max(0, n - self.free))
+
+    def delay(self, peer: str) -> float:
+        """Độ trễ hiện tại của `peer` (không giữ chỗ)."""
+        with self._lock:
+            n = len(self._bucket("peer", peer, time.monotonic()))
+        return min(self.max_delay, self.step * max(0, n - self.free))
+
+    def release(self, ticket: Ticket) -> None:
+        """Trả chỗ (mật khẩu đúng: không tính là lần sai)."""
+        table, key, stamp = ticket
+        with self._lock:
+            dq = self._tables[table].get(key)
+            if dq is not None:
+                try:
+                    dq.remove(stamp)
+                except ValueError:
+                    pass
 
 
 # --- Cache TTL ----------------------------------------------------------------------------------------------------
