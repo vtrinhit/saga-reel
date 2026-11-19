@@ -6,7 +6,9 @@
   (nếu có kết nối) → `llm_task.route` → kết nối LLM đang bật đầu tiên; sau đó `fallbacks`. Công việc cần ảnh bỏ các
   kết nối không có vision. Không còn route nào → `AppError("llm_not_configured")` (409) kèm gợi ý hai cách viết khác.
 - `run_task(...)` đọc cấu hình **mỗi lần gọi** (đổi model có hiệu lực ngay), render template, thử từng route: lỗi
-  `TransientError` / `ProviderUnavailable` / `CapabilityError` hoặc JSON hỏng (task `json_mode`) → route kế.
+  mọi lỗi phía provider (`TransientError`, `ProviderUnavailable`, `CapabilityError`, `ProviderJobError`/4xx như model
+  không có) hoặc JSON hỏng (task `json_mode`) → route kế. Lỗi đầu vào của app (biến template thiếu, template hỏng,
+  ảnh không đọc được) dừng ngay.
 - Job `llm.run` (tạo bởi op `llm.run`) phát `llm.delta {job_id, text}` đã gộp (≤ 10 sự kiện/giây) và trả
   `{text, data, route, usage, model, attempts}`. Mỗi lần gọi LLM ghi một dòng `llm_call` vào nhật ký job.
 """
@@ -55,6 +57,8 @@ KEY_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _TASK_FIELDS = ("key", "label", "description", "template_key", "needs_vision", "json_mode")
 _FENCE_RE = re.compile(r"^```[A-Za-z0-9_-]*[ \t]*\r?\n(.*?)\r?\n?```$", re.DOTALL)
 FALLBACK_ERRORS = (TransientError, ProviderUnavailable, CapabilityError)
+# Lỗi do dữ liệu vào của chính app (không phải lỗi provider): thử route khác cũng vô ích → dừng chuỗi dự phòng.
+INPUT_ERRORS = frozenset({"llm_image_unreadable"})
 
 
 # --- Bản mặc định ---------------------------------------------------------------------------------------------------
@@ -376,9 +380,11 @@ async def run_task(
         except FALLBACK_ERRORS as e:
             record(_attempt(route, ok=False, started=started, error_code=_error_code(e), error=e.msg))
             continue
-        except JobFailed as e:  # lỗi rõ ràng khác (vd. provider từ chối): ghi lại rồi dừng, không thử dự phòng
+        except JobFailed as e:  # provider từ chối (4xx, model không có…) → thử dự phòng; lỗi đầu vào của app → dừng
             record(_attempt(route, ok=False, started=started, error_code=e.code, error=e.msg))
-            raise
+            if e.code in INPUT_ERRORS:
+                raise
+            continue
         except AppError as e:  # vd. adapter không còn được đăng ký
             if e.code != "unknown_adapter":
                 raise

@@ -478,3 +478,42 @@ async def test_llm_run_logs_llm_call_and_resets_deltas_on_fallback(client_with_b
     assert len(calls) == 2 and "connection=broken" in calls[0] and "connection=fake-llm" in calls[1]
     resets = [d for t, d in client.events if t == "llm.delta" and d.get("reset")]
     assert len(resets) == 1
+
+
+async def test_provider_rejection_404_falls_back(services):
+    import httpx
+    import respx
+
+    def setup():
+        with services.db.session() as s:
+            seed_llm_defaults(s)
+            add_llm(s, "real", adapter="openai_compat", base_url="http://llm.test/v1", default_model="m-gone")
+            add_llm(s, "backup", options={"replies": {"write_script": "Kịch bản dự phòng"}})
+            task = s.scalars(select(LlmTask).where(LlmTask.key == "write_script")).one()
+            task.route = {"connection": "real", "model": None, "params": {}}
+            task.fallbacks = [{"connection": "backup", "model": None, "params": {}}]
+
+    await anyio.to_thread.run_sync(setup)
+    with respx.mock:
+        respx.post("http://llm.test/v1/chat/completions").mock(return_value=httpx.Response(
+            404, json={"error": {"message": "model_not_found: m-gone"}}))
+        out = await llm.run_task(services, "write_script", {"input": "x"})
+    assert out.text == "Kịch bản dự phòng" and out.route.connection == "backup"
+    assert [(a["connection"], a["ok"], a.get("error_code")) for a in out.attempts] == [
+        ("real", False, "provider_rejected"), ("backup", True, None)]
+
+
+async def test_app_input_error_stops_chain(services):
+    def setup():
+        with services.db.session() as s:
+            seed_llm_defaults(s)
+            add_llm(s, "a")
+            add_llm(s, "b")
+            task = s.scalars(select(LlmTask).where(LlmTask.key == "write_script")).one()
+            task.route = {"connection": "a", "model": None, "params": {}}
+            task.fallbacks = [{"connection": "b", "model": None, "params": {}}]
+
+    await anyio.to_thread.run_sync(setup)
+    with pytest.raises(AppError) as e:
+        await llm.run_task(services, "write_script", {})
+    assert e.value.code == "template_variable_missing"
