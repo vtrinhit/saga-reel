@@ -39,6 +39,18 @@ RETRYABLE = frozenset({"succeeded", "failed", "cancelled", "interrupted"})
 
 PAUSED_KEY = "jobs_paused"
 
+# Dấu "đang gửi tới provider": adapter ghi `save_external(state="submitting")` ngay trước POST tốn tiền.
+SUBMIT_MARKER_KEY, SUBMIT_MARKER = "state", "submitting"
+JOB_UNKNOWN_HINT = (
+    "Kiểm tra phía provider xem job đã được tạo chưa, rồi dùng job.clear_attention: "
+    "“resubmit” để xoá đánh dấu và gửi lại, hoặc “fail” để bỏ."
+)
+
+
+def has_submit_marker(external_id: str | None, external_state: dict | None) -> bool:
+    """Đã đánh dấu `submitting` mà chưa có `external_id` → không biết provider đã nhận job hay chưa."""
+    return not external_id and (external_state or {}).get(SUBMIT_MARKER_KEY) == SUBMIT_MARKER
+
 
 # --- Lỗi điều khiển worker ------------------------------------------------------------------------------------------
 
@@ -313,6 +325,12 @@ def retry_job(session: Session, job_id: int, params_patch: dict | None = None) -
     Dùng lại chính dòng job (id giữ nguyên cho UI); kết quả cũ, trạng thái provider cũ bị xoá — đây là lần gửi mới.
     """
     job = get_job(session, job_id)
+    if has_submit_marker(job.external_id, job.external_state):
+        raise Conflict(
+            f"Job #{job_id} có thể đã được gửi tới provider (đánh dấu submitting, chưa có external_id).",
+            hint=JOB_UNKNOWN_HINT,
+            extra={"job_id": job_id},
+        )
     if job.status not in RETRYABLE:
         raise Conflict(
             f"Job #{job_id} đang ở trạng thái '{job.status}', không chạy lại được.",
@@ -354,13 +372,20 @@ def prioritize(session: Session, job_ids: list[int], priority: int) -> list[Job]
 
 
 def clear_attention(session: Session, job_id: int, action: Literal["resubmit", "fail"]) -> Job:
-    """Người dùng/agent quyết định cho job `needs_attention`: xoá dấu provider rồi gửi lại, hoặc cho thất bại."""
+    """Người dùng/agent quyết định cho job `needs_attention`: xoá dấu provider rồi gửi lại, hoặc cho thất bại.
+
+    Đây là đường **duy nhất** xoá dấu `submitting`; nên cũng nhận job đã dừng (thất bại/huỷ/gián đoạn) còn mang dấu
+    đó (vd. bị huỷ đúng lúc đang gửi) — `job.retry` từ chối các job này.
+    """
     job = get_job(session, job_id)
-    if job.status != "needs_attention":
+    marked_idle = job.status in RETRYABLE and has_submit_marker(job.external_id, job.external_state)
+    if job.status != "needs_attention" and not marked_idle:
         raise Conflict(
             f"Job #{job_id} không ở trạng thái cần xử lý (hiện là '{job.status}').",
-            hint="Chỉ dùng cho job đang ở trạng thái needs_attention.",
+            hint="Chỉ dùng cho job needs_attention hoặc job đã dừng còn đánh dấu submitting.",
         )
+    if action == "resubmit":
+        job.attempt = 0
     job.external_id = None
     job.external_state = {}
     if action == "resubmit":

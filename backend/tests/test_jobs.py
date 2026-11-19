@@ -6,6 +6,7 @@ import anyio
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 
 from sagareel import ops as ops_pkg
 from sagareel.app import create_app
@@ -30,6 +31,7 @@ EXTRA_TYPES = (
     "test.cancel_cleanup",
     "test.self_cancel",
     "test.gate_transient",
+    "test.submit_hang",
 )
 
 
@@ -103,6 +105,13 @@ def extra_handlers(test_job_handlers):
     async def self_cancel(run):
         probe.order.append(run.job_id)
         raise asyncio.CancelledError()  # handler tự ném, không phải do huỷ/tắt app
+
+    @jobs.job_handler("test.submit_hang", resumable=True)
+    async def submit_hang(run):
+        await run.save_external(state="submitting")  # như adapter: đánh dấu ngay trước POST tốn tiền
+        probe.runs[run.job_id] = run
+        await asyncio.sleep(30)
+        return {}
 
     @jobs.job_handler("test.gate_transient")
     async def gate_transient(run):
@@ -369,6 +378,33 @@ def test_recover_marks_running(services):
     assert status(services, c) == "queued"
 
 
+def test_recover_submitting_marker_goes_to_needs_attention(svc):
+    marker = {"state": "submitting"}
+    resumable = insert_job(svc, "test.resumable", status="running", external_state=marker)
+    plain = insert_job(svc, "test.sleep", status="running", external_state=marker)
+    unregistered = insert_job(svc, "khong.co_handler", status="running", external_state=marker)
+    has_id = insert_job(svc, "test.resumable", status="running", external_id="p-1", external_state=marker)
+    svc.worker.recover()
+    for jid in (resumable, plain, unregistered):
+        job = load(svc, jid)
+        assert (job.status, job.error_code) == ("needs_attention", "job_unknown")
+        assert job.external_state == marker and "job.clear_attention" in job.hint
+    assert status(svc, has_id) == "queued"  # đã có external_id → nối lại bình thường
+    assert "submitting" in logs(svc, plain)
+
+
+async def test_stop_while_submitting_goes_to_needs_attention(svc):
+    a = enqueue_job(svc, "test.submit_hang", {})
+    await svc.worker.start()
+    try:
+        await wait_until(lambda: a in svc.worker_probe.runs)
+    finally:
+        await svc.worker.stop()
+    job = load(svc, a)
+    assert (job.status, job.error_code) == ("needs_attention", "job_unknown")
+    assert job.external_state == {"state": "submitting"}
+
+
 async def test_resumed_job_sees_external_state(svc):
     a = insert_job(svc, "test.resumable", status="running", external_id="x-9", external_state={"phase": "polling"})
     svc.worker.recover()
@@ -537,6 +573,53 @@ async def test_handler_raising_cancelled_error_itself_fails_instead_of_requeue(s
     assert svc.worker_probe.order == [a]  # chạy đúng một lần, không vòng lặp queued
 
 
+def _db_busy():
+    return OperationalError("UPDATE job", {}, Exception("database is locked"))
+
+
+async def test_final_write_is_retried_after_db_error(svc, monkeypatch):
+    monkeypatch.setattr(worker_mod, "FINAL_WRITE_DELAYS", (0.01, 0.01, 0.01))
+    a = enqueue_job(svc, "test.sleep", {"s": 0})
+    w = svc.worker
+    orig_write = w._write_final
+    calls = []
+
+    def flaky_write(*args):
+        calls.append(1)
+        if len(calls) <= 2:
+            raise _db_busy()
+        return orig_write(*args)
+
+    w._write_final = flaky_write
+    await run_until_idle(svc)
+    assert len(calls) == 3 and status(svc, a) == "succeeded"
+
+
+async def test_final_write_gives_up_and_worker_survives(svc, monkeypatch, caplog):
+    monkeypatch.setattr(worker_mod, "FINAL_WRITE_DELAYS", (0.01, 0.01))
+    a = enqueue_job(svc, "test.sleep", {"s": 0}, lane="A")
+    w = svc.worker
+    orig_write = w._write_final
+    calls = []
+
+    def broken_for_a(job_id, values, logs_):
+        if job_id == a:
+            calls.append(1)
+            raise _db_busy()
+        return orig_write(job_id, values, logs_)
+
+    w._write_final = broken_for_a
+    await w.start()
+    try:
+        await wait_until(lambda: len(calls) == 3 and a not in w._runs)
+        b = enqueue_job(svc, "test.sleep", {"s": 0}, lane="A")
+        await wait_until(lambda: status(svc, b) == "succeeded")  # lane được giải phóng, worker vẫn chạy
+    finally:
+        await w.stop()
+    assert status(svc, a) == "running"  # để lần khởi động sau recover() xử lý
+    assert f"trạng thái cuối của job #{a}" in caplog.text
+
+
 # --- Sự kiện, tiến độ, log ------------------------------------------------------------------------------------------
 
 
@@ -630,6 +713,24 @@ async def test_job_retry_refuses_active_and_attention(svc, op_ctx):
             await ops.invoke("job.retry", {"ids": [jid]}, op_ctx)
         assert ei.value.code == "conflict"
     assert load(svc, att).external_state == {"phase": "submitting"}
+
+
+async def test_job_retry_never_wipes_submitting_marker(svc, op_ctx):
+    marker = {"state": "submitting"}
+    for st in ("failed", "cancelled", "interrupted", "needs_attention"):
+        jid = insert_job(svc, "test.sleep", status=st, external_state=marker)
+        with pytest.raises(AppError) as ei:
+            await ops.invoke("job.retry", {"ids": [jid]}, op_ctx)
+        assert ei.value.code == "conflict" and "job.clear_attention" in ei.value.hint
+        assert load(svc, jid).external_state == marker and status(svc, jid) == st
+    # đường duy nhất: clear_attention(resubmit) — kể cả job đã dừng còn mang dấu
+    cancelled = insert_job(svc, "test.sleep", status="cancelled", external_state=marker, attempt=2)
+    out = await ops.invoke("job.clear_attention", {"id": cancelled, "action": "resubmit"}, op_ctx)
+    assert out["status"] == "queued" and out["external_state"] == {} and out["attempt"] == 0
+    # job đã dừng không mang dấu thì clear_attention vẫn từ chối
+    plain = insert_job(svc, "test.sleep", status="failed")
+    with pytest.raises(AppError):
+        await ops.invoke("job.clear_attention", {"id": plain, "action": "resubmit"}, op_ctx)
 
 
 async def test_job_clear_attention(svc, op_ctx):

@@ -79,6 +79,8 @@ class JSONDictType(_JSONText):
     trước rồi mới sửa.
     """
 
+    cache_ok = True  # khai báo trên chính lớp con (xem JSONValueType) để dùng được trong câu Core update/insert
+
 
 class JSONListType(_JSONText):
     """Cột JSON dạng mảng (list); dùng qua `JSONList` (bản theo dõi thay đổi).
@@ -89,6 +91,8 @@ class JSONListType(_JSONText):
     Cảnh báo: như `JSONDictType` — sửa tại chỗ trên object không có biến nào giữ (session chỉ giữ tham chiếu yếu) có
     thể bị mất; gán object vào biến trước rồi mới sửa.
     """
+
+    cache_ok = True
 
 
 class JSONValueType(_JSONText):

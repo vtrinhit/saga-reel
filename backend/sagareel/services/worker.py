@@ -43,6 +43,7 @@ logger = logging.getLogger("sagareel.worker")
 
 PROGRESS_INTERVAL = 0.25  # tối đa 4 sự kiện tiến độ/giây/job
 STOP_GRACE_S = 10.0
+FINAL_WRITE_DELAYS = (0.1, 0.25, 0.5, 1.0, 2.0)  # chờ giữa các lần thử lại ghi trạng thái cuối
 _LEVELS = ("debug", "info", "warning", "error")
 
 
@@ -53,8 +54,26 @@ def retry_delay(attempt: int, retry_after: float | None) -> float:
     return min(300.0, 5.0 * 2**attempt) * random.uniform(0.8, 1.2)
 
 
-def _interrupt_values(job_type: str) -> tuple[dict[str, Any], str, str]:
-    """Giá trị cột cho job đang chạy mà app tắt/chết: (values, level log, message log)."""
+def _interrupt_values(
+    job_type: str, external_id: str | None, external_state: dict | None
+) -> tuple[dict[str, Any], str, str]:
+    """Giá trị cột cho job đang chạy mà app tắt/chết: (values, level log, message log).
+
+    Chống tạo trùng job tốn tiền (spec §5.5, ưu tiên hơn mọi quy tắc khác): job đã đánh dấu `submitting` mà chưa có
+    `external_id` → `needs_attention` (`job_unknown`, giữ dấu) dù handler có nối lại được hay không, có đăng ký hay
+    không — không ai biết POST tới provider đã thành công chưa.
+    """
+    if jobs.has_submit_marker(external_id, external_state):
+        return (
+            {
+                "status": "needs_attention",
+                "error_code": "job_unknown",
+                "error_message": "Ứng dụng dừng lúc đang gửi job tới provider; không rõ provider đã nhận job hay chưa.",
+                "hint": jobs.JOB_UNKNOWN_HINT,
+            },
+            "warning",
+            "Ứng dụng dừng lúc đang gửi job tới provider (đánh dấu submitting, chưa có external_id); cần kiểm tra.",
+        )
     spec = jobs.get_handler(job_type)
     if spec is not None and spec.resumable:
         return (
@@ -316,7 +335,7 @@ class Worker:
             self.paused = jobs.is_paused(s)
             rows = list(s.scalars(select(Job).where(Job.status == "running").order_by(Job.id)))
             for job in rows:
-                values, level, msg = _interrupt_values(job.type)
+                values, level, msg = _interrupt_values(job.type, job.external_id, job.external_state)
                 for k, v in values.items():
                     setattr(job, k, v)
                 jobs.add_log(s, job.id, level, msg)
@@ -488,7 +507,7 @@ class Worker:
                 outcome = ("cancelled",)
             await run._close()
             values, logs = self._final_values(run, outcome)
-            data = await anyio.to_thread.run_sync(self._write_final, run.job_id, values, logs)
+            data = await self._write_final_with_retry(run.job_id, values, logs)
             if data is not None:
                 self._publish(data)
         except Exception:
@@ -496,13 +515,31 @@ class Worker:
         finally:
             self._runs.pop(run.job_id, None)
 
+    async def _write_final_with_retry(
+        self, job_id: int, values: dict[str, Any], logs: list[tuple[str, str]]
+    ) -> dict | None:
+        """Ghi trạng thái cuối; lỗi (vd. DB bận quá busy_timeout) → chờ ngắn (không giữ transaction) rồi thử lại.
+
+        Hết lượt → ném lỗi (giám sát ghi log); job còn `running` tới lần khởi động sau, `recover()` xử lý.
+        """
+        for delay in (*FINAL_WRITE_DELAYS, None):
+            try:
+                return await anyio.to_thread.run_sync(self._write_final, job_id, values, logs)
+            except Exception:
+                if delay is None:
+                    raise
+                logger.warning("Ghi trạng thái cuối của job #%s lỗi; thử lại sau %.2f s", job_id, delay,
+                               exc_info=True)
+                await asyncio.sleep(delay)
+        return None  # không tới được
+
     def _final_values(self, run: JobRun, outcome: tuple) -> tuple[dict[str, Any], list[tuple[str, str]]]:
         now = utcnow()
         kind = outcome[0]
         if kind == "cancelled":
             return {"status": "cancelled", "finished_at": now}, [("info", "Đã huỷ.")]
         if kind == "shutdown":
-            values, level, msg = _interrupt_values(run.type)
+            values, level, msg = _interrupt_values(run.type, run.external_id, run.external)
             return values, [(level, msg)]
         if kind == "ok":
             result = outcome[1]
@@ -555,30 +592,32 @@ class Worker:
 
     # --- Ghi DB (thread) ----------------------------------------------------------------------------------------
 
-    # Ghi có điều kiện "job vẫn running": đọc-kiểm-ghi trong phiên `immediate` (khoá ghi từ câu đầu) nên không ai
-    # chen giữa được; transaction chỉ dài vài câu lệnh.
+    # Ghi có điều kiện "job vẫn running": UPDATE … WHERE status='running' (compare-and-set), transaction ngắn.
 
     def _update_running(self, job_id: int, values: dict[str, Any]) -> bool:
-        with self.services.db.session(immediate=True) as s:
-            job = s.get(Job, job_id)
-            if job is None or job.status != "running":
-                return False
-            for k, v in values.items():
-                setattr(job, k, v)
-            return True
+        with self.services.db.session() as s:
+            res = s.execute(
+                update(Job)
+                .where(Job.id == job_id, Job.status == "running")
+                .values(**values)
+                .execution_options(synchronize_session=False)
+            )
+            return res.rowcount == 1
 
     def _write_final(self, job_id: int, values: dict[str, Any], logs: list[tuple[str, str]]) -> dict | None:
         """Trạng thái cuối + log trong một transaction; chỉ khi job vẫn `running`. Trả `job_dict` hoặc None."""
-        with self.services.db.session(immediate=True) as s:
-            job = s.get(Job, job_id)
-            if job is None or job.status != "running":
+        with self.services.db.session() as s:
+            res = s.execute(
+                update(Job)
+                .where(Job.id == job_id, Job.status == "running")
+                .values(**values, updated_at=utcnow())
+                .execution_options(synchronize_session=False)
+            )
+            if res.rowcount != 1:
                 logger.info("Job #%s đã bị đổi trạng thái bên ngoài worker; bỏ qua kết quả lần chạy", job_id)
                 return None
-            for k, v in values.items():
-                setattr(job, k, v)
-            job.updated_at = utcnow()
             rows = [jobs.add_log(s, job_id, level, msg) for level, msg in logs]
-            data = jobs.job_dict(job)
+            data = jobs.job_dict(s.get(Job, job_id))
             log_rows = [jobs.log_dict(r) for r in rows]
         for row in log_rows:
             self.services.bus.publish("job.log", row, project_id=data["project_id"])

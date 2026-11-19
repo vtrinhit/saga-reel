@@ -90,7 +90,10 @@ class JobWaitParams(BaseModel):
 
 @op(
     "job.wait",
-    summary="Chờ các job dừng tiến triển (không còn queued/running) hoặc hết giờ; trả trạng thái và timed_out",
+    summary=(
+        "Chờ tới khi mọi job rời queued/running — tức đã kết thúc (succeeded/failed/cancelled) hoặc dừng chờ người "
+        "quyết định (needs_attention, interrupted, waiting_*) — hoặc hết giờ; trả trạng thái từng job và timed_out"
+    ),
     params=JobWaitParams,
     read_only=True,
     idempotent=True,
