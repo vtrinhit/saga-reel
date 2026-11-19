@@ -564,3 +564,32 @@ def test_startup_calls_no_provider(settings, monkeypatch):
     with TestClient(create_app(settings)) as c:
         assert c.get("/api/health").status_code == 200
     assert called == [] and issubclass(registry.get("fake_image"), Adapter)
+
+
+# --- MaiVideo qua job (Task 11) -----------------------------------------------------------------------------------
+
+
+async def test_try_image_maivideo_unknown_post_needs_attention(client, run_jobs):
+    """POST MaiVideo mất trả lời sau khi gửi → job `needs_attention` (không thử lại, không gửi lại)."""
+    import httpx
+    import respx
+
+    create(client, {"kind": "image", "adapter": "maivideo", "name": "mai", "base_url": "http://mai.test",
+                    "api_key": "mv-SECRET-KEY-4321", "options": {"poll_interval": 0}})
+    with respx.mock(assert_all_called=False) as mock:
+        post = mock.post("http://mai.test/api/v1/image-generation").mock(side_effect=httpx.ReadTimeout("x"))
+        job_id = call(client, "provider.try_image", {"connection": "mai", "prompt": "mèo"}).json()["job_id"]
+        job = await run_jobs(job_id)
+        assert job["status"] == "needs_attention", job
+        assert job["error_code"] == "maivideo_job_unknown" and "clear_attention" in job["hint"]
+        assert job["external_state"]["state"] == "submitting" and job["external_id"] is None
+        assert post.call_count == 1
+        assert "SECRET" not in json.dumps(job, ensure_ascii=False)
+
+
+def test_try_image_is_resumable():
+    """App tắt khi đang poll → job về `queued` và nối lại bằng `external_id` (không thành `interrupted` rồi bị
+    "Chạy lại" xoá `external_id` → gửi trùng job tốn tiền)."""
+    from sagareel.services import jobs, provider_jobs
+
+    assert jobs.get_handler(provider_jobs.TRY_IMAGE).resumable

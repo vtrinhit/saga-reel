@@ -107,7 +107,7 @@ async def _store(
     return [row.id for row in rows]
 
 
-@job_handler(TRY_IMAGE)
+@job_handler(TRY_IMAGE, resumable=True)  # nối lại theo external_id/dấu "submitting" của adapter, không gửi lại
 async def try_image(run: JobRun) -> dict:
     p = run.params
     adapter = await _adapter(run, "image")
