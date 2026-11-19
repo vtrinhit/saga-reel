@@ -570,10 +570,8 @@ def test_schema_documents_zero_unlimited():
     assert "0" in r.definition("budget.videos_total").description
 
 
-def test_startup_calls_no_provider(settings, monkeypatch):
+def test_startup_calls_no_provider(settings, monkeypatch, make_local_client):
     """Khởi động app không gọi check_health của adapter nào."""
-    from fastapi.testclient import TestClient
-
     from sagareel.app import create_app
     from sagareel.providers.base import Adapter
 
@@ -585,7 +583,7 @@ def test_startup_calls_no_provider(settings, monkeypatch):
 
     for cls in registry.all():
         monkeypatch.setattr(cls, "check_health", boom)
-    with TestClient(create_app(settings)) as c:
+    with make_local_client(create_app(settings)) as c:
         assert c.get("/api/health").status_code == 200
     assert called == [] and issubclass(registry.get("fake_image"), Adapter)
 
