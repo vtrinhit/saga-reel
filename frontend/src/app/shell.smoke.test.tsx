@@ -171,7 +171,8 @@ describe('shell (smoke)', () => {
 
   it('trang trong dự án hiện "Sắp có" và điều hướng dự án', async () => {
     api.defaults.adapter = reply(404, { detail: 'Not Found' });
-    await render('/p/3/studio');
+    // `studio` đã có module (Task I) → dùng một section còn giữ chỗ.
+    await render('/p/3/watch');
     expect(container.textContent).toContain('Sắp có');
     expect(container.querySelector('nav[aria-label="Trong dự án"]')).not.toBeNull();
   });

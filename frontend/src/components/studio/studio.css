@@ -1,0 +1,68 @@
+/* Studio (Task I): chỉ token, không màu rời. */
+
+/* Item đang chọn: viền accent 2px vẽ bên trong (không shadow) — khác vòng focus nằm ngoài. */
+.sr-tl-item[aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid rgb(var(--c-accent));
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* Vùng chồng xfade: sọc chéo màu track hình. */
+.sr-xfade {
+  background: repeating-linear-gradient(
+    135deg,
+    rgb(var(--c-track-video) / 0.55) 0 3px,
+    transparent 3px 6px
+  );
+  border: 1px dashed rgb(var(--c-track-video));
+}
+
+/* Tay nắm trim (lớp riêng trên clip): hiện khi hover/đang chọn; vùng bắt 16px (cảm ứng 44px). */
+.sr-tl-handle::before {
+  content: '';
+  position: absolute;
+  inset: 0 -4px;
+}
+.sr-tl-handle:hover,
+.sr-tl-handle-on {
+  background: rgb(var(--c-fg-1) / 0.5);
+}
+@media (pointer: coarse) {
+  .sr-tl-handle::before {
+    inset: 0 -18px;
+  }
+}
+.sr-tl-handle.sr-tl-limit {
+  background: rgb(var(--c-failed));
+}
+
+/* Khi đang kéo: con trỏ grabbing trên cả trang. */
+.sr-tl-item:active {
+  cursor: grabbing;
+}
+
+/* Lớp safe-zone (DESIGN §5.4): dải che đen 35% + đường đứt trắng 60%. */
+.sr-safe-dim {
+  background: var(--overlay-dim);
+}
+.sr-safe-box {
+  border: 1px dashed var(--overlay-line);
+}
+.sr-safe-label {
+  background: var(--overlay-label);
+  color: var(--sub-fg);
+}
+.sr-sub-preview {
+  color: var(--sub-fg);
+  text-shadow: var(--sub-halo);
+}
+
+/* Inspector dính ≥ 1280: không cao hơn màn hình, cuộn trong chính nó. */
+.sr-inspector-sticky {
+  position: sticky;
+  top: calc(var(--sr-top, 0px) + 16px);
+  max-height: calc(100dvh - var(--sr-top, 0px) - 32px);
+}
