@@ -1,0 +1,4996 @@
+[
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "auth",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "call",
+  "name": "auth.set_password",
+  "params_schema": {
+   "properties": {
+    "current_password": {
+     "anyOf": [
+      {
+       "maxLength": 1024,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Mật khẩu CHỦ SỞ HỮU hiện tại — bắt buộc khi vai trò này đã có mật khẩu (đổi mật khẩu)",
+     "title": "Current Password"
+    },
+    "password": {
+     "description": "Mật khẩu mới, tối thiểu 8 ký tự",
+     "maxLength": 1024,
+     "minLength": 8,
+     "title": "Password",
+     "type": "string"
+    },
+    "role": {
+     "description": "Vai trò: owner (chủ sở hữu) hoặc viewer (người xem)",
+     "enum": [
+      "owner",
+      "viewer"
+     ],
+     "title": "Role",
+     "type": "string"
+    }
+   },
+   "required": [
+    "role",
+    "password"
+   ],
+   "title": "SetPasswordParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "properties": {
+    "revoked_sessions": {
+     "title": "Revoked Sessions",
+     "type": "integer"
+    },
+    "revoked_tokens": {
+     "title": "Revoked Tokens",
+     "type": "integer"
+    },
+    "role": {
+     "enum": [
+      "owner",
+      "viewer"
+     ],
+     "title": "Role",
+     "type": "string"
+    }
+   },
+   "required": [
+    "role",
+    "revoked_sessions",
+    "revoked_tokens"
+   ],
+   "title": "SetPasswordResult",
+   "type": "object"
+  },
+  "summary": "Đặt/đổi mật khẩu chủ sở hữu hoặc người xem (lần đầu chỉ từ máy cục bộ; đổi cần mật khẩu chủ hiện tại); thu hồi phiên và token API của vai trò đó",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "budget",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "budget.status",
+  "params_schema": {
+   "properties": {},
+   "title": "BudgetStatusParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "$defs": {
+    "BudgetKindStatus": {
+     "properties": {
+      "enabled": {
+       "description": "Ngân sách đang bật",
+       "title": "Enabled",
+       "type": "boolean"
+      },
+      "remaining": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Còn lại; null = không giới hạn",
+       "title": "Remaining"
+      },
+      "spent": {
+       "description": "Số đơn vị đã dùng (không tính kết nối giả fake_*)",
+       "title": "Spent",
+       "type": "number"
+      },
+      "total": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Trần số đơn vị; null = không giới hạn (tắt hoặc 0)",
+       "title": "Total"
+      }
+     },
+     "required": [
+      "enabled",
+      "total",
+      "spent",
+      "remaining"
+     ],
+     "title": "BudgetKindStatus",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "image": {
+     "$ref": "#/$defs/BudgetKindStatus"
+    },
+    "video": {
+     "$ref": "#/$defs/BudgetKindStatus"
+    }
+   },
+   "required": [
+    "image",
+    "video"
+   ],
+   "title": "BudgetStatus",
+   "type": "object"
+  },
+  "summary": "Ngân sách ảnh/video: trần, đã dùng, còn lại (kết nối giả không tính)",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "entity",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "entity.get",
+  "params_schema": {
+   "properties": {
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "type": {
+     "description": "Loại thực thể (= tên bảng), vd. project, clip, asset",
+     "enum": [
+      "project",
+      "group_node",
+      "sequence",
+      "scene",
+      "asset_kind",
+      "asset",
+      "asset_variant",
+      "clip",
+      "dialogue_line",
+      "voice_profile",
+      "timeline_item",
+      "sound",
+      "preset",
+      "bible_item",
+      "channel_study",
+      "skill_file"
+     ],
+     "title": "Type",
+     "type": "string"
+    }
+   },
+   "required": [
+    "type",
+    "id"
+   ],
+   "title": "EntityGetParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Đọc một thực thể theo loại + id (mọi cột)",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "entity",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "entity.list",
+  "params_schema": {
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "`next_cursor` của trang trước",
+     "title": "Cursor"
+    },
+    "filters": {
+     "additionalProperties": true,
+     "description": "Lọc bằng nhau theo cột, vd. {\"sequence_id\": 3}; giá trị mảng = một trong; null = trống",
+     "title": "Filters",
+     "type": "object"
+    },
+    "limit": {
+     "default": 100,
+     "maximum": 500,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    },
+    "type": {
+     "description": "Loại thực thể (= tên bảng)",
+     "enum": [
+      "project",
+      "group_node",
+      "sequence",
+      "scene",
+      "asset_kind",
+      "asset",
+      "asset_variant",
+      "clip",
+      "dialogue_line",
+      "voice_profile",
+      "timeline_item",
+      "sound",
+      "preset",
+      "bible_item",
+      "channel_study",
+      "skill_file"
+     ],
+     "title": "Type",
+     "type": "string"
+    }
+   },
+   "required": [
+    "type"
+   ],
+   "title": "EntityListParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "properties": {
+    "items": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "title": "Items",
+     "type": "array"
+    },
+    "next_cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Next Cursor"
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "title": "EntityPage",
+   "type": "object"
+  },
+  "summary": "Liệt kê thực thể theo loại, lọc theo cột, phân trang cursor (theo rank hoặc id)",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "entity",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "entity.patch",
+  "params_schema": {
+   "properties": {
+    "expected_updated_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "`updated_at` lúc đọc; lệch (người khác đã sửa) → lỗi stale_write 409",
+     "title": "Expected Updated At"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "type": {
+     "description": "Loại thực thể (= tên bảng)",
+     "enum": [
+      "project",
+      "group_node",
+      "sequence",
+      "scene",
+      "asset_kind",
+      "asset",
+      "asset_variant",
+      "clip",
+      "dialogue_line",
+      "voice_profile",
+      "timeline_item",
+      "sound",
+      "preset",
+      "bible_item",
+      "channel_study",
+      "skill_file"
+     ],
+     "title": "Type",
+     "type": "string"
+    },
+    "values": {
+     "additionalProperties": true,
+     "description": "Cột → giá trị mới (không sửa được id, project_id, *_at)",
+     "title": "Values",
+     "type": "object"
+    }
+   },
+   "required": [
+    "type",
+    "id",
+    "values"
+   ],
+   "title": "EntityPatchParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Sửa các trường của một thực thể (hoàn tác được); kèm expected_updated_at để chống ghi đè",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "history",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "history.list",
+  "params_schema": {
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "`next_cursor` của trang trước",
+     "title": "Cursor"
+    },
+    "entity_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Lọc theo id thực thể",
+     "title": "Entity Id"
+    },
+    "entity_type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Lọc theo loại thực thể (tên bảng), vd. 'template'",
+     "title": "Entity Type"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    },
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Project áp dụng; bỏ trống = project của ngữ cảnh gọi",
+     "title": "Project Id"
+    }
+   },
+   "title": "HistoryListParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "$defs": {
+    "ChangeSetOut": {
+     "properties": {
+      "actor": {
+       "title": "Actor",
+       "type": "string"
+      },
+      "created_at": {
+       "format": "date-time",
+       "title": "Created At",
+       "type": "string"
+      },
+      "entities": {
+       "items": {
+        "$ref": "#/$defs/EntityRef"
+       },
+       "title": "Entities",
+       "type": "array"
+      },
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "op_name": {
+       "title": "Op Name",
+       "type": "string"
+      },
+      "summary": {
+       "title": "Summary",
+       "type": "string"
+      },
+      "undone_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Undone At"
+      }
+     },
+     "required": [
+      "id",
+      "op_name",
+      "actor",
+      "summary",
+      "created_at",
+      "undone_at",
+      "entities"
+     ],
+     "title": "ChangeSetOut",
+     "type": "object"
+    },
+    "EntityRef": {
+     "properties": {
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "revision_id": {
+       "title": "Revision Id",
+       "type": "integer"
+      },
+      "type": {
+       "title": "Type",
+       "type": "string"
+      }
+     },
+     "required": [
+      "type",
+      "id",
+      "revision_id"
+     ],
+     "title": "EntityRef",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "items": {
+     "items": {
+      "$ref": "#/$defs/ChangeSetOut"
+     },
+     "title": "Items",
+     "type": "array"
+    },
+    "next_cursor": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Next Cursor"
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "title": "HistoryPage",
+   "type": "object"
+  },
+  "summary": "Liệt kê lịch sử thay đổi (change set) theo project hoặc theo thực thể, mới nhất trước",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "history",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "history.redo",
+  "params_schema": {
+   "properties": {
+    "change_set_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Bỏ trống = thao tác bạn vừa hoàn tác gần nhất",
+     "title": "Change Set Id"
+    },
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Project áp dụng; bỏ trống = project của ngữ cảnh gọi",
+     "title": "Project Id"
+    }
+   },
+   "title": "HistoryRedoParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "$defs": {
+    "EntityRef": {
+     "properties": {
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "revision_id": {
+       "title": "Revision Id",
+       "type": "integer"
+      },
+      "type": {
+       "title": "Type",
+       "type": "string"
+      }
+     },
+     "required": [
+      "type",
+      "id",
+      "revision_id"
+     ],
+     "title": "EntityRef",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "actor": {
+     "title": "Actor",
+     "type": "string"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "entities": {
+     "items": {
+      "$ref": "#/$defs/EntityRef"
+     },
+     "title": "Entities",
+     "type": "array"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "op_name": {
+     "title": "Op Name",
+     "type": "string"
+    },
+    "summary": {
+     "title": "Summary",
+     "type": "string"
+    },
+    "undone_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Undone At"
+    }
+   },
+   "required": [
+    "id",
+    "op_name",
+    "actor",
+    "summary",
+    "created_at",
+    "undone_at",
+    "entities"
+   ],
+   "title": "ChangeSetOut",
+   "type": "object"
+  },
+  "summary": "Làm lại một thao tác đã hoàn tác (mặc định: thao tác bạn vừa hoàn tác gần nhất)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "history",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "history.restore",
+  "params_schema": {
+   "properties": {
+    "entity_id": {
+     "title": "Entity Id",
+     "type": "integer"
+    },
+    "entity_type": {
+     "description": "Loại thực thể (tên bảng), vd. 'template'",
+     "title": "Entity Type",
+     "type": "string"
+    },
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Project áp dụng; bỏ trống = project của ngữ cảnh gọi",
+     "title": "Project Id"
+    },
+    "revision_id": {
+     "description": "Phiên bản cần khôi phục (trạng thái ngay sau revision này)",
+     "title": "Revision Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "entity_type",
+    "entity_id",
+    "revision_id"
+   ],
+   "title": "HistoryRestoreParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "$defs": {
+    "EntityRef": {
+     "properties": {
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "revision_id": {
+       "title": "Revision Id",
+       "type": "integer"
+      },
+      "type": {
+       "title": "Type",
+       "type": "string"
+      }
+     },
+     "required": [
+      "type",
+      "id",
+      "revision_id"
+     ],
+     "title": "EntityRef",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "actor": {
+     "title": "Actor",
+     "type": "string"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "entities": {
+     "items": {
+      "$ref": "#/$defs/EntityRef"
+     },
+     "title": "Entities",
+     "type": "array"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "op_name": {
+     "title": "Op Name",
+     "type": "string"
+    },
+    "summary": {
+     "title": "Summary",
+     "type": "string"
+    },
+    "undone_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Undone At"
+    }
+   },
+   "required": [
+    "id",
+    "op_name",
+    "actor",
+    "summary",
+    "created_at",
+    "undone_at",
+    "entities"
+   ],
+   "title": "ChangeSetOut",
+   "type": "object"
+  },
+  "summary": "Khôi phục một thực thể về một phiên bản cụ thể (dùng khi hoàn tác bị xung đột)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "history",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "history.undo",
+  "params_schema": {
+   "properties": {
+    "change_set_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Bỏ trống = thao tác mới nhất của chính bạn chưa hoàn tác",
+     "title": "Change Set Id"
+    },
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Project áp dụng; bỏ trống = project của ngữ cảnh gọi",
+     "title": "Project Id"
+    }
+   },
+   "title": "HistoryUndoParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "$defs": {
+    "EntityRef": {
+     "properties": {
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "revision_id": {
+       "title": "Revision Id",
+       "type": "integer"
+      },
+      "type": {
+       "title": "Type",
+       "type": "string"
+      }
+     },
+     "required": [
+      "type",
+      "id",
+      "revision_id"
+     ],
+     "title": "EntityRef",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "actor": {
+     "title": "Actor",
+     "type": "string"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "entities": {
+     "items": {
+      "$ref": "#/$defs/EntityRef"
+     },
+     "title": "Entities",
+     "type": "array"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "op_name": {
+     "title": "Op Name",
+     "type": "string"
+    },
+    "summary": {
+     "title": "Summary",
+     "type": "string"
+    },
+    "undone_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Undone At"
+    }
+   },
+   "required": [
+    "id",
+    "op_name",
+    "actor",
+    "summary",
+    "created_at",
+    "undone_at",
+    "entities"
+   ],
+   "title": "ChangeSetOut",
+   "type": "object"
+  },
+  "summary": "Hoàn tác một thao tác (mặc định: thao tác mới nhất của chính bạn); từ chối nếu đã bị sửa tiếp",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "job",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "job.cancel",
+  "params_schema": {
+   "properties": {
+    "ids": {
+     "items": {
+      "type": "integer"
+     },
+     "maxItems": 500,
+     "minItems": 1,
+     "title": "Ids",
+     "type": "array"
+    }
+   },
+   "required": [
+    "ids"
+   ],
+   "title": "JobIdsParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Huỷ job (đang chạy thì dừng handler); job đã kết thúc được bỏ qua",
+  "viewer": false
+ },
+ {
+  "costly": true,
+  "destructive": false,
+  "group": "job",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "call",
+  "name": "job.clear_attention",
+  "params_schema": {
+   "properties": {
+    "action": {
+     "enum": [
+      "resubmit",
+      "fail"
+     ],
+     "title": "Action",
+     "type": "string"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "params_patch": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Chỉ với resubmit: gộp vào params trước khi gửi lại; chỉ khoá đã có, không có connection_id",
+     "title": "Params Patch"
+    }
+   },
+   "required": [
+    "id",
+    "action"
+   ],
+   "title": "JobClearAttentionParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Xử lý job cần chú ý: xoá đánh dấu phía provider rồi gửi lại (resubmit) hoặc cho thất bại (fail)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "job",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "job.get",
+  "params_schema": {
+   "properties": {
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "JobIdParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Chi tiết một job",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "job",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "job.list",
+  "params_schema": {
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "`next_cursor` của trang trước",
+     "title": "Cursor"
+    },
+    "lane": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Lane"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 500,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    },
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Project Id"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Status"
+    },
+    "type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Type"
+    }
+   },
+   "title": "JobListParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Danh sách job (mới nhất trước), lọc theo trạng thái/loại/lane/project, phân trang bằng cursor",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "job",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "job.logs",
+  "params_schema": {
+   "properties": {
+    "after_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Chỉ lấy dòng có id lớn hơn (đọc tiếp)",
+     "title": "After Id"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "limit": {
+     "default": 200,
+     "maximum": 1000,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "JobLogsParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Nhật ký của một job (cũ trước)",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "job",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "job.pause_all",
+  "params_schema": {
+   "properties": {},
+   "title": "EmptyParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Tạm dừng lấy job mới (job đang chạy vẫn chạy xong); giữ qua khởi động lại",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "job",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "job.prioritize",
+  "params_schema": {
+   "properties": {
+    "ids": {
+     "items": {
+      "type": "integer"
+     },
+     "maxItems": 500,
+     "minItems": 1,
+     "title": "Ids",
+     "type": "array"
+    },
+    "priority": {
+     "title": "Priority",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "ids",
+    "priority"
+   ],
+   "title": "JobPrioritizeParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Đổi độ ưu tiên (lớn chạy trước) của các job chưa kết thúc",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "job",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "job.resume_all",
+  "params_schema": {
+   "properties": {},
+   "title": "EmptyParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Tiếp tục lấy job sau khi tạm dừng toàn bộ",
+  "viewer": false
+ },
+ {
+  "costly": true,
+  "destructive": false,
+  "group": "job",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "call",
+  "name": "job.retry",
+  "params_schema": {
+   "properties": {
+    "force_new": {
+     "default": false,
+     "description": "Job đã được provider nhận (có external_id): mặc định chạy lại nối tiếp đúng job đó (không tốn thêm); true = xoá external_id/external_state để tạo job trả phí mới",
+     "title": "Force New",
+     "type": "boolean"
+    },
+    "ids": {
+     "items": {
+      "type": "integer"
+     },
+     "maxItems": 500,
+     "minItems": 1,
+     "title": "Ids",
+     "type": "array"
+    },
+    "params_patch": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Gộp vào params trước khi chạy lại (vd. sửa prompt); chỉ khoá đã có, không có connection_id",
+     "title": "Params Patch"
+    }
+   },
+   "required": [
+    "ids"
+   ],
+   "title": "JobRetryParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Chạy lại job đã xong/thất bại/huỷ/gián đoạn (về queued, attempt=0, gộp params_patch); job provider đã nhận thì nối lại job cũ, force_new=true để tạo job trả phí mới",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "job",
+  "idempotent": true,
+  "long_running": true,
+  "mcp": "tool",
+  "name": "job.wait",
+  "params_schema": {
+   "properties": {
+    "ids": {
+     "items": {
+      "type": "integer"
+     },
+     "maxItems": 500,
+     "minItems": 1,
+     "title": "Ids",
+     "type": "array"
+    },
+    "timeout_s": {
+     "default": 60,
+     "maximum": 600,
+     "minimum": 0,
+     "title": "Timeout S",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "ids"
+   ],
+   "title": "JobWaitParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Chờ tới khi mọi job rời queued/running — tức đã kết thúc (succeeded/failed/cancelled) hoặc dừng chờ người quyết định (needs_attention, interrupted, waiting_*) — hoặc hết giờ; trả trạng thái từng job và timed_out",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "llm",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "llm.models",
+  "params_schema": {
+   "properties": {
+    "connection": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "string"
+      }
+     ],
+     "description": "Tên hoặc id kết nối LLM",
+     "title": "Connection"
+    }
+   },
+   "required": [
+    "connection"
+   ],
+   "title": "ModelsParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Danh sách model của một kết nối LLM (hỏi provider, không tốn tiền)",
+  "viewer": true
+ },
+ {
+  "costly": true,
+  "destructive": false,
+  "group": "llm",
+  "idempotent": false,
+  "long_running": true,
+  "mcp": "tool",
+  "name": "llm.run",
+  "params_schema": {
+   "$defs": {
+    "RouteSpec": {
+     "additionalProperties": false,
+     "properties": {
+      "connection": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Tên (hoặc id) kết nối LLM",
+       "title": "Connection"
+      },
+      "model": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Bỏ trống = model mặc định của kết nối",
+       "title": "Model"
+      },
+      "params": {
+       "additionalProperties": true,
+       "description": "Tham số gửi kèm, vd. temperature, max_tokens",
+       "title": "Params",
+       "type": "object"
+      }
+     },
+     "title": "RouteSpec",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "images_media_ids": {
+     "description": "Ảnh gửi kèm (vision)",
+     "items": {
+      "type": "integer"
+     },
+     "maxItems": 16,
+     "title": "Images Media Ids",
+     "type": "array"
+    },
+    "override": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/RouteSpec"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Định tuyến riêng cho lần chạy này"
+    },
+    "task": {
+     "description": "Key công việc LLM, vd. write_script",
+     "title": "Task",
+     "type": "string"
+    },
+    "variables": {
+     "additionalProperties": true,
+     "description": "Biến của template (thường có `input`)",
+     "title": "Variables",
+     "type": "object"
+    }
+   },
+   "required": [
+    "task"
+   ],
+   "title": "RunParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Chạy một công việc LLM (job; stream llm.delta, kết quả {text, data, route, usage})",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "llm",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "call",
+  "name": "llm.task_create",
+  "params_schema": {
+   "$defs": {
+    "RouteSpec": {
+     "additionalProperties": false,
+     "properties": {
+      "connection": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Tên (hoặc id) kết nối LLM",
+       "title": "Connection"
+      },
+      "model": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Bỏ trống = model mặc định của kết nối",
+       "title": "Model"
+      },
+      "params": {
+       "additionalProperties": true,
+       "description": "Tham số gửi kèm, vd. temperature, max_tokens",
+       "title": "Params",
+       "type": "object"
+      }
+     },
+     "title": "RouteSpec",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "description": {
+     "default": "",
+     "title": "Description",
+     "type": "string"
+    },
+    "fallbacks": {
+     "items": {
+      "$ref": "#/$defs/RouteSpec"
+     },
+     "maxItems": 10,
+     "title": "Fallbacks",
+     "type": "array"
+    },
+    "json_mode": {
+     "default": false,
+     "title": "Json Mode",
+     "type": "boolean"
+    },
+    "key": {
+     "description": "snake_case, duy nhất",
+     "maxLength": 64,
+     "pattern": "^[a-z][a-z0-9_]*$",
+     "title": "Key",
+     "type": "string"
+    },
+    "label": {
+     "maxLength": 120,
+     "minLength": 1,
+     "title": "Label",
+     "type": "string"
+    },
+    "needs_vision": {
+     "default": false,
+     "title": "Needs Vision",
+     "type": "boolean"
+    },
+    "route": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/RouteSpec"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "template_key": {
+     "title": "Template Key",
+     "type": "string"
+    }
+   },
+   "required": [
+    "key",
+    "label",
+    "template_key"
+   ],
+   "title": "TaskCreateParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Thêm công việc LLM mới (dùng một template có sẵn)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "llm",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "llm.task_list",
+  "params_schema": {
+   "properties": {},
+   "title": "EmptyParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Danh sách công việc LLM, định tuyến (kết nối + model + dự phòng) và route hiệu lực",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "llm",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "llm.task_update",
+  "params_schema": {
+   "$defs": {
+    "RouteSpec": {
+     "additionalProperties": false,
+     "properties": {
+      "connection": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Tên (hoặc id) kết nối LLM",
+       "title": "Connection"
+      },
+      "model": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Bỏ trống = model mặc định của kết nối",
+       "title": "Model"
+      },
+      "params": {
+       "additionalProperties": true,
+       "description": "Tham số gửi kèm, vd. temperature, max_tokens",
+       "title": "Params",
+       "type": "object"
+      }
+     },
+     "title": "RouteSpec",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "description": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Description"
+    },
+    "fallbacks": {
+     "anyOf": [
+      {
+       "items": {
+        "$ref": "#/$defs/RouteSpec"
+       },
+       "maxItems": 10,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Thay toàn bộ chuỗi dự phòng",
+     "title": "Fallbacks"
+    },
+    "key": {
+     "title": "Key",
+     "type": "string"
+    },
+    "label": {
+     "anyOf": [
+      {
+       "maxLength": 120,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Label"
+    },
+    "route": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/RouteSpec"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "null = về mặc định (kết nối LLM đang bật đầu tiên)"
+    },
+    "template_key": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Template Key"
+    }
+   },
+   "required": [
+    "key"
+   ],
+   "title": "TaskUpdateParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Sửa công việc LLM: định tuyến, chuỗi dự phòng, nhãn, template (có hiệu lực ngay)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "media",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "media.get",
+  "params_schema": {
+   "properties": {
+    "id": {
+     "description": "Id media",
+     "title": "Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "MediaGetParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "properties": {
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "duration_ms": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Duration Ms"
+    },
+    "height": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Height"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "kind": {
+     "title": "Kind",
+     "type": "string"
+    },
+    "meta": {
+     "additionalProperties": true,
+     "title": "Meta",
+     "type": "object"
+    },
+    "mime": {
+     "title": "Mime",
+     "type": "string"
+    },
+    "origin": {
+     "title": "Origin",
+     "type": "string"
+    },
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Project Id"
+    },
+    "sha256": {
+     "title": "Sha256",
+     "type": "string"
+    },
+    "size": {
+     "title": "Size",
+     "type": "integer"
+    },
+    "thumb_url": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Thumb Url"
+    },
+    "url": {
+     "title": "Url",
+     "type": "string"
+    },
+    "width": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Width"
+    }
+   },
+   "required": [
+    "id",
+    "project_id",
+    "kind",
+    "mime",
+    "width",
+    "height",
+    "duration_ms",
+    "size",
+    "sha256",
+    "origin",
+    "meta",
+    "created_at",
+    "url",
+    "thumb_url"
+   ],
+   "title": "MediaOut",
+   "type": "object"
+  },
+  "summary": "Xem thông tin một media (kích thước, thời lượng, mime, URL tải và URL ảnh thu nhỏ)",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "media",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "media.list",
+  "params_schema": {
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "`next_cursor` của trang trước",
+     "title": "Cursor"
+    },
+    "kind": {
+     "anyOf": [
+      {
+       "enum": [
+        "image",
+        "video",
+        "audio",
+        "subtitle",
+        "other"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Lọc theo loại: image/video/audio/subtitle/other",
+     "title": "Kind"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    },
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Lọc theo project; bỏ trống = mọi media",
+     "title": "Project Id"
+    }
+   },
+   "title": "MediaListParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "$defs": {
+    "MediaOut": {
+     "properties": {
+      "created_at": {
+       "format": "date-time",
+       "title": "Created At",
+       "type": "string"
+      },
+      "duration_ms": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Duration Ms"
+      },
+      "height": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Height"
+      },
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "kind": {
+       "title": "Kind",
+       "type": "string"
+      },
+      "meta": {
+       "additionalProperties": true,
+       "title": "Meta",
+       "type": "object"
+      },
+      "mime": {
+       "title": "Mime",
+       "type": "string"
+      },
+      "origin": {
+       "title": "Origin",
+       "type": "string"
+      },
+      "project_id": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Project Id"
+      },
+      "sha256": {
+       "title": "Sha256",
+       "type": "string"
+      },
+      "size": {
+       "title": "Size",
+       "type": "integer"
+      },
+      "thumb_url": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Thumb Url"
+      },
+      "url": {
+       "title": "Url",
+       "type": "string"
+      },
+      "width": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Width"
+      }
+     },
+     "required": [
+      "id",
+      "project_id",
+      "kind",
+      "mime",
+      "width",
+      "height",
+      "duration_ms",
+      "size",
+      "sha256",
+      "origin",
+      "meta",
+      "created_at",
+      "url",
+      "thumb_url"
+     ],
+     "title": "MediaOut",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "items": {
+     "items": {
+      "$ref": "#/$defs/MediaOut"
+     },
+     "title": "Items",
+     "type": "array"
+    },
+    "next_cursor": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Next Cursor"
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "title": "MediaPage",
+   "type": "object"
+  },
+  "summary": "Liệt kê media mới nhất trước, lọc theo project/loại, phân trang bằng cursor",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "project",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "project.create",
+  "params_schema": {
+   "properties": {
+    "aspect": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Tỉ lệ khung, mặc định 9:16",
+     "title": "Aspect"
+    },
+    "genre_key": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Thể loại (preset genre), mặc định series",
+     "title": "Genre Key"
+    },
+    "key": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Mã duy nhất (không dấu); bỏ trống = tự sinh từ tên",
+     "title": "Key"
+    },
+    "language": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Ngôn ngữ chính, mặc định vi",
+     "title": "Language"
+    },
+    "name": {
+     "description": "Tên dự án (tiếng Việt có dấu được)",
+     "maxLength": 200,
+     "minLength": 1,
+     "title": "Name",
+     "type": "string"
+    },
+    "target_platforms": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Nền tảng đích (preset platform)",
+     "title": "Target Platforms"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "title": "ProjectCreateParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "$defs": {
+    "ProjectCounts": {
+     "properties": {
+      "assets": {
+       "title": "Assets",
+       "type": "integer"
+      },
+      "clips": {
+       "title": "Clips",
+       "type": "integer"
+      },
+      "sequences": {
+       "title": "Sequences",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "assets",
+      "sequences",
+      "clips"
+     ],
+     "title": "ProjectCounts",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "aspect": {
+     "title": "Aspect",
+     "type": "string"
+    },
+    "budget": {
+     "additionalProperties": true,
+     "title": "Budget",
+     "type": "object"
+    },
+    "counts": {
+     "$ref": "#/$defs/ProjectCounts"
+    },
+    "cover_media_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Cover Media Id"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "deleted_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Deleted At"
+    },
+    "description": {
+     "title": "Description",
+     "type": "string"
+    },
+    "fps": {
+     "title": "Fps",
+     "type": "integer"
+    },
+    "genre_key": {
+     "title": "Genre Key",
+     "type": "string"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "key": {
+     "title": "Key",
+     "type": "string"
+    },
+    "language": {
+     "title": "Language",
+     "type": "string"
+    },
+    "languages": {
+     "items": {},
+     "title": "Languages",
+     "type": "array"
+    },
+    "name": {
+     "title": "Name",
+     "type": "string"
+    },
+    "negative_block": {
+     "title": "Negative Block",
+     "type": "string"
+    },
+    "resolution": {
+     "title": "Resolution",
+     "type": "string"
+    },
+    "settings": {
+     "additionalProperties": true,
+     "title": "Settings",
+     "type": "object"
+    },
+    "style_block": {
+     "title": "Style Block",
+     "type": "string"
+    },
+    "style_pack_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Style Pack Id"
+    },
+    "target_platforms": {
+     "items": {},
+     "title": "Target Platforms",
+     "type": "array"
+    },
+    "updated_at": {
+     "format": "date-time",
+     "title": "Updated At",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "key",
+    "name",
+    "description",
+    "genre_key",
+    "style_pack_id",
+    "aspect",
+    "resolution",
+    "fps",
+    "language",
+    "languages",
+    "target_platforms",
+    "style_block",
+    "negative_block",
+    "settings",
+    "budget",
+    "cover_media_id",
+    "created_at",
+    "updated_at",
+    "deleted_at",
+    "counts"
+   ],
+   "title": "ProjectOut",
+   "type": "object"
+  },
+  "summary": "Tạo dự án mới (mã tự sinh từ tên nếu bỏ trống)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": true,
+  "group": "project",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "project.delete",
+  "params_schema": {
+   "properties": {
+    "confirm_token": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Lấy từ project.delete_preview",
+     "title": "Confirm Token"
+    }
+   },
+   "title": "ProjectDeleteParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Xoá (mềm, hoàn tác được) dự án — cần confirm_token từ project.delete_preview",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "project",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "project.delete_preview",
+  "params_schema": {
+   "properties": {
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "ProjectIdParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "properties": {
+    "confirm_token": {
+     "title": "Confirm Token",
+     "type": "string"
+    },
+    "expires_in_s": {
+     "default": 600,
+     "title": "Expires In S",
+     "type": "integer"
+    },
+    "impact": {
+     "additionalProperties": true,
+     "title": "Impact",
+     "type": "object"
+    }
+   },
+   "required": [
+    "impact",
+    "confirm_token"
+   ],
+   "title": "DeletePreviewOut",
+   "type": "object"
+  },
+  "summary": "Xem tác động của việc xoá dự án và lấy confirm_token (10 phút)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "project",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "project.duplicate",
+  "params_schema": {
+   "properties": {
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "key": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Mã dự án mới; bỏ trống = tự sinh từ tên",
+     "title": "Key"
+    },
+    "name": {
+     "description": "Tên dự án mới",
+     "maxLength": 200,
+     "minLength": 1,
+     "title": "Name",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "name"
+   ],
+   "title": "ProjectDuplicateParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "$defs": {
+    "ProjectCounts": {
+     "properties": {
+      "assets": {
+       "title": "Assets",
+       "type": "integer"
+      },
+      "clips": {
+       "title": "Clips",
+       "type": "integer"
+      },
+      "sequences": {
+       "title": "Sequences",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "assets",
+      "sequences",
+      "clips"
+     ],
+     "title": "ProjectCounts",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "aspect": {
+     "title": "Aspect",
+     "type": "string"
+    },
+    "budget": {
+     "additionalProperties": true,
+     "title": "Budget",
+     "type": "object"
+    },
+    "counts": {
+     "$ref": "#/$defs/ProjectCounts"
+    },
+    "cover_media_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Cover Media Id"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "deleted_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Deleted At"
+    },
+    "description": {
+     "title": "Description",
+     "type": "string"
+    },
+    "fps": {
+     "title": "Fps",
+     "type": "integer"
+    },
+    "genre_key": {
+     "title": "Genre Key",
+     "type": "string"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "key": {
+     "title": "Key",
+     "type": "string"
+    },
+    "language": {
+     "title": "Language",
+     "type": "string"
+    },
+    "languages": {
+     "items": {},
+     "title": "Languages",
+     "type": "array"
+    },
+    "name": {
+     "title": "Name",
+     "type": "string"
+    },
+    "negative_block": {
+     "title": "Negative Block",
+     "type": "string"
+    },
+    "resolution": {
+     "title": "Resolution",
+     "type": "string"
+    },
+    "settings": {
+     "additionalProperties": true,
+     "title": "Settings",
+     "type": "object"
+    },
+    "style_block": {
+     "title": "Style Block",
+     "type": "string"
+    },
+    "style_pack_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Style Pack Id"
+    },
+    "target_platforms": {
+     "items": {},
+     "title": "Target Platforms",
+     "type": "array"
+    },
+    "updated_at": {
+     "format": "date-time",
+     "title": "Updated At",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "key",
+    "name",
+    "description",
+    "genre_key",
+    "style_pack_id",
+    "aspect",
+    "resolution",
+    "fps",
+    "language",
+    "languages",
+    "target_platforms",
+    "style_block",
+    "negative_block",
+    "settings",
+    "budget",
+    "cover_media_id",
+    "created_at",
+    "updated_at",
+    "deleted_at",
+    "counts"
+   ],
+   "title": "ProjectOut",
+   "type": "object"
+  },
+  "summary": "Nhân bản dự án: cài đặt + Library + preset của dự án (không chép tập/clip/take)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "project",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "project.get",
+  "params_schema": {
+   "properties": {
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "ProjectIdParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "$defs": {
+    "ProjectCounts": {
+     "properties": {
+      "assets": {
+       "title": "Assets",
+       "type": "integer"
+      },
+      "clips": {
+       "title": "Clips",
+       "type": "integer"
+      },
+      "sequences": {
+       "title": "Sequences",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "assets",
+      "sequences",
+      "clips"
+     ],
+     "title": "ProjectCounts",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "aspect": {
+     "title": "Aspect",
+     "type": "string"
+    },
+    "budget": {
+     "additionalProperties": true,
+     "title": "Budget",
+     "type": "object"
+    },
+    "counts": {
+     "$ref": "#/$defs/ProjectCounts"
+    },
+    "cover_media_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Cover Media Id"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "deleted_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Deleted At"
+    },
+    "description": {
+     "title": "Description",
+     "type": "string"
+    },
+    "fps": {
+     "title": "Fps",
+     "type": "integer"
+    },
+    "genre_key": {
+     "title": "Genre Key",
+     "type": "string"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "key": {
+     "title": "Key",
+     "type": "string"
+    },
+    "language": {
+     "title": "Language",
+     "type": "string"
+    },
+    "languages": {
+     "items": {},
+     "title": "Languages",
+     "type": "array"
+    },
+    "name": {
+     "title": "Name",
+     "type": "string"
+    },
+    "negative_block": {
+     "title": "Negative Block",
+     "type": "string"
+    },
+    "resolution": {
+     "title": "Resolution",
+     "type": "string"
+    },
+    "settings": {
+     "additionalProperties": true,
+     "title": "Settings",
+     "type": "object"
+    },
+    "style_block": {
+     "title": "Style Block",
+     "type": "string"
+    },
+    "style_pack_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Style Pack Id"
+    },
+    "target_platforms": {
+     "items": {},
+     "title": "Target Platforms",
+     "type": "array"
+    },
+    "updated_at": {
+     "format": "date-time",
+     "title": "Updated At",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "key",
+    "name",
+    "description",
+    "genre_key",
+    "style_pack_id",
+    "aspect",
+    "resolution",
+    "fps",
+    "language",
+    "languages",
+    "target_platforms",
+    "style_block",
+    "negative_block",
+    "settings",
+    "budget",
+    "cover_media_id",
+    "created_at",
+    "updated_at",
+    "deleted_at",
+    "counts"
+   ],
+   "title": "ProjectOut",
+   "type": "object"
+  },
+  "summary": "Đọc một dự án kèm số tài sản / tập / clip",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "project",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "project.list",
+  "params_schema": {
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "`next_cursor` của trang trước",
+     "title": "Cursor"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    }
+   },
+   "title": "ProjectListParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "$defs": {
+    "ProjectCounts": {
+     "properties": {
+      "assets": {
+       "title": "Assets",
+       "type": "integer"
+      },
+      "clips": {
+       "title": "Clips",
+       "type": "integer"
+      },
+      "sequences": {
+       "title": "Sequences",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "assets",
+      "sequences",
+      "clips"
+     ],
+     "title": "ProjectCounts",
+     "type": "object"
+    },
+    "ProjectOut": {
+     "properties": {
+      "aspect": {
+       "title": "Aspect",
+       "type": "string"
+      },
+      "budget": {
+       "additionalProperties": true,
+       "title": "Budget",
+       "type": "object"
+      },
+      "counts": {
+       "$ref": "#/$defs/ProjectCounts"
+      },
+      "cover_media_id": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cover Media Id"
+      },
+      "created_at": {
+       "format": "date-time",
+       "title": "Created At",
+       "type": "string"
+      },
+      "deleted_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Deleted At"
+      },
+      "description": {
+       "title": "Description",
+       "type": "string"
+      },
+      "fps": {
+       "title": "Fps",
+       "type": "integer"
+      },
+      "genre_key": {
+       "title": "Genre Key",
+       "type": "string"
+      },
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "key": {
+       "title": "Key",
+       "type": "string"
+      },
+      "language": {
+       "title": "Language",
+       "type": "string"
+      },
+      "languages": {
+       "items": {},
+       "title": "Languages",
+       "type": "array"
+      },
+      "name": {
+       "title": "Name",
+       "type": "string"
+      },
+      "negative_block": {
+       "title": "Negative Block",
+       "type": "string"
+      },
+      "resolution": {
+       "title": "Resolution",
+       "type": "string"
+      },
+      "settings": {
+       "additionalProperties": true,
+       "title": "Settings",
+       "type": "object"
+      },
+      "style_block": {
+       "title": "Style Block",
+       "type": "string"
+      },
+      "style_pack_id": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Style Pack Id"
+      },
+      "target_platforms": {
+       "items": {},
+       "title": "Target Platforms",
+       "type": "array"
+      },
+      "updated_at": {
+       "format": "date-time",
+       "title": "Updated At",
+       "type": "string"
+      }
+     },
+     "required": [
+      "id",
+      "key",
+      "name",
+      "description",
+      "genre_key",
+      "style_pack_id",
+      "aspect",
+      "resolution",
+      "fps",
+      "language",
+      "languages",
+      "target_platforms",
+      "style_block",
+      "negative_block",
+      "settings",
+      "budget",
+      "cover_media_id",
+      "created_at",
+      "updated_at",
+      "deleted_at",
+      "counts"
+     ],
+     "title": "ProjectOut",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "items": {
+     "items": {
+      "$ref": "#/$defs/ProjectOut"
+     },
+     "title": "Items",
+     "type": "array"
+    },
+    "next_cursor": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Next Cursor"
+    }
+   },
+   "required": [
+    "items"
+   ],
+   "title": "ProjectPage",
+   "type": "object"
+  },
+  "summary": "Liệt kê dự án (mới nhất trước), phân trang cursor",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "project",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "project.update",
+  "params_schema": {
+   "properties": {
+    "expected_updated_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "`updated_at` lúc đọc; lệch (người khác đã sửa) → lỗi stale_write 409",
+     "title": "Expected Updated At"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "values": {
+     "additionalProperties": true,
+     "description": "Cột → giá trị mới, vd. {\"name\": \"…\", \"style_block\": \"…\"}",
+     "title": "Values",
+     "type": "object"
+    }
+   },
+   "required": [
+    "id",
+    "values"
+   ],
+   "title": "ProjectUpdateParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "$defs": {
+    "ProjectCounts": {
+     "properties": {
+      "assets": {
+       "title": "Assets",
+       "type": "integer"
+      },
+      "clips": {
+       "title": "Clips",
+       "type": "integer"
+      },
+      "sequences": {
+       "title": "Sequences",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "assets",
+      "sequences",
+      "clips"
+     ],
+     "title": "ProjectCounts",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "aspect": {
+     "title": "Aspect",
+     "type": "string"
+    },
+    "budget": {
+     "additionalProperties": true,
+     "title": "Budget",
+     "type": "object"
+    },
+    "counts": {
+     "$ref": "#/$defs/ProjectCounts"
+    },
+    "cover_media_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Cover Media Id"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "deleted_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Deleted At"
+    },
+    "description": {
+     "title": "Description",
+     "type": "string"
+    },
+    "fps": {
+     "title": "Fps",
+     "type": "integer"
+    },
+    "genre_key": {
+     "title": "Genre Key",
+     "type": "string"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "key": {
+     "title": "Key",
+     "type": "string"
+    },
+    "language": {
+     "title": "Language",
+     "type": "string"
+    },
+    "languages": {
+     "items": {},
+     "title": "Languages",
+     "type": "array"
+    },
+    "name": {
+     "title": "Name",
+     "type": "string"
+    },
+    "negative_block": {
+     "title": "Negative Block",
+     "type": "string"
+    },
+    "resolution": {
+     "title": "Resolution",
+     "type": "string"
+    },
+    "settings": {
+     "additionalProperties": true,
+     "title": "Settings",
+     "type": "object"
+    },
+    "style_block": {
+     "title": "Style Block",
+     "type": "string"
+    },
+    "style_pack_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Style Pack Id"
+    },
+    "target_platforms": {
+     "items": {},
+     "title": "Target Platforms",
+     "type": "array"
+    },
+    "updated_at": {
+     "format": "date-time",
+     "title": "Updated At",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "key",
+    "name",
+    "description",
+    "genre_key",
+    "style_pack_id",
+    "aspect",
+    "resolution",
+    "fps",
+    "language",
+    "languages",
+    "target_platforms",
+    "style_block",
+    "negative_block",
+    "settings",
+    "budget",
+    "cover_media_id",
+    "created_at",
+    "updated_at",
+    "deleted_at",
+    "counts"
+   ],
+   "title": "ProjectOut",
+   "type": "object"
+  },
+  "summary": "Sửa dự án (hoàn tác được); kèm expected_updated_at để chống ghi đè",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "provider.adapters",
+  "params_schema": {
+   "properties": {},
+   "title": "EmptyParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Danh sách adapter provider (loại, nhãn, trường cấu hình, năng lực mặc định)",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "provider.check",
+  "params_schema": {
+   "properties": {
+    "ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "integer"
+       },
+       "maxItems": 200,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Bỏ trống = mọi kết nối đang bật",
+     "title": "Ids"
+    }
+   },
+   "title": "ProviderCheckParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Kiểm tra sức khoẻ kết nối provider (mặc định mọi kết nối đang bật); ghi kết quả",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "call",
+  "name": "provider.create",
+  "params_schema": {
+   "properties": {
+    "adapter": {
+     "title": "Adapter",
+     "type": "string"
+    },
+    "api_key": {
+     "default": "",
+     "description": "Bí mật: lưu nguyên, không bao giờ trả lại (chỉ dạng che)",
+     "title": "Api Key",
+     "type": "string"
+    },
+    "base_url": {
+     "default": "",
+     "title": "Base Url",
+     "type": "string"
+    },
+    "concurrency": {
+     "default": 2,
+     "maximum": 32,
+     "minimum": 1,
+     "title": "Concurrency",
+     "type": "integer"
+    },
+    "default_model": {
+     "default": "",
+     "title": "Default Model",
+     "type": "string"
+    },
+    "enabled": {
+     "default": true,
+     "title": "Enabled",
+     "type": "boolean"
+    },
+    "kind": {
+     "enum": [
+      "image",
+      "video",
+      "llm",
+      "tts",
+      "stt"
+     ],
+     "title": "Kind",
+     "type": "string"
+    },
+    "name": {
+     "maxLength": 80,
+     "minLength": 1,
+     "title": "Name",
+     "type": "string"
+    },
+    "options": {
+     "additionalProperties": true,
+     "title": "Options",
+     "type": "object"
+    }
+   },
+   "required": [
+    "kind",
+    "adapter",
+    "name"
+   ],
+   "title": "ProviderCreateParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Thêm kết nối provider",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": true,
+  "group": "provider",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "call",
+  "name": "provider.delete",
+  "params_schema": {
+   "properties": {
+    "confirm_token": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Lấy từ provider.delete_preview",
+     "title": "Confirm Token"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "ProviderDeleteParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Xoá (mềm) kết nối provider — cần confirm_token từ provider.delete_preview",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "provider.delete_preview",
+  "params_schema": {
+   "properties": {
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "ProviderIdParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Xem tác động của việc xoá kết nối và lấy confirm_token (10 phút)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "provider.get",
+  "params_schema": {
+   "properties": {
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "ProviderIdParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Chi tiết một kết nối provider (khoá API bị che)",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "provider.import_env",
+  "params_schema": {
+   "properties": {
+    "confirm": {
+     "default": false,
+     "description": "false = chỉ xem trước những gì sẽ được tạo (không ghi)",
+     "title": "Confirm",
+     "type": "boolean"
+    }
+   },
+   "title": "ImportEnvParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Nhập kết nối provider từ .env.local (chỉ tạo kết nối chưa có theo tên); confirm=false chỉ xem trước",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "provider.list",
+  "params_schema": {
+   "properties": {
+    "include_disabled": {
+     "default": true,
+     "title": "Include Disabled",
+     "type": "boolean"
+    },
+    "kind": {
+     "anyOf": [
+      {
+       "enum": [
+        "image",
+        "video",
+        "llm",
+        "tts",
+        "stt"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kind"
+    }
+   },
+   "title": "ProviderListParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Danh sách kết nối provider (khoá API bị che) kèm sức khoẻ lần kiểm tra gần nhất",
+  "viewer": true
+ },
+ {
+  "costly": true,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": false,
+  "long_running": true,
+  "mcp": "tool",
+  "name": "provider.try_image",
+  "params_schema": {
+   "properties": {
+    "aspect": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Aspect"
+    },
+    "connection": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Tên hoặc id kết nối; bỏ trống = kết nối mặc định trong Cài đặt",
+     "title": "Connection"
+    },
+    "dry_run": {
+     "default": false,
+     "title": "Dry Run",
+     "type": "boolean"
+    },
+    "model": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Model"
+    },
+    "prompt": {
+     "description": "Gửi nguyên văn tới provider",
+     "minLength": 1,
+     "title": "Prompt",
+     "type": "string"
+    },
+    "resolution": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Resolution"
+    }
+   },
+   "required": [
+    "prompt"
+   ],
+   "title": "TryImageParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Chạy thử tạo ảnh trên một kết nối (job; dry_run chỉ ước tính)",
+  "viewer": false
+ },
+ {
+  "costly": true,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": false,
+  "long_running": true,
+  "mcp": "tool",
+  "name": "provider.try_llm",
+  "params_schema": {
+   "properties": {
+    "connection": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Tên hoặc id kết nối; bỏ trống = kết nối mặc định trong Cài đặt",
+     "title": "Connection"
+    },
+    "image_media_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Image Media Id"
+    },
+    "model": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Model"
+    },
+    "prompt": {
+     "description": "Gửi nguyên văn tới LLM",
+     "minLength": 1,
+     "title": "Prompt",
+     "type": "string"
+    }
+   },
+   "required": [
+    "prompt"
+   ],
+   "title": "TryLLMParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Chạy thử một câu hỏi tới LLM (job; có thể kèm một ảnh)",
+  "viewer": false
+ },
+ {
+  "costly": true,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": false,
+  "long_running": true,
+  "mcp": "tool",
+  "name": "provider.try_stt",
+  "params_schema": {
+   "properties": {
+    "audio_media_id": {
+     "title": "Audio Media Id",
+     "type": "integer"
+    },
+    "connection": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Tên hoặc id kết nối; bỏ trống = kết nối mặc định trong Cài đặt",
+     "title": "Connection"
+    },
+    "lang": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Lang"
+    }
+   },
+   "required": [
+    "audio_media_id"
+   ],
+   "title": "TrySTTParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Chạy thử nhận dạng lời từ một file âm thanh trên một kết nối STT (job)",
+  "viewer": false
+ },
+ {
+  "costly": true,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": false,
+  "long_running": true,
+  "mcp": "tool",
+  "name": "provider.try_tts",
+  "params_schema": {
+   "properties": {
+    "connection": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Tên hoặc id kết nối; bỏ trống = kết nối mặc định trong Cài đặt",
+     "title": "Connection"
+    },
+    "dry_run": {
+     "default": false,
+     "title": "Dry Run",
+     "type": "boolean"
+    },
+    "text": {
+     "minLength": 1,
+     "title": "Text",
+     "type": "string"
+    },
+    "voice": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Mặc định theo cài đặt tts.voice",
+     "title": "Voice"
+    }
+   },
+   "required": [
+    "text"
+   ],
+   "title": "TryTTSParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Chạy thử đọc một câu trên một kết nối TTS (job; dry_run chỉ ước tính)",
+  "viewer": false
+ },
+ {
+  "costly": true,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": false,
+  "long_running": true,
+  "mcp": "tool",
+  "name": "provider.try_video",
+  "params_schema": {
+   "properties": {
+    "connection": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Tên hoặc id kết nối; bỏ trống = kết nối mặc định trong Cài đặt",
+     "title": "Connection"
+    },
+    "dry_run": {
+     "default": false,
+     "title": "Dry Run",
+     "type": "boolean"
+    },
+    "duration": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Giây; mặc định theo cài đặt video.duration",
+     "title": "Duration"
+    },
+    "image_media_id": {
+     "title": "Image Media Id",
+     "type": "integer"
+    },
+    "prompt": {
+     "description": "Gửi nguyên văn tới provider",
+     "minLength": 1,
+     "title": "Prompt",
+     "type": "string"
+    },
+    "resolution": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Resolution"
+    }
+   },
+   "required": [
+    "image_media_id",
+    "prompt"
+   ],
+   "title": "TryVideoParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Chạy thử tạo video từ một ảnh trên một kết nối (job; dry_run chỉ ước tính)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "provider",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "provider.update",
+  "params_schema": {
+   "$defs": {
+    "ProviderUpdateFields": {
+     "additionalProperties": false,
+     "properties": {
+      "api_key": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Rỗng hoặc null = giữ nguyên khoá hiện có",
+       "title": "Api Key"
+      },
+      "base_url": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "title": "Base Url"
+      },
+      "concurrency": {
+       "anyOf": [
+        {
+         "maximum": 32,
+         "minimum": 1,
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "title": "Concurrency"
+      },
+      "default_model": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "title": "Default Model"
+      },
+      "enabled": {
+       "anyOf": [
+        {
+         "type": "boolean"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "title": "Enabled"
+      },
+      "name": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "minLength": 1,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "title": "Name"
+      },
+      "options": {
+       "anyOf": [
+        {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Thay toàn bộ options",
+       "title": "Options"
+      }
+     },
+     "title": "ProviderUpdateFields",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "fields": {
+     "$ref": "#/$defs/ProviderUpdateFields"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id",
+    "fields"
+   ],
+   "title": "ProviderUpdateParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Sửa kết nối provider (api_key rỗng/null = giữ nguyên)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "session",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "session.list",
+  "params_schema": {
+   "properties": {},
+   "title": "AuthNoParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "$defs": {
+    "SessionInfo": {
+     "properties": {
+      "active": {
+       "title": "Active",
+       "type": "boolean"
+      },
+      "created_at": {
+       "format": "date-time",
+       "title": "Created At",
+       "type": "string"
+      },
+      "expires_at": {
+       "format": "date-time",
+       "title": "Expires At",
+       "type": "string"
+      },
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "ip": {
+       "title": "Ip",
+       "type": "string"
+      },
+      "remember": {
+       "title": "Remember",
+       "type": "boolean"
+      },
+      "revoked_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Revoked At"
+      },
+      "role": {
+       "enum": [
+        "owner",
+        "viewer"
+       ],
+       "title": "Role",
+       "type": "string"
+      },
+      "user_agent": {
+       "title": "User Agent",
+       "type": "string"
+      }
+     },
+     "required": [
+      "id",
+      "role",
+      "created_at",
+      "expires_at",
+      "remember",
+      "ip",
+      "user_agent",
+      "revoked_at",
+      "active"
+     ],
+     "title": "SessionInfo",
+     "type": "object"
+    }
+   },
+   "items": {
+    "$ref": "#/$defs/SessionInfo"
+   },
+   "title": "SessionList",
+   "type": "array"
+  },
+  "summary": "Danh sách phiên đăng nhập (mới nhất trước)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "session",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "session.revoke",
+  "params_schema": {
+   "properties": {
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "AuthIdParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "properties": {
+    "active": {
+     "title": "Active",
+     "type": "boolean"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "expires_at": {
+     "format": "date-time",
+     "title": "Expires At",
+     "type": "string"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "ip": {
+     "title": "Ip",
+     "type": "string"
+    },
+    "remember": {
+     "title": "Remember",
+     "type": "boolean"
+    },
+    "revoked_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Revoked At"
+    },
+    "role": {
+     "enum": [
+      "owner",
+      "viewer"
+     ],
+     "title": "Role",
+     "type": "string"
+    },
+    "user_agent": {
+     "title": "User Agent",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "role",
+    "created_at",
+    "expires_at",
+    "remember",
+    "ip",
+    "user_agent",
+    "revoked_at",
+    "active"
+   ],
+   "title": "SessionInfo",
+   "type": "object"
+  },
+  "summary": "Thu hồi một phiên đăng nhập (thiết bị đó phải đăng nhập lại)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "settings",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "settings.explain",
+  "params_schema": {
+   "properties": {
+    "run_overrides": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Xem trước ghi đè cho riêng một lần chạy (tầng 'run'), vd. {\"video.duration\": 10}",
+     "title": "Run Overrides"
+    }
+   },
+   "title": "SettingsExplainParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "$defs": {
+    "Resolved": {
+     "properties": {
+      "key": {
+       "title": "Key",
+       "type": "string"
+      },
+      "source": {
+       "title": "Source",
+       "type": "string"
+      },
+      "source_id": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "title": "Source Id"
+      },
+      "value": {
+       "title": "Value"
+      }
+     },
+     "required": [
+      "key",
+      "value",
+      "source"
+     ],
+     "title": "Resolved",
+     "type": "object"
+    }
+   },
+   "items": {
+    "$ref": "#/$defs/Resolved"
+   },
+   "title": "ResolvedList",
+   "type": "array"
+  },
+  "summary": "Giá trị hiệu lực của mọi khoá cài đặt kèm tầng nguồn (default/global/run)",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "settings",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "settings.schema",
+  "params_schema": {
+   "properties": {},
+   "title": "SettingsSchemaParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "$defs": {
+    "SettingDef": {
+     "properties": {
+      "choices": {
+       "anyOf": [
+        {
+         "items": {},
+         "type": "array"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "title": "Choices"
+      },
+      "default": {
+       "title": "Default"
+      },
+      "description": {
+       "title": "Description",
+       "type": "string"
+      },
+      "key": {
+       "title": "Key",
+       "type": "string"
+      },
+      "secret": {
+       "default": false,
+       "title": "Secret",
+       "type": "boolean"
+      },
+      "type": {
+       "enum": [
+        "str",
+        "int",
+        "float",
+        "bool",
+        "enum",
+        "json"
+       ],
+       "title": "Type",
+       "type": "string"
+      }
+     },
+     "required": [
+      "key",
+      "type",
+      "default",
+      "description"
+     ],
+     "title": "SettingDef",
+     "type": "object"
+    }
+   },
+   "items": {
+    "$ref": "#/$defs/SettingDef"
+   },
+   "title": "SettingDefList",
+   "type": "array"
+  },
+  "summary": "Danh sách khoá cài đặt: kiểu, mặc định, lựa chọn, mô tả",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "settings",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "settings.set_global",
+  "params_schema": {
+   "properties": {
+    "values": {
+     "additionalProperties": true,
+     "description": "Khoá → giá trị ghi đè ở tầng global; giá trị null = bỏ ghi đè, trở về mặc định",
+     "title": "Values",
+     "type": "object"
+    }
+   },
+   "required": [
+    "values"
+   ],
+   "title": "SettingsSetGlobalParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "$defs": {
+    "Resolved": {
+     "properties": {
+      "key": {
+       "title": "Key",
+       "type": "string"
+      },
+      "source": {
+       "title": "Source",
+       "type": "string"
+      },
+      "source_id": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "title": "Source Id"
+      },
+      "value": {
+       "title": "Value"
+      }
+     },
+     "required": [
+      "key",
+      "value",
+      "source"
+     ],
+     "title": "Resolved",
+     "type": "object"
+    }
+   },
+   "items": {
+    "$ref": "#/$defs/Resolved"
+   },
+   "title": "ResolvedList",
+   "type": "array"
+  },
+  "summary": "Ghi đè cài đặt ở tầng toàn cục (hoàn tác được); trả về giá trị hiệu lực mới",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "system",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "system.info",
+  "params_schema": {
+   "properties": {},
+   "title": "SystemInfoParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "properties": {
+    "app": {
+     "title": "App",
+     "type": "string"
+    },
+    "boot_id": {
+     "title": "Boot Id",
+     "type": "string"
+    },
+    "ops_count": {
+     "title": "Ops Count",
+     "type": "integer"
+    },
+    "version": {
+     "title": "Version",
+     "type": "string"
+    }
+   },
+   "required": [
+    "app",
+    "version",
+    "boot_id",
+    "ops_count"
+   ],
+   "title": "SystemInfo",
+   "type": "object"
+  },
+  "summary": "Thông tin ứng dụng: tên, phiên bản, boot_id, số thao tác đã đăng ký",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "template",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "template.get",
+  "params_schema": {
+   "properties": {
+    "key": {
+     "title": "Key",
+     "type": "string"
+    }
+   },
+   "required": [
+    "key"
+   ],
+   "title": "TemplateKeyParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Nội dung một template prompt (kèm bản cài sẵn nếu có)",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "template",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "template.list",
+  "params_schema": {
+   "properties": {
+    "kind": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kind"
+    }
+   },
+   "title": "TemplateListParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Danh sách template prompt (không kèm nội dung; dùng template.get)",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "template",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "template.reset",
+  "params_schema": {
+   "properties": {
+    "key": {
+     "title": "Key",
+     "type": "string"
+    }
+   },
+   "required": [
+    "key"
+   ],
+   "title": "TemplateKeyParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Đưa template về nội dung cài sẵn",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "template",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "template.update",
+  "params_schema": {
+   "properties": {
+    "body": {
+     "description": "Nội dung Jinja; lưu nguyên văn",
+     "title": "Body",
+     "type": "string"
+    },
+    "create_if_missing": {
+     "default": false,
+     "description": "Tạo template mới nếu chưa có key này",
+     "title": "Create If Missing",
+     "type": "boolean"
+    },
+    "key": {
+     "maxLength": 64,
+     "pattern": "^[a-z][a-z0-9_.]*$",
+     "title": "Key",
+     "type": "string"
+    },
+    "kind": {
+     "default": "llm",
+     "description": "Loại (chỉ dùng khi tạo mới)",
+     "title": "Kind",
+     "type": "string"
+    },
+    "locked": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Khoá: LLM không được sửa",
+     "title": "Locked"
+    }
+   },
+   "required": [
+    "key",
+    "body"
+   ],
+   "title": "TemplateUpdateParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Sửa nội dung template prompt (create_if_missing để tạo mới); kiểm tra cú pháp",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "token",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "call",
+  "name": "token.create",
+  "params_schema": {
+   "properties": {
+    "expires_days": {
+     "anyOf": [
+      {
+       "maximum": 3650,
+       "minimum": 1,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Hết hạn sau số ngày này; bỏ trống = không hạn",
+     "title": "Expires Days"
+    },
+    "name": {
+     "description": "Tên token (chữ, số, _ . -; tối đa 64 ký tự); actor trong lịch sử là `agent:<tên>`",
+     "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+     "title": "Name",
+     "type": "string"
+    },
+    "role": {
+     "default": "owner",
+     "enum": [
+      "owner",
+      "viewer"
+     ],
+     "title": "Role",
+     "type": "string"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "title": "TokenCreateParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "properties": {
+    "active": {
+     "title": "Active",
+     "type": "boolean"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "expires_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Expires At"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "last_used_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Last Used At"
+    },
+    "name": {
+     "title": "Name",
+     "type": "string"
+    },
+    "revoked_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Revoked At"
+    },
+    "role": {
+     "enum": [
+      "owner",
+      "viewer"
+     ],
+     "title": "Role",
+     "type": "string"
+    },
+    "token": {
+     "description": "Token thô — chỉ hiện MỘT lần, hãy lưu lại ngay",
+     "title": "Token",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "name",
+    "role",
+    "created_at",
+    "expires_at",
+    "last_used_at",
+    "revoked_at",
+    "active",
+    "token"
+   ],
+   "title": "TokenCreated",
+   "type": "object"
+  },
+  "summary": "Tạo token API cho agent/CLI/MCP từ xa; token thô chỉ trả về một lần",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "token",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "token.list",
+  "params_schema": {
+   "properties": {},
+   "title": "AuthNoParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "$defs": {
+    "TokenInfo": {
+     "properties": {
+      "active": {
+       "title": "Active",
+       "type": "boolean"
+      },
+      "created_at": {
+       "format": "date-time",
+       "title": "Created At",
+       "type": "string"
+      },
+      "expires_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Expires At"
+      },
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "last_used_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Last Used At"
+      },
+      "name": {
+       "title": "Name",
+       "type": "string"
+      },
+      "revoked_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Revoked At"
+      },
+      "role": {
+       "enum": [
+        "owner",
+        "viewer"
+       ],
+       "title": "Role",
+       "type": "string"
+      }
+     },
+     "required": [
+      "id",
+      "name",
+      "role",
+      "created_at",
+      "expires_at",
+      "last_used_at",
+      "revoked_at",
+      "active"
+     ],
+     "title": "TokenInfo",
+     "type": "object"
+    }
+   },
+   "items": {
+    "$ref": "#/$defs/TokenInfo"
+   },
+   "title": "TokenList",
+   "type": "array"
+  },
+  "summary": "Danh sách token API (không có token thô hay hash)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "token",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "token.revoke",
+  "params_schema": {
+   "properties": {
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "AuthIdParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "properties": {
+    "active": {
+     "title": "Active",
+     "type": "boolean"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "expires_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Expires At"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "last_used_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Last Used At"
+    },
+    "name": {
+     "title": "Name",
+     "type": "string"
+    },
+    "revoked_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Revoked At"
+    },
+    "role": {
+     "enum": [
+      "owner",
+      "viewer"
+     ],
+     "title": "Role",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "name",
+    "role",
+    "created_at",
+    "expires_at",
+    "last_used_at",
+    "revoked_at",
+    "active"
+   ],
+   "title": "TokenInfo",
+   "type": "object"
+  },
+  "summary": "Thu hồi một token API (dùng lại sẽ bị từ chối)",
+  "viewer": false
+ }
+]

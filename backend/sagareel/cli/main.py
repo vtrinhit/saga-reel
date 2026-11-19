@@ -4,7 +4,7 @@ Lệnh sinh: `sagareel <group> <action> [--<field> value …] [--json-input FILE
 sau dấu chấm đầu tiên (`_` → `-`). Lệnh cố định: `serve`, `ops [group]`, `call <op> [json|-]`,
 `job wait <id…> [--timeout 600]`, `auth set-password [--role owner|viewer]`, và lệnh ngoại tuyến
 `reset-password [--role owner|viewer] [--data-dir PATH] [--password-stdin] [--clear]` (không qua app, xem
-`cli/reset_password.py`).
+`cli/reset_password.py`), `mcp [--http] [--port 8991]` (MCP server trong `.venv-mcp`, xem `cli/mcp_launcher.py`).
 
 Xác thực: `SAGAREEL_TOKEN` (Bearer) nếu đặt — cần khi app ở máy khác. Không đặt và URL là loopback: CLI gọi như client
 cục bộ (chưa có mật khẩu chủ thì không cần gì); app đòi đăng nhập (401, đã đặt mật khẩu chủ) thì CLI gửi lại một lần
@@ -65,7 +65,7 @@ JOB_WAIT_CHUNK_S = 600  # trần `timeout_s` của op job.wait
 JOB_WAIT_GRACE_S = 30
 
 # Lệnh cấp một cố định: nhóm op trùng tên chỉ gọi được qua `sagareel call <op>`.
-RESERVED_COMMANDS = frozenset({"serve", "ops", "call"})
+RESERVED_COMMANDS = frozenset({"serve", "ops", "call", "mcp"})
 # Trường params trùng cờ chung của CLI: không sinh cờ, chỉ truyền được qua --json-input.
 RESERVED_FIELDS = frozenset({"json", "json_input", "help"})
 _PARAM_DEST = "p__"  # tiền tố dest của trường params: không bao giờ đè `op`, `handler`, `command`…
@@ -305,6 +305,12 @@ def _build_parser(catalog: list[dict]) -> argparse.ArgumentParser:
                            add_help=False, allow_abbrev=False)
     reset.add_argument("rest", nargs=argparse.REMAINDER)
     reset.set_defaults(handler=_cmd_reset_password)
+
+    # Chỉ để hiện trong trợ giúp: `main` chuyển `mcp` sang `cli/mcp_launcher.py` (venv .venv-mcp) trước khi tải catalog.
+    mcp_cmd = top.add_parser("mcp", help="Chạy MCP server cho agent (stdio; --http --port 8991)", add_help=False,
+                             allow_abbrev=False)
+    mcp_cmd.add_argument("rest", nargs=argparse.REMAINDER)
+    mcp_cmd.set_defaults(handler=_cmd_mcp)
 
     ops_cmd = top.add_parser("ops", help="Liệt kê thao tác (lọc theo nhóm)", parents=[json_parent],
                              allow_abbrev=False)
@@ -653,6 +659,12 @@ def _cmd_reset_password(ctx: _Ctx, args: argparse.Namespace) -> Any:  # chỉ t�
     raise SystemExit(reset_password.main(args.rest))
 
 
+def _cmd_mcp(ctx: _Ctx, args: argparse.Namespace) -> Any:  # chỉ tới đây khi `mcp` không đứng đầu argv
+    from sagareel.cli import mcp_launcher
+
+    raise SystemExit(mcp_launcher.main(args.rest))
+
+
 def _cmd_op(ctx: _Ctx, args: argparse.Namespace) -> Any:
     return _call_op(ctx, args.op, collect_params(args))
 
@@ -753,7 +765,9 @@ def _only_help(argv: list[str]) -> bool:
 
 def main(argv: list[str] | None = None, *, transport: httpx.BaseTransport | None = None) -> int:
     """Điểm vào console script `sagareel`. `transport` cho test (httpx transport nối vào app trong tiến trình)."""
-    from sagareel import __main__ as entry  # import muộn: tránh vòng import khi chạy `python -m sagareel`
+    from sagareel import (
+        __main__ as entry,  # import muộn: tránh vòng import khi chạy `python -m sagareel`
+    )
 
     entry._utf8_stdio()
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -763,6 +777,10 @@ def main(argv: list[str] | None = None, *, transport: httpx.BaseTransport | None
         from sagareel.cli import reset_password
 
         return reset_password.main(argv[1:])  # ngoại tuyến, thẳng trên DB
+    if argv[:1] == ["mcp"]:
+        from sagareel.cli import mcp_launcher
+
+        return mcp_launcher.main(argv[1:])  # tiến trình riêng (.venv-mcp), không tải catalog
 
     try:
         url = _base_url()
