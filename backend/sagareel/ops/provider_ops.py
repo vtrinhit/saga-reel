@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from sagareel.core.context import OpContext
-from sagareel.core.errors import AppError, Conflict, ValidationFailed
+from sagareel.core.errors import AppError, Conflict, NotFound, ValidationFailed
 from sagareel.core.ops import op
 from sagareel.core.secrets import mask
 from sagareel.db.base import utcnow
@@ -33,7 +33,7 @@ from sagareel.providers.base import (
     TTSRequest,
     VideoRequest,
 )
-from sagareel.services import budget, confirm, jobs, media
+from sagareel.services import budget, confirm, jobs, media, seed
 from sagareel.services import provider_jobs as pj
 from sagareel.services.providers import ProviderService, get_row
 from sagareel.services.settings import global_layer
@@ -263,6 +263,27 @@ def provider_update(ctx: OpContext, p: ProviderUpdateParams) -> dict:
             setattr(row, key, value)
         s.flush()
         return conn_dict(row)
+
+
+# --- Nhập từ .env.local -----------------------------------------------------------------------------------------------
+
+
+class ImportEnvParams(BaseModel):
+    confirm: bool = Field(default=False, description="false = chỉ xem trước những gì sẽ được tạo (không ghi)")
+
+
+@op("provider.import_env",
+    summary="Nhập kết nối provider từ .env.local (chỉ tạo kết nối chưa có theo tên); confirm=false chỉ xem trước",
+    params=ImportEnvParams, idempotent=True)
+def provider_import_env(ctx: OpContext, p: ImportEnvParams) -> dict:
+    env_file = ctx.services.settings.env_file
+    # Change set: actor `system:seed`, op_name `provider.import_env` (cho biết do người dùng kích hoạt).
+    result = seed.import_env(ctx.services.db, env_file, force=True, dry_run=not p.confirm,
+                             resolver=ctx.services.resolver)
+    if result is None:
+        raise NotFound("Không tìm thấy file .env.local.", code="env_file_missing",
+                       hint="Tạo file .env.local ở thư mục gốc của ứng dụng rồi chạy lại.")
+    return {"dry_run": not p.confirm, **result.to_dict()}
 
 
 # --- Xoá hai bước -----------------------------------------------------------------------------------------------------

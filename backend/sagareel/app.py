@@ -27,7 +27,7 @@ from sagareel.core.errors import AppError, internal_error, payload, validation_f
 from sagareel.core.resolver import SCHEMA_PATH, Resolver, load_schema
 from sagareel.core.events import EventBus
 from sagareel.db.session import Database
-from sagareel.services import auth
+from sagareel.services import auth, seed
 from sagareel.services.worker import Worker
 from sagareel.services.providers import ProviderService
 
@@ -71,6 +71,14 @@ class UnhandledErrorMiddleware:
             await _error_response(internal_error())(scope, receive, send)
 
 
+def _seed_env(services: Services) -> None:
+    """Seed từ .env.local; lỗi (file hỏng, DB bận…) chỉ ghi log — tên lỗi, không nội dung — và app vẫn chạy."""
+    try:
+        seed.seed_from_env(services.db, services.settings.env_file, resolver=services.resolver)
+    except Exception as e:  # noqa: BLE001 — traceback có thể chứa giá trị từ file env, không log
+        logger.error("Không seed được từ .env.local (%s); dùng op provider.import_env để thử lại", type(e).__name__)
+
+
 def _install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
@@ -104,12 +112,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         try:
             # Truy cập DB từ code async luôn qua thread (không chặn event loop).
             await anyio.to_thread.run_sync(services.db.migrate)
+            # Dữ liệu mặc định (công việc LLM, template) rồi kết nối từ .env.local (lần đầu). Chỉ ghi DB, không gọi
+            # provider nào.
+            await anyio.to_thread.run_sync(seed.seed_defaults, services.db)
+            await anyio.to_thread.run_sync(_seed_env, services)
             # Token agent cục bộ cho CLI/MCP trên máy này (`data/local-agent.token`); lỗi chỉ cảnh báo.
             await anyio.to_thread.run_sync(auth.ensure_local_agent_token_safe, services)
             # Job `running` sót từ lần trước → queued (nối lại được) hoặc interrupted; rồi mới chạy worker.
             await anyio.to_thread.run_sync(services.worker.recover)
             await services.worker.start()
-            # Seed, worker… được các task sau bổ sung. Không tự gọi provider nào khi khởi động.
+            # Không tự gọi provider nào khi khởi động.
             yield
         finally:
             await services.worker.stop()
