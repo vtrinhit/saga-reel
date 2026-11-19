@@ -1,0 +1,64 @@
+# Mẫu YAML: gom clip theo cảnh. Tên khoá tiếng Anh hoặc tiếng Việt đều được (xem docs/import-format.md).
+scenes:
+  - scene: "Cảnh 1: Quán cà phê đêm mưa"
+    clips:
+      - characters: AN
+        image_prompt: Toàn cảnh quán cà phê nhỏ ven phố trong đêm mưa, đèn vàng ấm, kính mờ hơi nước
+        motion_prompt: Máy quay đẩy chậm vào cửa kính, mưa rơi nhẹ
+        duration: 5
+        link: cut
+        engine: still_motion
+        shot_size: Toàn cảnh
+        camera_move: Dolly in
+        notes: Mở đầu, chưa có thoại
+      - characters: "AN:áo_mưa"
+        image_prompt: Cận cảnh An ngồi một mình bên cửa sổ, hai tay ôm ly cà phê đã nguội, ánh mắt xa xăm
+        motion_prompt: An khẽ thở dài, hơi nước bay lên từ ly cà phê
+        dialogue:
+          - "AN: Anh ấy lại không đến."
+        duration: 6
+        link: cut
+        engine: ai_video
+        shot_size: Cận cảnh
+        camera_move: Đứng yên
+      - characters: [AN, MINH]
+        image_prompt: Minh đẩy cửa bước vào, áo ướt đẫm, tay cầm một bó hoa nhỏ
+        motion_prompt: Chuông cửa rung lên, Minh bước vào, An ngẩng đầu nhìn
+        dialogue:
+          - "MINH: Xin lỗi, anh đến muộn."
+          - "AN: Em đã đợi anh cả buổi tối."
+        duration: 7
+        link: continue
+        engine: ai_video
+        shot_size: Trung cảnh
+        camera_move: Pan phải
+        notes: Nối liền cảnh trước
+  - scene: "Cảnh 2: Ban công căn hộ"
+    clips:
+      - characters: [AN, MINH]
+        image_prompt: Hai người đứng trên ban công nhìn thành phố sau cơn mưa, ánh đèn phản chiếu trên mặt đường ướt
+        motion_prompt: Gió nhẹ thổi tóc An, máy quay lia chậm theo hai người
+        dialogue: "MINH: Từ giờ, anh sẽ không để em đợi nữa."
+        duration: 6
+        link: fade
+        engine: ai_video
+        shot_size: Toàn cảnh
+        camera_move: Pan phải
+      - characters: AN
+        image_prompt: Cận cảnh nụ cười của An, đôi mắt long lanh dưới ánh đèn thành phố
+        motion_prompt: An mỉm cười rồi quay sang nhìn Minh
+        dialogue: "AN: Em tin anh."
+        duration: 4
+        link: cut
+        engine: ai_video
+        shot_size: Đặc tả
+        camera_move: Đứng yên
+      - image_prompt: Hai chiếc ly cà phê đặt cạnh nhau trên lan can, bình minh ló dạng phía xa
+        motion_prompt: Máy quay kéo ra xa, ánh sáng ấm dần lên
+        dialogue: "NR: Và đêm mưa ấy trở thành kỷ niệm đẹp nhất của họ."
+        duration: 6
+        link: fade
+        engine: still_motion
+        shot_size: Toàn cảnh
+        camera_move: Pull out
+        notes: Cảnh kết
