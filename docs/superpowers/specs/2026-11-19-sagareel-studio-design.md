@@ -599,6 +599,33 @@ Tất cả dưới đây là **[quyết định của người xây]**, người
 - `D:\MMO\ReelFB_Studio-series`: client MaiVideo nhiều ref (`step2_image.py`), compiler prompt, ffmpeg media, planner,
   thumbs. Thư mục `D:\MMO\ReelFB` cũ không dùng.
 
+### 23.9 Bổ sung từ nghiên cứu OSS (`docs/research/oss-study.md`)
+- **Story Bible có bằng chứng** (M5) thay `memory_entry`: bảng `bible_item` ★ (`project_id, type` character|location|
+  relationship|event|storyline|fact|open_question, `key`, `summary`, `attributes` JSON, `status` pending|confirmed|
+  rejected, `locked`, `story_order` (số tập/cảnh), `asset_id?`), `bible_evidence` (`item_id, sequence_id?, source`
+  script|novel|manual, `quote`, `start`, `end`), FTS5 trên `summary + quote`. LLM đề xuất ở `pending`; người dùng/agent
+  xác nhận. Trạng thái cảnh (`scene.state` JSON: thời gian trong ngày, thời đại, thời tiết, trạng thái nhân vật).
+- **Look** (`asset_variant`) thêm `keep_features` (phải giữ), `lock_word` (cụm "màu + chất liệu + vật" chèn nguyên văn vào
+  mọi prompt synced dùng look này), `anchor_media_id` (ảnh mỏ neo toàn thân chính diện). Sheet sinh theo quy trình:
+  mỏ neo (chỉ chữ) → cận mặt / nghiêng / sau lưng, **mỗi ảnh chỉ tham chiếu mỏ neo**; không dùng sheet ghép làm ref.
+- **Vai trò ảnh ref**: mỗi ref trong prompt synced có `role` ∈ {appearance, outfit, spatial_layout, composition, scale,
+  effect, start_frame, end_frame, style, subject}; template synced in "Ảnh N: <vai trò> của <tên>"; mỗi nhân vật tối đa
+  1–2 ảnh, ưu tiên khung gần nhất cùng góc máy.
+- **Trường clip** thêm (cột riêng, đều tuỳ chọn): `shot_size`, `angle`, `camera_move`, `lens`, `composition`, `eyeline`,
+  `first_frame_desc`, `last_frame_desc`, `sfx_desc`, `beats` JSON. Template synced dùng chúng khi có.
+- **Prompt synced 4 khối** mặc định: `[NHÂN VẬT — khoá]` `[PHONG CÁCH — khoá]` `[CẢNH]` `[HÀNH ĐỘNG/MÁY QUAY có mốc giây]`.
+  Gói phong cách có `lock.json` (`approved_at`, `approval_quote`, khối nhân vật + phong cách nguyên văn, `sha256` từng khối);
+  khi tải gói, hash lệch → cảnh báo "khối khoá đã bị sửa".
+- **Patch có `expected_revision`**: op sửa thực thể nhận `expected_updated_at` tuỳ chọn; lệch → `stale_write` (409) —
+  chống agent và người dùng ghi đè nhau.
+- **Bảng làm-cũ theo trường** (dữ liệu, `defaults/staleness.yaml`): `image_prompt|assets|look → stale_image (+video)`,
+  `motion_prompt|duration → stale_video`, `dialogue.text|voice → stale_audio (+subtitle)`, `transition → chunk`.
+- **Duyệt take**: `take.verdict` ∈ {keep, trim, fix_post, regenerate, reject}; sau 2 lần tạo lại cùng lý do bị đánh lỗi,
+  UI/agent gợi ý đổi cách (sửa prompt, đổi ref, đổi engine) thay vì tạo lại tiếp.
+- **Thuyết minh**: preset `narration` mặc định `audio.duration_sync=voice_drives`, không làm chậm giọng để vừa hình; cảnh
+  báo khung tĩnh không chuyển động > 2,5 s ở engine still_motion.
+- **Gate "thử 2 clip"**: trước khi tạo video cả lô, tạo clip đầu và clip khác biệt nhất (tuỳ chọn trong workflow).
+
 ## 24. Để lại cho người xây
 
 - Tên chi tiết của từng op, cột phụ, chỉ mục DB; bố cục component cụ thể (theo `DESIGN.md`).
