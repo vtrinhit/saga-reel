@@ -499,3 +499,41 @@ async def test_try_tts_job_with_edge_uses_cache(client, mp3_bytes, monkeypatch):
     cache_dir = client.app.state.services.settings.cache_dir / "tts"
     assert len([p for p in cache_dir.iterdir() if p.suffix == ".mp3"]) == 1
     assert os.path.isfile(next(cache_dir.glob("*.mp3")))
+
+
+async def test_try_tts_job_with_openai_marker_lifecycle(client, mp3_bytes):
+    """Qua worker thật: 503 → thử lại rồi thành công; mất kết nối sau khi gửi → needs_attention; resubmit gửi lại."""
+    r = call(client, "provider.create", {"kind": "tts", "adapter": "openai_tts", "name": "oai", "base_url": BASE,
+                                         "api_key": KEY})
+    assert r.status_code == 200, r.text
+
+    def wait(job_id: int) -> dict:
+        w = call(client, "job.wait", {"ids": [job_id], "timeout_s": 60}).json()
+        assert not w["timed_out"], w
+        return w["items"][0]
+
+    def submit() -> int:
+        r = call(client, "provider.try_tts", {"connection": "oai", "text": "Xin chào", "voice": "alloy"})
+        assert r.status_code == 200, r.text
+        return r.json()["job_id"]
+
+    with respx.mock(assert_all_called=False) as mock:
+        route = mock.post(f"{BASE}/audio/speech")
+        route.side_effect = [httpx.Response(503, headers={"Retry-After": "0"}, json={"error": {"message": "busy"}}),
+                             httpx.Response(200, content=mp3_bytes)]
+        job = await anyio.to_thread.run_sync(lambda: wait(submit()))
+        assert job["status"] == "succeeded", job
+        assert route.call_count == 2 and job["external_state"].get("state") is None
+
+        route.side_effect = [httpx.ReadTimeout("slow"), httpx.Response(200, content=mp3_bytes)]
+        job_id = await anyio.to_thread.run_sync(submit)
+        job = await anyio.to_thread.run_sync(wait, job_id)
+        assert job["status"] == "needs_attention" and job["error_code"] == "openai_tts_job_unknown", job
+        assert job["external_state"]["state"] == "submitting" and route.call_count == 3
+
+        r = await anyio.to_thread.run_sync(
+            lambda: call(client, "job.clear_attention", {"id": job_id, "action": "resubmit"}))
+        assert r.status_code == 200, r.text
+        job = await anyio.to_thread.run_sync(wait, job_id)
+        assert job["status"] == "succeeded", job
+        assert route.call_count == 4
