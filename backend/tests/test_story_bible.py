@@ -94,3 +94,19 @@ def test_upsert_proposal_respects_locked_and_confirmed(owner_ctx, project):
                                           evidence=[{"quote": "Minh im lặng"}])
         assert action == "evidence" and item.summary == "Minh nóng tính"
         assert len(bible.search_ids(s, project, "im lang")) == 1
+
+
+def test_undo_redo_reindexes_fts(owner_ctx, project):
+    """Task BF: hoàn tác/làm lại sửa mục bible dựng lại chỉ mục FTS."""
+    a = run(owner_ctx, "bible.create", {"project_id": project, "type": "character", "key": "minh",
+                                        "summary": "Minh sống ở Huế"})
+    up = run(owner_ctx, "bible.update", {"id": a["id"], "values": {"summary": "Minh sống ở Cần Thơ"}})
+    assert run(owner_ctx, "bible.search", {"project_id": project, "q": "can tho"})["items"]
+    hist = run(owner_ctx, "history.list", {"project_id": project, "entity_type": "bible_item", "entity_id": a["id"]})
+    cs = hist["items"][0]["id"]
+    run(owner_ctx, "history.undo", {"project_id": project, "change_set_id": cs})
+    assert [i["id"] for i in run(owner_ctx, "bible.search", {"project_id": project, "q": "hue"})["items"]] == [a["id"]]
+    assert not run(owner_ctx, "bible.search", {"project_id": project, "q": "can tho", "mode": "and"})["items"]
+    run(owner_ctx, "history.redo", {"project_id": project, "change_set_id": cs})
+    assert run(owner_ctx, "bible.search", {"project_id": project, "q": "can tho"})["items"]
+    assert up["id"] == a["id"]

@@ -1,6 +1,6 @@
 """File skill vận hành (spec §17): bảng `skill_file` (lịch sử qua UoW) phản chiếu ra `.claude/skills/sagareel-operator/**`.
 
-Đồng bộ (`sync`, chạy ở mọi op skill):
+Đồng bộ (`sync`): lúc khởi động app (`sync_on_startup`), trước `skill.update` và op `skill.sync`; `skill.list/get` chỉ đọc:
 - File trên đĩa chưa có dòng → nhập vào DB (change set `skill.sync`).
 - Dòng có, file khác: nếu file vẫn đúng bản app ghi lần cuối (hash lưu ở `system_state`) → DB đổi (vd. hoàn tác) →
   ghi lại file; ngược lại file bị sửa ngoài app (git pull, editor) → nhập file vào DB (có lịch sử).
@@ -100,7 +100,7 @@ def _out(row: SkillFile, *, body: bool = True) -> dict[str, Any]:
 
 
 def list_files(ctx: OpContext) -> dict[str, Any]:
-    sync(ctx)
+    """Chỉ đọc DB (đồng bộ chạy lúc khởi động, trước skill.update và ở op skill.sync)."""
     with ctx.services.db.session() as s:
         rows = s.scalars(select(SkillFile).where(SkillFile.deleted_at.is_(None)).order_by(SkillFile.path)).all()
         return {"items": [_out(r, body=False) for r in rows], "dir": SKILL_REL.as_posix()}
@@ -108,7 +108,6 @@ def list_files(ctx: OpContext) -> dict[str, Any]:
 
 def get(ctx: OpContext, path: str) -> dict[str, Any]:
     path = check_path(path)
-    sync(ctx)
     with ctx.services.db.session() as s:
         row = s.scalar(select(SkillFile).where(SkillFile.path == path, SkillFile.deleted_at.is_(None)))
         if row is None:
@@ -139,3 +138,19 @@ def update(ctx: OpContext, path: str, body: str, expected_updated_at=None) -> di
     _write_disk(skill_dir(ctx.services.settings), path, body)
     out["change_set_id"] = u.change_set_id
     return out
+
+
+def sync_on_startup(services: Any) -> None:
+    """Đồng bộ file skill khi khởi động (actor `system:skills`); lỗi chỉ ghi log, không chặn app."""
+    import logging
+
+    try:
+        sync(OpContext(services=services, actor="system:skills", role="owner"))
+    except Exception as e:  # noqa: BLE001
+        logging.getLogger("sagareel.skills").warning("Không đồng bộ được file skill (%s).", type(e).__name__)
+
+
+def sync_report(ctx: OpContext) -> dict[str, Any]:
+    """Op `skill.sync`: đồng bộ rồi trả danh sách file."""
+    sync(ctx)
+    return list_files(ctx)

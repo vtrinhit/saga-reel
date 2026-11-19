@@ -30,7 +30,7 @@ from sagareel.core.errors import AppError, internal_error, payload, validation_f
 from sagareel.core.resolver import SCHEMA_PATH, Resolver, load_schema
 from sagareel.core.events import EventBus
 from sagareel.db.session import Database
-from sagareel.services import auth, seed
+from sagareel.services import auth, seed, skills
 from sagareel.services.worker import Worker
 from sagareel.services.providers import ProviderService
 
@@ -119,6 +119,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             # provider nào.
             await anyio.to_thread.run_sync(seed.seed_defaults, services.db)
             await anyio.to_thread.run_sync(_seed_env, services)
+            # File skill vận hành ↔ DB (skill.list/get chỉ đọc; lỗi chỉ cảnh báo).
+            await anyio.to_thread.run_sync(skills.sync_on_startup, services)
             # Token agent cục bộ cho CLI/MCP trên máy này (`data/local-agent.token`); lỗi chỉ cảnh báo.
             await anyio.to_thread.run_sync(auth.ensure_local_agent_token_safe, services)
             # Job `running` sót từ lần trước → queued (nối lại được) hoặc interrupted; rồi mới chạy worker.

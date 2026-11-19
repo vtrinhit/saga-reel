@@ -183,6 +183,7 @@ def undo(ctx: OpContext, change_set_id: int | None = None) -> ChangeSetOut:
         _check_conflicts(s, cs, revs, "undo")
         for rev in reversed(revs):
             _apply(s, u, _mapper_for(rev.entity_type), rev.entity_id, rev.before_json)
+        _after_apply(s, [(r.entity_type, r.entity_id) for r in revs])
         cs.undone_at = utcnow()
         u.project_id = cs.project_id
         u.summary = f"Hoàn tác #{cs.id} ({cs.op_name})"
@@ -219,6 +220,7 @@ def redo(ctx: OpContext, change_set_id: int | None = None) -> ChangeSetOut:
         _check_conflicts(s, cs, revs, "redo")
         for rev in revs:
             _apply(s, u, _mapper_for(rev.entity_type), rev.entity_id, rev.after_json)
+        _after_apply(s, [(r.entity_type, r.entity_id) for r in revs])
         cs.undone_at = None
         cs.undone_by = None
         u.project_id = cs.project_id
@@ -249,9 +251,24 @@ def restore(ctx: OpContext, entity_type: str, entity_id: int, revision_id: int) 
             u.project_id = s.get(ChangeSet, rev.change_set_id).project_id
         u.summary = f"Khôi phục {entity_type} #{entity_id} về phiên bản #{revision_id}"
         _apply(s, u, mapper, entity_id, rev.after_json)
+        _after_apply(s, [(entity_type, entity_id)])
     if u.change_set_id is None:
         raise Conflict(f"{entity_type} #{entity_id} đã ở đúng phiên bản #{revision_id}.", code="no_change")
     return get(ctx, u.change_set_id)
+
+
+def _after_apply(s: Session, keys: builtins.list[tuple[str, int]]) -> None:
+    """Dữ liệu phái sinh không nằm trong snapshot: chỉ mục FTS của Story Bible (bảng `bible_fts` content-less) được
+    dựng lại cho mục bị hoàn tác/làm lại/khôi phục."""
+    item_ids = {eid for et, eid in keys if et == "bible_item"}
+    if not item_ids:
+        return
+    from sagareel.db.models import BibleItem
+    from sagareel.services.story import bible
+
+    s.flush()
+    for item in s.scalars(select(BibleItem).where(BibleItem.id.in_(item_ids))):
+        bible.reindex(s, item)
 
 
 # --- Nội bộ -----------------------------------------------------------------------------------------------------
