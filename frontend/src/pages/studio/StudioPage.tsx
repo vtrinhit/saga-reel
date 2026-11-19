@@ -51,6 +51,7 @@ import {
   useSounds,
   useStudioLiveRefresh,
   useTimelineItems,
+  useVideoSources,
   VARIANT_LABEL,
   waitingGate,
   type PlatformData,
@@ -67,6 +68,7 @@ import {
   moveTarget,
   shortTime,
   transitionTable,
+  trimValues,
   type ClipRow,
 } from '../../lib/timeline';
 import { useConnection } from '../../stores/connection';
@@ -122,14 +124,23 @@ export function StudioPage() {
   const sounds = useMemo(() => soundsQ.data ?? [], [soundsQ.data]);
   const transitions = useMemo(() => transitionTable(transQ.data), [transQ.data]);
   const soundById = useMemo(() => new Map(sounds.map((s) => [s.id, s])), [sounds]);
+  const videoSrc = useVideoSources(clips);
+  const maxDur = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const c of clips) {
+      const src = videoSrc.get(c.id);
+      if (c.video_take_id != null && src) m.set(c.id, Math.floor((src - (c.trim_in_ms ?? 0)) / Math.max(c.speed ?? 1, 0.01)));
+    }
+    return m;
+  }, [clips, videoSrc]);
 
   const tl = useMemo(() => {
     const enriched = items.map((it) => {
       const s = it.sound_id != null ? soundById.get(it.sound_id) : undefined;
       return s ? { ...it, params: { title: s.title, ...it.params } } : it;
     });
-    return compute(buildInput(clips, lines, enriched, { fps: FPS }), { transitions, fps: FPS });
-  }, [clips, lines, items, soundById, transitions]);
+    return compute(buildInput(clips, lines, enriched, { fps: FPS, videoSourceMs: (id) => videoSrc.get(id) ?? null }), { transitions, fps: FPS });
+  }, [clips, lines, items, soundById, transitions, videoSrc]);
   const clipById = useMemo(() => new Map(clips.map((c) => [c.id, c])), [clips]);
   const slotById = useMemo(() => new Map(tl.clips.map((s) => [s.id, s])), [tl.clips]);
 
@@ -342,7 +353,13 @@ export function StudioPage() {
           transitions={transitions}
           readOnly={viewer}
           audioHref={`${base}/s/${sid}/audio`}
-          onUpdate={(values, label) => void m.updateClip(selectedClip, values, label)}
+          onUpdate={(values, label) => {
+            // Clip có video: độ dài khi dựng theo nguồn sau trim → đổi điểm ra thay vì duration_ms.
+            if (typeof values.duration_ms === 'number' && selectedClip.video_take_id != null && videoSrc.get(selectedClip.id)) {
+              const t = trimValues(selectedClip, values.duration_ms, videoSrc.get(selectedClip.id)!, FPS);
+              void m.updateClip(selectedClip, t.values, 'điểm ra (trim)');
+            } else void m.updateClip(selectedClip, values, label);
+          }}
           onRegenerate={() => regen.mutate({ clip: selectedClip, dry: true })}
           regenerating={regen.isPending}
           offline={offline}
@@ -521,13 +538,17 @@ export function StudioPage() {
           onOpen={openInspector}
           readOnly={viewer}
           fps={FPS}
+          maxDur={maxDur}
           onReorder={(id, to) => {
             const c = clipById.get(id);
             if (c) void m.moveClip(c, to, moveTarget(clips.map((x) => x.id), id, to));
           }}
           onTrim={(id, ms) => {
             const c = clipById.get(id);
-            if (c && ms !== c.duration_ms) void m.updateClip(c, { duration_ms: ms }, 'thời lượng');
+            if (!c) return;
+            const t = trimValues(c, ms, videoSrc.get(id) ?? null, FPS);
+            const changed = Object.entries(t.values).some(([k, v]) => (c as unknown as Record<string, unknown>)[k] !== v);
+            if (changed) void m.updateClip(c, t.values, c.video_take_id != null ? 'điểm ra (trim)' : 'thời lượng');
           }}
           onMoveLine={(id, off) => {
             const l = lines.find((x) => x.id === id);

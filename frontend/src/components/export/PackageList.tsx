@@ -13,12 +13,12 @@ import { toast } from '../../stores/toast';
 import { Button } from '../ui/Button';
 import { ProgressBar } from '../ui/ProgressBar';
 
-export function PackageList({ rows, sequences, platformName, progress, hideFolder }: {
+export function PackageList({ rows, sequences, platformName, progressFor, hideFolder }: {
   rows: ExportRow[];
   sequences: Map<number, SequenceRow>;
   platformName: (key: string) => string;
-  /** Tiến độ job xuất đang chạy (0–100), nếu có. */
-  progress?: { pct: number | null; stage: string | null } | null;
+  /** Tiến độ của việc xuất chứa gói này (0–100), nếu đang theo dõi. */
+  progressFor?: (exportId: number) => { pct: number | null; stage: string | null } | null;
   hideFolder?: boolean;
 }) {
   const [folder, setFolder] = useState<Record<number, string>>({});
@@ -41,6 +41,7 @@ export function PackageList({ rows, sequences, platformName, progress, hideFolde
         const failed = r.status === 'failed';
         const Icon = done ? Check : running ? LoaderCircle : failed ? TriangleAlert : X;
         const md = r.metadata ?? {};
+        const progress = progressFor?.(r.id) ?? null;
         const parts = Array.isArray((r.checks as Record<string, unknown>)?.parts) ? ((r.checks as { parts: unknown[] }).parts.length) : null;
         return (
           <li key={r.id} className="grid gap-2 px-3 py-3">

@@ -162,10 +162,14 @@ export function ClipInspector({ clip, slot, prevKey, lines, transitions, readOnl
           <SecondsField
             id={`dur-${clip.id}`}
             label="Độ dài clip"
-            ms={clip.duration_ms}
+            ms={slot?.dur_ms ?? clip.duration_ms}
             min={0.5}
             disabled={readOnly}
-            hint="Kéo mép phải trên timeline hoặc phím , . để trim từng khung."
+            hint={
+              clip.video_take_id != null
+                ? 'Clip có video: dài theo video nguồn sau trim — đổi ở đây là đổi điểm ra. Phím , . trim từng khung.'
+                : 'Kéo mép phải trên timeline hoặc phím , . để trim từng khung.'
+            }
             onCommit={(ms) => ms != null && onUpdate({ duration_ms: ms }, 'thời lượng')}
           />
         </InspectorSection>

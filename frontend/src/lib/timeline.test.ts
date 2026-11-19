@@ -4,6 +4,8 @@ import {
   anchorFor,
   buildInput,
   clipAt,
+  clipDurMs,
+  trimValues,
   compute,
   dropIndex,
   estimateLineMs,
@@ -161,5 +163,21 @@ describe('sửa trên timeline', () => {
     expect(clipAt(slots, 3800)?.id).toBe(2);
     expect(anchorFor(slots, 5000)).toEqual({ anchor_clip_id: 2, offset_ms: 1500 });
     expect(anchorFor([], 1200)).toEqual({ anchor_clip_id: null, offset_ms: 1200 });
+  });
+});
+
+describe('clip có video (normalize.plan)', () => {
+  const v = { duration_ms: 6000, video_take_id: 1, trim_in_ms: 500, trim_out_ms: 1000, speed: 1 };
+  it('độ dài = nguồn − trim, chia tốc độ, làm tròn khung; bỏ qua duration_ms', () => {
+    expect(clipDurMs(v, 10_000)).toBe(8500);
+    expect(clipDurMs({ ...v, speed: 2 }, 10_000)).toBe(4267); // 4250 ms → 127,5 khung → 128 (banker) → 4267
+    expect(clipDurMs(v, null)).toBe(6000); // chưa biết nguồn → theo duration_ms
+    expect(clipDurMs({ ...v, trim_out_ms: 9500 }, 10_000)).toBe(6000); // trim cắt hết → khung đen theo duration_ms
+    expect(clipDurMs({ ...v, video_take_id: null }, 10_000)).toBe(6000);
+  });
+  it('trim video ghi trim_out_ms, giới hạn trong nguồn', () => {
+    expect(trimValues(v, 5000, 10_000)).toEqual({ values: { trim_out_ms: 4500 }, ms: 5000, limited: false });
+    expect(trimValues(v, 20_000, 10_000)).toMatchObject({ values: { trim_out_ms: 0 }, ms: 9500, limited: true });
+    expect(trimValues({ ...v, video_take_id: null }, 4990, 10_000)).toEqual({ values: { duration_ms: 5000 }, ms: 5000, limited: false });
   });
 });

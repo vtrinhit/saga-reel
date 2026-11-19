@@ -4,7 +4,7 @@
  * "Kế hoạch thời lượng" → bảng đề xuất → Áp dụng. "Đọc n câu còn lại" → `audio.generate` (TTS không tính lượt).
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AudioLines, Clock, MessageSquareText } from 'lucide-react';
+import { AudioLines, Clock, MessageSquareText, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useIsViewer } from '../../api/auth';
@@ -20,6 +20,7 @@ import { InspectorSection } from '../../components/studio/StudioInspector';
 import { useStudioMutations } from '../../components/studio/useStudioMutations';
 import '../../components/studio/studio.css';
 import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
@@ -29,6 +30,7 @@ import {
   numId,
   sk,
   toastError,
+  undoLast,
   useAssets,
   useClips,
   useLines,
@@ -159,6 +161,28 @@ export function AudioPage() {
   });
 
   const [planOpen, setPlanOpen] = useState(false);
+  const [adding, setAdding] = useState<number | null>(null);
+
+  const addLine = async (clipId: number, text: string) => {
+    try {
+      await callOpLoose('dialogue.create', { clip_id: clipId, text });
+      toast({ tone: 'success', message: 'Đã thêm câu thoại.', undo: () => void undoLast(pid!).then(() => m.refresh()) });
+      m.refresh();
+    } catch (e) {
+      toastError('Không thêm được câu thoại', e);
+    }
+  };
+  // Xoá mềm 1 bước + Hoàn tác (DESIGN §5.5 ConfirmDelete bước 1).
+  const deleteLine = async (id: number) => {
+    try {
+      const pv = await callOpLoose<{ confirm_token: string }>('dialogue.delete_preview', { ids: [id] });
+      await callOpLoose('dialogue.delete', { confirm_token: pv.confirm_token });
+      toast({ message: 'Đã xoá câu thoại.', undo: () => void undoLast(pid!).then(() => m.refresh()) });
+      m.refresh();
+    } catch (e) {
+      toastError('Không xoá được câu thoại', e);
+    }
+  };
 
   // Người nói trong tập: nhân vật có câu + người kể.
   const speakers = useMemo(() => {
@@ -168,6 +192,13 @@ export function AudioPage() {
   }, [lines]);
   const profileFor = (speaker: number): VoiceProfile | null =>
     speaker === NARRATOR ? narratorProfile : (voiceById.get(Number(assetById.get(speaker)?.voice_profile_id)) ?? null);
+  const speakerOptions = useMemo(
+    () => [
+      { id: NARRATOR, name: 'Người kể' },
+      ...assets.filter((a) => a.kind === 'character').map((a) => ({ id: a.id, name: a.name })),
+    ],
+    [assets],
+  );
   const speakerName = (speaker: number) => (speaker === NARRATOR ? 'Người kể' : (assetById.get(speaker)?.name ?? `Nhân vật #${speaker}`));
 
   // Nhóm câu theo clip (thứ tự clip), tiêu đề "Cảnh n · Clip".
@@ -177,7 +208,7 @@ export function AudioPage() {
     for (const c of clips) {
       if (!sceneNo.has(c.scene_id)) sceneNo.set(c.scene_id, sceneNo.size + 1);
       const ls = lines.filter((l) => l.clip_id === c.id);
-      if (ls.length) out.push({ clipKey: c.key, scene: c.scene_id != null ? sceneNo.get(c.scene_id)! : null, clipId: c.id, items: ls });
+      out.push({ clipKey: c.key, scene: c.scene_id != null ? sceneNo.get(c.scene_id)! : null, clipId: c.id, items: ls });
     }
     return out;
   }, [clips, lines]);
@@ -234,7 +265,7 @@ export function AudioPage() {
             <SkeletonZone label="Đang tải thoại">
               <SkeletonRows count={6} />
             </SkeletonZone>
-          ) : groups.length === 0 ? (
+          ) : clips.length === 0 ? (
             <EmptyState
               icon={MessageSquareText}
               title="Tập này chưa có thoại."
@@ -248,10 +279,18 @@ export function AudioPage() {
           ) : (
             groups.map((g) => (
               <div key={g.clipId}>
-                <h3 className="sticky top-[var(--sr-top,0px)] z-[1] border-b border-line-1 bg-bg-2 px-3 py-1.5 text-sm font-semibold">
-                  {g.scene != null ? `Cảnh ${g.scene} · ` : ''}
-                  {g.clipKey}
-                </h3>
+                <div className="sticky top-[var(--sr-top,0px)] z-[1] flex min-h-9 items-center justify-between gap-2 border-b border-line-1 bg-bg-2 px-3">
+                  <h3 className="truncate py-px text-sm font-semibold">
+                    {g.scene != null ? `Cảnh ${g.scene} · ` : ''}
+                    {g.clipKey}
+                  </h3>
+                  {!viewer && primary && adding !== g.clipId ? (
+                    <Button variant="ghost" icon={Plus} onClick={() => setAdding(g.clipId)} aria-label={`Thêm câu vào ${g.clipKey}`}>
+                      Thêm câu
+                    </Button>
+                  ) : null}
+                </div>
+                {g.items.length === 0 && adding !== g.clipId ? <p className="border-b border-line-1 px-3 py-2 text-sm text-fg-3">Clip này chưa có thoại.</p> : null}
                 <ul>
                   {g.items.map((l) => {
                     const sp = l.speaker_asset_id ?? NARRATOR;
@@ -269,11 +308,14 @@ export function AudioPage() {
                         loadingAudio={play.loading === `line-${l.id}`}
                         readOnly={viewer}
                         onPlay={() => void play.playLine(l.id, l.audio_take_id)}
+                        speakers={speakerOptions}
+                        onDelete={() => void deleteLine(l.id)}
                         onSave={(v) => void m.updateLine(l, v, primary ? 'lời thoại' : `bản dịch ${lang}`)}
                       />
                     );
                   })}
                 </ul>
+                {adding === g.clipId ? <AddLine clipId={g.clipId} onAdd={addLine} onClose={() => setAdding(null)} /> : null}
               </div>
             ))
           )}
@@ -308,6 +350,11 @@ export function AudioPage() {
               <p className="text-sm text-fg-2">Chưa có người nói trong tập.</p>
             )}
           </InspectorSection>
+          {!viewer ? (
+            <InspectorSection title="Hồ sơ giọng mới">
+              <NewVoice projectId={pid} lang2={langs[1] ?? null} onCreated={() => void qc.invalidateQueries({ queryKey: sk.voices(pid) })} />
+            </InspectorSection>
+          ) : null}
           <InspectorSection title="Phụ đề">
             <SubtitleStyleSelect styles={styleQ.data ?? []} value={styleKey} sample={sample} readOnly={viewer} onChange={(k) => setStyle.mutate(k)} />
           </InspectorSection>
@@ -333,5 +380,71 @@ export function AudioPage() {
         />
       ) : null}
     </div>
+  );
+}
+
+/** Thêm một câu vào cuối clip (`dialogue.create`). */
+function AddLine({ clipId, onAdd, onClose }: { clipId: number; onAdd: (clipId: number, text: string) => Promise<void>; onClose: () => void }) {
+  const [text, setText] = useState('');
+  return (
+    <form
+      className="flex items-end gap-2 border-b border-line-1 px-3 py-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!text.trim()) return;
+        void onAdd(clipId, text.trim()).then(onClose);
+      }}
+    >
+      <Input id={`add-line-${clipId}`} label="Câu mới" value={text} autoFocus onChange={(e) => setText(e.target.value)} fieldClassName="min-w-0 flex-1" />
+      <Button onClick={onClose}>Huỷ</Button>
+      <Button type="submit" variant="primary" disabled={!text.trim()}>
+        Thêm
+      </Button>
+    </form>
+  );
+}
+
+/** Tạo hồ sơ giọng của dự án (`voice.create`): tên + mã giọng provider (+ giọng ngôn ngữ phụ). */
+function NewVoice({ projectId, lang2, onCreated }: { projectId: number; lang2: string | null; onCreated: () => void }) {
+  const [name, setName] = useState('');
+  const [voice, setVoice] = useState('');
+  const [voice2, setVoice2] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!name.trim()) return;
+    setBusy(true);
+    try {
+      await callOpLoose('voice.create', {
+        name: name.trim(),
+        project_id: projectId,
+        voice: voice.trim() || null,
+        per_lang: lang2 && voice2.trim() ? { [lang2]: { voice: voice2.trim() } } : null,
+      });
+      toast({ tone: 'success', message: `Đã tạo hồ sơ giọng “${name.trim()}”.` });
+      setName('');
+      setVoice('');
+      setVoice2('');
+      onCreated();
+    } catch (err) {
+      toastError('Không tạo được hồ sơ giọng', err);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      className="grid gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <Input id="nv-name" label="Tên" value={name} onChange={(e) => setName(e.target.value)} placeholder="Giọng trầm người kể" />
+      <Input id="nv-voice" label="Mã giọng" hint="Mã của provider TTS, vd. vi-VN-NamMinhNeural. Trống = theo cài đặt." value={voice} onChange={(e) => setVoice(e.target.value)} />
+      {lang2 ? <Input id="nv-voice2" label={`Mã giọng ${lang2}`} value={voice2} onChange={(e) => setVoice2(e.target.value)} /> : null}
+      <Button type="submit" icon={Plus} loading={busy} disabled={!name.trim()}>
+        Tạo hồ sơ giọng
+      </Button>
+    </form>
   );
 }

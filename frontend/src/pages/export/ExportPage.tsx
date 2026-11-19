@@ -3,12 +3,12 @@
  * từng ô (lỗi/cảnh báo), `export.create` → job `export.package`, danh sách gói + tải zip + xem metadata.
  * 375: chỉ danh sách gói + tải; ma trận chỉ xem.
  */
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
 import { Download, Info, PackageOpen } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { useIsViewer } from '../../api/auth';
-import { useJob } from '../../api/hooks';
+import type { Job } from '../../api/types';
 import { callOpLoose } from '../../api/opsLoose';
 import { ExportMatrix, useCheck } from '../../components/export/ExportMatrix';
 import { IssueList } from '../../components/export/IssueList';
@@ -104,21 +104,36 @@ export function ExportPage() {
     onError: (e) => toastError('Không bắt đầu dựng bản cuối được', e),
   });
 
-  const [jobId, setJobId] = useState<number | null>(null);
-  const job = useJob(jobId);
+  // Tập xuất cùng (cùng các ô đã chọn); ma trận chỉ kiểm tra tập đang xem.
+  const [alsoSeqs, setAlsoSeqs] = useState<Set<number>>(new Set());
+  const seqIds = sid != null ? [sid, ...[...alsoSeqs].filter((x) => x !== sid)] : [];
+  // Việc xuất đang theo dõi → export_ids của nó (để mỗi gói hiện đúng tiến độ của việc mình).
+  const [tracked, setTracked] = useState<{ job: number; exports: number[] }[]>([]);
+  const jobsQ = useQueries({
+    queries: tracked.map((t) => ({
+      queryKey: ['studio', 'export-job', t.job],
+      queryFn: () => callOpLoose<Job>('job.get', { id: t.job }),
+      refetchInterval: (q: { state: { data?: Job } }) => (q.state.data && ['succeeded', 'failed', 'cancelled'].includes(q.state.data.status) ? false : 2000),
+    })),
+  });
+  const progressByExport = new Map<number, { pct: number | null; stage: string | null }>();
+  tracked.forEach((t, i) => {
+    const j = jobsQ[i]?.data;
+    if (j && !['succeeded', 'failed', 'cancelled'].includes(j.status)) for (const e of t.exports) progressByExport.set(e, { pct: j.progress, stage: j.stage });
+  });
   const create = useMutation({
     mutationFn: async () => {
-      const calls = createCalls([sid!], [...selected]);
-      const out: number[] = [];
+      const calls = createCalls(seqIds, [...selected]);
+      const out: { job: number; exports: number[] }[] = [];
       for (const c of calls) {
         const r = await callOpLoose<{ job_id: number; export_ids: number[] }>('export.create', c);
-        out.push(r.job_id);
+        out.push({ job: r.job_id, exports: r.export_ids });
       }
       return out;
     },
-    onSuccess: (ids) => {
-      setJobId(ids[ids.length - 1] ?? null);
-      toast({ tone: 'success', message: `Đã xếp ${selected.size} gói để xuất.` });
+    onSuccess: (jobs) => {
+      setTracked((t) => [...jobs, ...t].slice(0, 20));
+      toast({ tone: 'success', message: `Đã xếp ${selected.size * seqIds.length} gói để xuất.` });
       setSelected(new Set());
       void qc.invalidateQueries({ queryKey: sk.exports(pid ?? -1) });
     },
@@ -133,8 +148,7 @@ export function ExportPage() {
     return <EmptyState icon={PackageOpen} title="Dự án chưa có tập để xuất." description="Tạo tập và dựng bản cuối, rồi quay lại đây để xuất gói cho từng nền tảng." />;
   }
 
-  const jobProgress = job.data && !['succeeded', 'failed', 'cancelled'].includes(job.data.status) ? { pct: job.data.progress, stage: job.data.stage } : null;
-  const n = selected.size;
+  const n = selected.size * Math.max(1, seqIds.length);
 
   return (
     <div className="grid min-w-0 gap-5">
@@ -168,6 +182,39 @@ export function ExportPage() {
             setMdCheck(null);
           }}
         />
+        {isMd && !viewer && seqs.length > 1 ? (
+          <details className="relative">
+            <summary className={cn('flex h-control cursor-pointer list-none items-center gap-2 rounded-md border border-line-2 bg-bg-2 px-3 text-sm hover:bg-bg-3', focusRing)}>
+              Xuất cùng tập khác{alsoSeqs.size ? ` (${alsoSeqs.size})` : ''}
+            </summary>
+            <fieldset className="absolute left-0 top-[calc(100%+4px)] z-dropdown grid max-h-72 w-72 gap-1 overflow-y-auto rounded-md border border-line-2 bg-bg-3 p-2 shadow-pop">
+              <legend className="sr-only">Tập xuất cùng các ô đã chọn</legend>
+              {seqs
+                .filter((s) => s.id !== sid)
+                .map((s) => (
+                  <label key={s.id} className="flex min-h-touch items-center gap-2 rounded-sm px-2 text-sm hover:bg-bg-4 md:min-h-control">
+                    <input
+                      type="checkbox"
+                      className={cn('size-4 accent-[rgb(var(--c-accent))]', focusRing)}
+                      checked={alsoSeqs.has(s.id)}
+                      onChange={(e) =>
+                        setAlsoSeqs((cur) => {
+                          const next = new Set(cur);
+                          if (e.target.checked) next.add(s.id);
+                          else next.delete(s.id);
+                          return next;
+                        })
+                      }
+                    />
+                    <span className="truncate py-px">
+                      Tập {s.number}
+                      {s.title ? ` · ${s.title}` : ''}
+                    </span>
+                  </label>
+                ))}
+            </fieldset>
+          </details>
+        ) : null}
         {targetKeys.size > 0 && allPlatforms.length > targetKeys.size ? (
           <label className="flex min-h-control items-center gap-2 text-sm text-fg-2">
             <input type="checkbox" className={cn("size-4 accent-[rgb(var(--c-fg-2))]", focusRing)} checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
@@ -254,7 +301,7 @@ export function ExportPage() {
             <SkeletonRows count={2} />
           </SkeletonZone>
         ) : (
-          <PackageList rows={rows} sequences={seqById} platformName={platformName} progress={jobProgress} hideFolder={!isMd} />
+          <PackageList rows={rows} sequences={seqById} platformName={platformName} progressFor={(id) => progressByExport.get(id) ?? null} hideFolder={!isMd} />
         )}
       </section>
     </div>

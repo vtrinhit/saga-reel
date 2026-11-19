@@ -421,7 +421,14 @@ export function buildInput(
   clips: ClipRow[],
   lines: DialogueRow[],
   items: TimelineItemRow[],
-  opts: { fps?: number; lang?: string; primaryLang?: string; mediaDuration?: (id: number) => number | null } = {},
+  opts: {
+    fps?: number;
+    lang?: string;
+    primaryLang?: string;
+    mediaDuration?: (id: number) => number | null;
+    /** Độ dài nguồn (ms) của video take đang chọn theo clip — có thì clip video dài theo nguồn như khi dựng. */
+    videoSourceMs?: (clipId: number) => number | null;
+  } = {},
 ): SequenceIn {
   const fps = opts.fps ?? 30;
   const primary = !opts.lang || opts.lang === opts.primaryLang;
@@ -430,7 +437,7 @@ export function buildInput(
   return {
     clips: clips.map((c) => ({
       id: c.id,
-      dur_ms: frameMs(c.duration_ms, fps),
+      dur_ms: clipDurMs(c, opts.videoSourceMs?.(c.id) ?? null, fps),
       key: c.key,
       scene_id: c.scene_id,
       link: c.link || 'cut',
@@ -464,6 +471,42 @@ export function buildInput(
         params: { ...(it.params ?? {}) },
       })),
   };
+}
+
+/**
+ * Độ dài clip khi dựng (`pipeline.load`): clip có video take → `normalize.plan` = độ dài nguồn sau trim và tốc độ
+ * (`clip.duration_ms` bị bỏ qua), làm tròn khung; trim cắt hết → khung đen theo `duration_ms`. Còn lại (ảnh, khung
+ * đen) = `frame_ms(duration_ms)`.
+ */
+export function clipDurMs(c: Pick<ClipRow, 'duration_ms' | 'video_take_id' | 'trim_in_ms' | 'trim_out_ms' | 'speed'>, srcMs: number | null, fps = 30): number {
+  if (c.video_take_id != null && srcMs != null && srcMs > 0) {
+    const avail = Math.max(0, pyRound((srcMs - (c.trim_in_ms ?? 0) - (c.trim_out_ms ?? 0)) / Math.max(c.speed ?? 1, 0.01)));
+    if (avail > 0) return frameMs(avail, fps);
+  }
+  return frameMs(c.duration_ms, fps);
+}
+
+/**
+ * Trim mép phải về độ dài `wantMs` (ms đầu ra). Clip video: đổi `trim_out_ms` (giới hạn trong nguồn); clip ảnh: đổi
+ * `duration_ms`. Trả giá trị cần ghi + độ dài thực sau giới hạn.
+ */
+export function trimValues(
+  c: Pick<ClipRow, 'duration_ms' | 'video_take_id' | 'trim_in_ms' | 'trim_out_ms' | 'speed'>,
+  wantMs: number,
+  srcMs: number | null,
+  fps = 30,
+): { values: { duration_ms?: number; trim_out_ms?: number }; ms: number; limited: boolean } {
+  if (c.video_take_id != null && srcMs != null && srcMs > 0) {
+    const speed = Math.max(c.speed ?? 1, 0.01);
+    const tin = c.trim_in_ms ?? 0;
+    const maxOut = Math.max(0, srcMs - tin); // dùng hết nguồn
+    const wantSrc = Math.round(wantMs * speed);
+    const used = Math.min(maxOut, Math.max(Math.round(MIN_CLIP_MS * speed), wantSrc));
+    const trimOut = Math.max(0, srcMs - tin - used);
+    return { values: { trim_out_ms: trimOut }, ms: clipDurMs({ ...c, trim_out_ms: trimOut }, srcMs, fps), limited: used !== wantSrc };
+  }
+  const r = trimDuration(0, wantMs, { fps });
+  return { values: { duration_ms: r.ms }, ms: r.ms, limited: r.limited };
 }
 
 /** `preset.list kind=transition` → bảng transition (`data` của từng preset theo `key`). */

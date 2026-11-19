@@ -2,7 +2,7 @@
  * Dữ liệu của Studio, Âm thanh và Xuất (Task I): kiểu kết quả op (schema sinh ra trả `unknown` cho các op dạng dict),
  * khoá query dưới `['studio', …]`, hook đọc + làm mới sống theo `entity.changed`/`job.updated`, lỗi tiếng Việt.
  */
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { ApiError } from '../api/client';
 import { callOpLoose } from '../api/opsLoose';
@@ -348,6 +348,34 @@ export function useExports(pid: number | null) {
     queryFn: () => callOpLoose<ExportRow[]>('export.list', { project_id: pid, limit: 100 }),
     enabled: pid != null,
   });
+}
+
+/**
+ * Độ dài nguồn của video take đang chọn cho từng clip có video (`take.list` → `media.duration_ms`) — để timeline dài
+ * theo nguồn như `normalize.plan` và trim ghi `trim_out_ms`. Thiếu trường này trong `clip.list` (xem báo cáo).
+ */
+export function useVideoSources(clips: ClipRow[]): Map<number, number> {
+  const withVideo = clips.filter((c) => c.video_take_id != null);
+  const results = useQueries({
+    queries: withVideo.map((c) => ({
+      queryKey: ['studio', 'video-src', c.id, c.video_take_id],
+      queryFn: async () => {
+        const r = await callOpLoose<{ items: { id: number; media: { duration_ms: number | null } | null }[] }>('take.list', {
+          owner_type: 'clip',
+          owner_id: c.id,
+          part: 'video',
+        });
+        return r.items.find((t) => t.id === c.video_take_id)?.media?.duration_ms ?? null;
+      },
+      staleTime: 10 * 60_000,
+    })),
+  });
+  const out = new Map<number, number>();
+  withVideo.forEach((c, i) => {
+    const v = results[i]?.data;
+    if (typeof v === 'number' && v > 0) out.set(c.id, v);
+  });
+  return out;
 }
 
 /** Bản dựng xem được mới nhất (ưu tiên đủ tập hơn bản xem trước N giây cùng lúc). */

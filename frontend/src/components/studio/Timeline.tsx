@@ -47,6 +47,8 @@ export interface TimelineProps {
   onOpen?: () => void;
   readOnly?: boolean;
   fps?: number;
+  /** Độ dài tối đa (ms) khi trim theo clip — clip video không dài quá nguồn. */
+  maxDur?: Map<number, number>;
 }
 
 const LABEL_W = 40;
@@ -141,7 +143,7 @@ export function Timeline(props: TimelineProps) {
         const slot = tl.clips.find((c) => c.id === drag.id)!;
         let end = slot.start_ms + drag.dur0 + dx / pxPerMs;
         if (!free) end = snap(end, edges.filter((t) => t !== slot.end_ms), snapMs);
-        const r = trimDuration(drag.dur0, end - slot.start_ms - drag.dur0, { fps });
+        const r = trimDuration(drag.dur0, end - slot.start_ms - drag.dur0, { fps, max: props.maxDur?.get(drag.id) });
         setDrag({ ...drag, started: true, dur: r.ms, limited: r.limited });
         break;
       }
@@ -207,7 +209,7 @@ export function Timeline(props: TimelineProps) {
       } else if (e.key === ',' || e.key === '.') {
         e.preventDefault();
         const slot = tl.clips[idx];
-        const r = trimDuration(slot.dur_ms, (e.key === '.' ? 1 : -1) * frame * (e.shiftKey ? fps : 1), { fps });
+        const r = trimDuration(slot.dur_ms, (e.key === '.' ? 1 : -1) * frame * (e.shiftKey ? fps : 1), { fps, max: props.maxDur?.get(sel.id) });
         props.onTrim(sel.id, r.ms);
         say(`${clips.get(sel.id)?.key ?? 'Clip'} dài ${clipSeconds(r.ms)}.`);
       }

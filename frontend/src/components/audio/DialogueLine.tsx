@@ -2,7 +2,7 @@
  * Một câu thoại trong màn Âm thanh (prototype `audio.html`): người nói + giọng (trái), lời (sửa tại chỗ, lưu khi rời
  * ô), trạng thái TTS bằng chữ (Đang đọc / Chờ #n / Thử lại sau n s / Lỗi / Grok / Không đọc), độ dài + nghe.
  */
-import { Pause, Play } from 'lucide-react';
+import { Pause, Play, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { Job } from '../../api/types';
 import { cn, focusRing } from '../../lib/cn';
@@ -23,6 +23,9 @@ export interface DialogueLineProps {
   readOnly?: boolean;
   onPlay: () => void;
   onSave: (values: Partial<DialogueRow>) => void;
+  /** Người nói chọn được (id asset; -1 = người kể). */
+  speakers?: { id: number; name: string }[];
+  onDelete?: () => void;
 }
 
 function ttsState(line: DialogueRow, job: Job | null, primary: boolean, now: number): { node: React.ReactNode; read: boolean } {
@@ -45,7 +48,7 @@ function ttsState(line: DialogueRow, job: Job | null, primary: boolean, now: num
   return { node: <span className="text-xs text-fg-3">Chưa đọc</span>, read: false };
 }
 
-export function DialogueLine({ line, speaker, voiceLabel, lang, primary, job, playing, loadingAudio, readOnly, onPlay, onSave }: DialogueLineProps) {
+export function DialogueLine({ line, speaker, voiceLabel, lang, primary, job, playing, loadingAudio, readOnly, onPlay, onSave, speakers, onDelete }: DialogueLineProps) {
   const value = primary ? line.text : (line.translations?.[lang] ?? '');
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
@@ -67,7 +70,30 @@ export function DialogueLine({ line, speaker, voiceLabel, lang, primary, job, pl
   return (
     <li className="grid gap-x-4 gap-y-1 border-b border-line-1 px-3 py-3 last:border-b-0 md:grid-cols-[9rem_minmax(0,1fr)_auto] md:items-start">
       <div className="min-w-0">
-        <p className="truncate py-px text-sm font-semibold">{speaker}</p>
+        {speakers && !readOnly && primary ? (
+          <>
+            <label htmlFor={`${id}-sp`} className="sr-only">
+              Người nói
+            </label>
+            <select
+              id={`${id}-sp`}
+              value={line.speaker_asset_id ?? -1}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                onSave({ speaker_asset_id: v === -1 ? null : v });
+              }}
+              className={cn('-ml-1 max-w-full truncate rounded-sm border border-transparent bg-transparent px-1 py-px text-sm font-semibold hover:border-line-2', focusRing)}
+            >
+              {speakers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </>
+        ) : (
+          <p className="truncate py-px text-sm font-semibold">{speaker}</p>
+        )}
         <p className="text-xs text-fg-2">{voiceLabel}</p>
       </div>
       <div className="min-w-0">
@@ -102,6 +128,7 @@ export function DialogueLine({ line, speaker, voiceLabel, lang, primary, job, pl
           disabled={!hasAudio || loadingAudio}
           onClick={onPlay}
         />
+        {onDelete && !readOnly && primary ? <IconButton icon={Trash2} label={`Xoá câu của ${speaker}`} onClick={onDelete} /> : null}
       </div>
     </li>
   );
