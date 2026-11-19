@@ -32,10 +32,10 @@ class Services:
     lane_limits: dict[str, int] = field(default_factory=dict, kw_only=True)
     # Kết nối provider (`services/providers.py`), dựng trong `create_app`; worker lấy giới hạn lane từ đây.
     providers: ProviderService | None = field(default=None, kw_only=True)
-
-    def lane_limit(self, lane: str) -> int:
-        return self.lane_limits.get(lane, 2)
     # Cấu hình truy cập (`remote.*` + mật khẩu đã đặt chưa) cho middleware bảo mật; TTL 5 s, xoá khi đổi.
     auth_cache: TTLCache = field(default_factory=lambda: TTLCache(5.0), kw_only=True)
     # Chống dò mật khẩu (đăng nhập + đổi mật khẩu) và giới hạn số lần kiểm scrypt đồng thời.
     login_limiter: LoginLimiter = field(default_factory=LoginLimiter, kw_only=True)
+
+    def lane_limit(self, lane: str) -> int:
+        return self.lane_limits.get(lane, 2)
