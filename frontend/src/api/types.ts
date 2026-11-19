@@ -46,6 +46,10 @@ export interface Job {
   error_message: string | null;
   hint: string | null;
   result: Record<string, unknown>;
+  /** Provider đã giữ việc (`provider_holds_job`): `job.retry` nối lại; muốn tạo lại phải `force_new`. */
+  provider_holds: boolean;
+  /** Việc đã dừng còn dấu `submitting` chưa có id: chỉ `job.clear_attention` xử lý được. */
+  needs_decision: boolean;
   cost_estimate: Record<string, unknown>;
   cost_actual: Record<string, unknown>;
   created_at: string | null;

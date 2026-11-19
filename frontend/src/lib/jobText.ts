@@ -94,8 +94,12 @@ export const ERROR_TEXT: Record<string, string> = {
   interrupted: 'Việc bị gián đoạn (app tắt khi đang chạy).',
   already_succeeded: 'Việc đã xong; chạy lại thường chỉ lấy lại đúng kết quả cũ.',
   params_patch_requires_new_job: 'Provider đã nhận việc này — sửa tham số cần tạo việc trả phí mới.',
+  params_patch_invalid: 'Chỉ sửa được tham số việc đã có; muốn đổi kết nối thì tạo việc mới.',
   cleared_by_user: 'Bạn đã cho việc này thất bại.',
 };
+
+/** Mã lỗi mà `detail` của server là chi tiết kỹ thuật thô (tên exception tiếng Anh) — không bao giờ hiện. */
+const RAW_DETAIL_CODES = new Set(['internal_error']);
 
 export function errorCodeText(code: string | null | undefined): string | null {
   return code ? (ERROR_TEXT[code] ?? null) : null;
@@ -104,6 +108,38 @@ export function errorCodeText(code: string | null | undefined): string | null {
 export function jobErrorText(j: Pick<Job, 'error_code' | 'error_message'>): string | null {
   if (!j.error_code && !j.error_message) return null;
   return errorCodeText(j.error_code) ?? (j.error_message || `Lỗi (${j.error_code}).`);
+}
+
+/** Các dòng hiển thị một lỗi: câu chính (theo mã), chi tiết của server (giữ số liệu, vd "60/60"), gợi ý của server. */
+export interface ErrorLines {
+  text: string | null;
+  detail: string | null;
+  hint: string | null;
+}
+
+/**
+ * Lỗi bất kỳ (`ApiError` hoặc lỗi job) → dòng hiển thị. Mã đã có câu tiếng Việt thì câu đó là dòng chính và `detail`
+ * của server vẫn hiện bên dưới (trừ chi tiết thô kiểu `internal_error`); mã chưa có thì `detail` là dòng chính.
+ * `hint` của server luôn hiện.
+ */
+export function errorLines(e: { code?: string | null; detail?: string | null; hint?: string | null }): ErrorLines | null {
+  const code = e.code || null;
+  const detail = e.detail?.trim() || null;
+  const hint = e.hint?.trim() || null;
+  if (!code && !detail && !hint) return null;
+  const mapped = errorCodeText(code);
+  const text = mapped ?? detail ?? (code ? `Lỗi (${code}).` : null);
+  const extra = mapped && detail && detail !== mapped && !(code && RAW_DETAIL_CODES.has(code)) ? detail : null;
+  return { text, detail: extra, hint };
+}
+
+export function jobErrorLines(j: Pick<Job, 'error_code' | 'error_message' | 'hint'>): ErrorLines | null {
+  return errorLines({ code: j.error_code, detail: j.error_message, hint: j.hint });
+}
+
+/** Công đoạn (`stage`) chỉ đúng khi việc đang chạy; việc đã xong/lỗi/chờ không hiện công đoạn cũ. */
+export function jobStageText(j: Pick<Job, 'status' | 'stage'>): string | null {
+  return j.status === 'running' && j.stage ? j.stage : null;
 }
 
 /** Số giây còn lại theo `eta_at`; không có → null. */
@@ -117,10 +153,47 @@ export function jobTitle(j: Pick<Job, 'id' | 'type'>): string {
   return `${jobTypeLabel(j.type)} · #${j.id}`;
 }
 
-/** Job đã gửi tới provider (có id phía provider) → chạy lại là tạo job trả phí mới. */
-export function hasProviderId(j: Pick<Job, 'external_id'>): boolean {
-  return !!j.external_id;
-}
-
 export const CANCELLABLE = new Set(['queued', 'running', 'paused', 'waiting_review', 'waiting_input']);
 export const RETRYABLE = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
+
+/** Hành động chạy lại/xử lý một việc được phép — theo đúng luật của backend (`services/jobs.py`, docs/providers.md). */
+export interface JobActions {
+  /** "Xử lý" (`job.clear_attention`: gửi lại / cho thất bại): việc `needs_attention` hoặc `needs_decision`. */
+  attention: boolean;
+  /** Mở bước chạy lại (`job.retry`). */
+  retry: boolean;
+  /** Chạy lại thường (không `force_new`): backend từ chối việc đã xong mà provider giữ kết quả (`already_succeeded`). */
+  plainRetry: boolean;
+  /** Provider giữ việc (`provider_holds`) → có lựa chọn "Tạo việc trả phí mới" (`force_new`). */
+  forceNew: boolean;
+  /**
+   * Bước "Xử lý" của việc chỉ mang dấu `submitting` và còn `client_ref` đã gửi: gửi lại đúng ref cũ, provider có thể
+   * trả lại việc đã làm bằng prompt cũ → không cho sửa prompt.
+   */
+  lockPatch: boolean;
+}
+
+export function jobActions(
+  j: Pick<Job, 'status' | 'provider_holds' | 'needs_decision' | 'external_id' | 'external_state'>,
+): JobActions {
+  const attention = j.status === 'needs_attention' || !!j.needs_decision;
+  const retry = !attention && RETRYABLE.has(j.status);
+  const holds = !!j.provider_holds;
+  const state = j.external_state ?? {};
+  const markerOnly = !j.external_id && state.state === 'submitting';
+  const storedRef = typeof state.client_ref === 'string' && state.client_ref !== '';
+  return {
+    attention,
+    retry,
+    plainRetry: retry && !(j.status === 'succeeded' && holds),
+    forceNew: retry && holds,
+    lockPatch: attention && markerOnly && storedRef,
+  };
+}
+
+/** Nhãn nút hành động chính trên hàng/drawer; null = không có. */
+export function jobActionLabel(a: JobActions): string | null {
+  if (a.attention) return 'Xử lý';
+  if (a.retry) return a.plainRetry ? 'Thử lại' : 'Tạo việc trả phí mới';
+  return null;
+}

@@ -24,13 +24,15 @@ import { formatCount, formatCredits, formatEta } from '../lib/format';
 import { flattenPages, mergeJobUpdate, overlayKnown, toListParams, type JobFilters } from '../lib/jobList';
 import {
   CANCELLABLE,
+  jobActionLabel,
+  jobActions,
   jobErrorText,
   jobEtaSeconds,
+  jobStageText,
   jobStatusView,
   jobTypeLabel,
   knownJobTypes,
   laneLabel,
-  RETRYABLE,
   STATUS_FILTERS,
 } from '../lib/jobText';
 import { summarize, useJobs } from '../stores/jobs';
@@ -111,8 +113,9 @@ function JobRow({
   const pct = job.status === 'succeeded' ? 100 : job.progress;
   const units = typeof job.cost_estimate.units === 'number' ? job.cost_estimate.units : null;
   const canCancel = !readOnly && CANCELLABLE.has(job.status);
-  const canRetry = !readOnly && (RETRYABLE.has(job.status) || job.status === 'needs_attention');
-  const second = err ?? (job.stage || laneText);
+  const retryLabel = readOnly ? null : jobActionLabel(jobActions(job));
+  const stage = jobStageText(job);
+  const second = err ?? (stage || laneText);
   const onKey = (e: KeyboardEvent) => {
     if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
@@ -150,8 +153,8 @@ function JobRow({
         <span className={cn('min-w-0 truncate text-xs xl:hidden', err ? 'text-state-failed' : 'text-fg-2')}>{second}</span>
       </span>
       <span className={cn('hidden min-w-0 truncate text-xs xl:block', err ? 'text-state-failed' : 'text-fg-2')} title={err ?? undefined}>
-        {err ?? job.stage ?? ''}
-        {!err && !job.stage ? <span className="text-fg-3">{laneText}</span> : null}
+        {err ?? stage ?? ''}
+        {!err && !stage ? <span className="text-fg-3">{laneText}</span> : null}
       </span>
       <span className="hidden xl:block">
         <ProgressBar value={pct} tone={progressTone(job.status)} label={`Tiến độ việc #${job.id}`} />
@@ -161,7 +164,7 @@ function JobRow({
       <span className="hidden text-right font-mono text-xs text-fg-2 tnum xl:block">{units != null ? formatCredits(units) : ''}</span>
       <span className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
         <span className="hidden items-center gap-1 xl:flex">
-          {canRetry ? <IconButton icon={RotateCw} label={job.status === 'needs_attention' ? 'Xử lý' : 'Thử lại'} onClick={onRetry} /> : null}
+          {retryLabel ? <IconButton icon={RotateCw} label={retryLabel} onClick={onRetry} /> : null}
           {canCancel ? <IconButton icon={XOctagon} label="Huỷ việc" onClick={onCancel} /> : null}
           <IconButton icon={ScrollText} label="Xem log" onClick={onOpen} />
         </span>
@@ -170,7 +173,7 @@ function JobRow({
             label={`Hành động cho việc #${job.id}`}
             align="right"
             items={[
-              ...(canRetry ? [{ key: 'retry', label: job.status === 'needs_attention' ? 'Xử lý' : 'Thử lại', icon: RotateCw, onSelect: onRetry }] : []),
+              ...(retryLabel ? [{ key: 'retry', label: retryLabel, icon: RotateCw, onSelect: onRetry }] : []),
               ...(canCancel ? [{ key: 'cancel', label: 'Huỷ việc', icon: XOctagon, onSelect: onCancel }] : []),
               { key: 'log', label: 'Xem log', icon: ScrollText, onSelect: onOpen },
             ]}

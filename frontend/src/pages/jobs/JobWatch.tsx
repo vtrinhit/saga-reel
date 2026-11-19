@@ -7,7 +7,7 @@ import { ProgressBar } from '../../components/ui/ProgressBar';
 import { SkeletonBar } from '../../components/ui/Skeleton';
 import { StatusPill } from '../../components/ui/StatusPill';
 import { formatEta } from '../../lib/format';
-import { jobErrorText, jobEtaSeconds, jobStatusView } from '../../lib/jobText';
+import { jobErrorLines, jobEtaSeconds, jobStageText, jobStatusView, type ErrorLines } from '../../lib/jobText';
 
 export function progressTone(status: string): 'running' | 'done' | 'failed' | 'queued' {
   if (status === 'succeeded') return 'done';
@@ -19,13 +19,14 @@ export function progressTone(status: string): 'running' | 'done' | 'failed' | 'q
 /** Trạng thái + tiến độ + công đoạn + ETA + lỗi của một job (dùng chung: hộp Thử, drawer chi tiết). */
 export function JobStatusBlock({ job }: { job: Job }) {
   const sv = jobStatusView(job);
-  const err = jobErrorText(job);
+  const err = jobErrorLines(job);
+  const stage = jobStageText(job);
   const active = job.status === 'running' || job.status === 'queued';
   return (
     <div className="grid gap-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <StatusPill status={sv.pill} label={sv.label} />
-        {job.stage ? <span className="min-w-0 text-sm text-fg-2">{job.stage}</span> : null}
+        {stage ? <span className="min-w-0 text-sm text-fg-2">{stage}</span> : null}
         {active ? <span className="text-xs text-fg-2 tnum">{formatEta(jobEtaSeconds(job))}</span> : null}
       </div>
       <ProgressBar
@@ -33,15 +34,23 @@ export function JobStatusBlock({ job }: { job: Job }) {
         tone={progressTone(job.status)}
         label={`Tiến độ việc #${job.id}`}
       />
-      {err ? (
-        <div role="alert" className="grid gap-0.5 text-sm">
-          <p className="text-state-failed">
-            {err}
-            {job.error_code ? <span className="ml-1.5 font-mono text-xs text-fg-3">{job.error_code}</span> : null}
-          </p>
-          {job.hint ? <p className="text-fg-2">{job.hint}</p> : null}
-        </div>
+      {err ? <ErrorLinesView lines={err} code={job.error_code} /> : null}
+    </div>
+  );
+}
+
+/** Câu lỗi chính (đỏ) + mã kỹ thuật; bên dưới là chi tiết của server (giữ số liệu) và gợi ý của server. */
+export function ErrorLinesView({ lines, code }: { lines: ErrorLines; code?: string | null }) {
+  return (
+    <div role="alert" className="grid gap-0.5 text-sm">
+      {lines.text ? (
+        <p className="text-state-failed">
+          {lines.text}
+          {code ? <span className="ml-1.5 font-mono text-xs text-fg-3">{code}</span> : null}
+        </p>
       ) : null}
+      {lines.detail ? <p className="text-fg-2">{lines.detail}</p> : null}
+      {lines.hint ? <p className="text-fg-2">{lines.hint}</p> : null}
     </div>
   );
 }
