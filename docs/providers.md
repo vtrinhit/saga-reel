@@ -73,13 +73,14 @@ Thư mục `<kind>/` mới cần một `__init__.py` (có thể rỗng) để `d
 | Bước | `external_id` | `state` | Ghi chú |
 |---|---|---|---|
 | Ngay trước POST | — | `"submitting"` | kèm `fingerprint` (ảnh) hoặc `client_ref` (multikit) |
-| Provider trả id | id | `"submitted"` | ghi log mã job **trước** khi lưu |
+| Provider trả id | id | `"submitted"` | maivideo ghi log mã job **trước** khi lưu |
 | Chắc chắn chưa nhận (từ chối kết nối, cổng 502/503/521/522/523/525/526/530, 429, 4xx) | — | `None` (xoá dấu) | rồi mới ném `TransientError` / `ProviderJobError` |
 | Mập mờ (đã gửi mà mất trả lời, 500/504/520/524, JSON hỏng/thiếu id) | — | giữ `"submitting"` | `JobUnknown` → `needs_attention` |
 
-Lần chạy sau: có `external_id` → chỉ poll, không POST. `state == "submitting"` mà không có `external_id` → hàng đợi
-**không bao giờ** tự chạy lại; mọi kết quả không thành công đưa job về `needs_attention`, người dùng chọn
-`job.clear_attention(action=resubmit|fail)`. Riêng multikit gửi lại được vì GrokTele chống trùng theo `clientRef`.
+Worker (`_final_values`): lần chạy không thành công (kể cả `TransientError`) khi còn `state == "submitting"` mà
+**chưa có** `external_id` → `needs_attention/job_unknown` (giữ dấu), **không bao giờ** tự chạy lại; chỉ
+`job.clear_attention(action=resubmit|fail)` xoá dấu (xoá cả `external_id`/`external_state`). Lần chạy sau có
+`external_id` → maivideo/openai_images chỉ poll/tải lại, không POST.
 
 ## Adapter thật
 
@@ -120,18 +121,20 @@ Lần chạy sau: có `external_id` → chỉ poll, không POST. `state == "subm
   dọc/vuông → 9:16, ngang → 16:9); cần ảnh đầu vào; video có tiếng.
 - **Luồng**: dấu `submitting` + `client_ref` → `POST /grok/jobs` (202 `jobId`) → poll `GET /grok/jobs/{id}` tới
   `succeeded` → file phải có và > 5 KB → probe. `clientRef` ổn định nên POST lại chỉ nhận lại job cũ (`deduplicated`).
-- **Lỗi → trạng thái job**: từ chối kết nối → `provider_unavailable` (xoá dấu); 401/403, 409 `no_account_available` →
-  `provider_unavailable`; 429, cổng 502/503/… → `TransientError` (xoá dấu); 5xx khác hoặc mất kết nối sau khi gửi →
-  `TransientError` giữ dấu; 507/`disk_full` → `provider_disk_full`; 4xx khác → `provider_<kind>` (vd. `moderated`);
-  202 thiếu `jobId` → `needs_attention/multikit_job_unknown`; job bị huỷ phía GrokTele lúc SagaReel tắt →
-  `needs_attention/remote_cancelled`; 404 khi poll → `provider_not_found`; quá `timeout_s` → `TransientError` (chờ
-  tiếp đúng job cũ).
+- **Lỗi → trạng thái job**:
+  - Từ chối kết nối → `failed/provider_unavailable` (xoá dấu); 401/403, 409 `no_account_available` →
+    `failed/provider_unavailable`; 507/`disk_full` → `failed/provider_disk_full`; 4xx khác →
+    `failed/provider_<kind>` (vd. `moderated`) — đều xoá dấu.
+  - 429, cổng 502/503/… → xoá dấu rồi `TransientError` → `queued`, thử lại sau backoff.
+  - 5xx khác hoặc mất kết nối sau khi gửi → `TransientError` **giữ** dấu. Chưa có `external_id` → worker chuyển
+    `needs_attention/job_unknown`; `job.clear_attention(resubmit)` gửi lại với `clientRef` gốc (`run.client_ref` hoặc
+    `sagareel:job:<id>`), nên nếu GrokTele đã tạo job thì chỉ nhận lại job cũ. Đã có `external_id` cũ (lần gửi lại vì
+    file của job cũ không còn) → `queued`, lần sau **tự** POST lại bằng `client_ref` đã lưu.
+  - 202 thiếu `jobId` → `needs_attention/multikit_job_unknown`; job bị huỷ phía GrokTele lúc SagaReel tắt →
+    `needs_attention/remote_cancelled`; 404 khi poll → `failed/provider_not_found`; quá `timeout_s` →
+    `TransientError` → `queued`, chờ tiếp đúng job cũ.
 - **Sức khoẻ**: `GET /health` rồi `GET /grok/accounts`; ≥ 1 tài khoản dùng được → `alive`; không → `dead` kèm
   `label: status (reason)` (đã che số điện thoại/@username, không bao giờ đưa `telegramUser`).
-
-### `openai_compat`, `edge_tts`, `openai_tts`, `openai_stt`
-
-Chưa có trong nhánh này (Task 13/14 chưa gộp); mục tài liệu sẽ bổ sung sau khi gộp.
 
 ## Số liệu đo thực tế (2026-11-19)
 
