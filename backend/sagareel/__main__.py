@@ -1,4 +1,4 @@
-"""`python -m sagareel serve [--host HOST] [--port PORT]`."""
+"""`python -m sagareel serve [--host HOST] [--port PORT]`; lệnh khác chuyển cho CLI (`sagareel.cli.main`)."""
 
 from __future__ import annotations
 
@@ -36,9 +36,9 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "serve":
         return _serve(argv[1:])
-    # Các lệnh khác sẽ được chuyển cho sagareel.cli.main (chưa có ở giai đoạn này).
-    print("Lệnh chưa được hỗ trợ. Hiện chỉ có: python -m sagareel serve [--host HOST] [--port PORT]", file=sys.stderr)
-    return 2
+    from sagareel.cli import main as cli
+
+    return cli.main(argv)
 
 
 if __name__ == "__main__":
