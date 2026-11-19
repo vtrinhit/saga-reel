@@ -128,7 +128,7 @@ export function Episode() {
     }
   }, [mode]);
 
-  const all = clipsQ.data ?? [];
+  const all = useMemo(() => clipsQ.data ?? [], [clipsQ.data]);
   const scenes = scenesQ.data ?? new Map();
   const assets = useMemo(() => new Map((assetsQ.data ?? []).map((a) => [a.id, a])), [assetsQ.data]);
   const jobs = useMemo(() => {

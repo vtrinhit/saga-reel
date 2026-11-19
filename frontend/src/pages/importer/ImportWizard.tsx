@@ -172,7 +172,7 @@ export function ImportWizard() {
     }
   };
 
-  const canPreview = (seqId != null || newTitle.trim() || true) && (source === 'paste' ? !!text.trim() : source === 'file' ? !!file : images.length > 0);
+  const canPreview = (source === 'paste' ? !!text.trim() : source === 'file' ? !!file : images.length > 0);
 
   return (
     <div className="grid min-w-0 gap-4" onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={onDrop}>

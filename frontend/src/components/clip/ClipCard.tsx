@@ -111,7 +111,7 @@ export const ClipCard = memo(function ClipCard({
             Chưa tạo
           </span>
         ) : null}
-        {view.take && view.takeCount > 0 ? (
+        {view.take && (view.takeCount > 1 || view.status === 'approved' || view.agentPick) ? (
           <span
             className={cn(
               'absolute left-2 top-2 rounded-full border-ring px-1.5 py-px font-mono text-2xs tnum',
