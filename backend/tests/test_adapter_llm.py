@@ -322,6 +322,7 @@ EXPECTED_TASKS = {
     "memory_summarize": (False, True), "caption": (False, True), "translate": (False, True),
     "rewrite_prompt": (False, False), "score_take": (True, True),
     "describe_asset": (True, True),  # Task A
+    "clone_scene": (True, True),  # Task K
 }
 
 

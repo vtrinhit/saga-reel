@@ -181,10 +181,11 @@ async def run(
     total_ms: int | None = None,
     on_progress: Callable[[float], None] | None = None,
     cancel: asyncio.Event | None = None,
+    tail_lines: int = STDERR_TAIL_LINES,
 ) -> str:
     """Chạy ffmpeg với `args`; ném `FFmpegError` (code `ffmpeg_failed` / `ffmpeg_timeout` / `ffmpeg_cancelled`).
 
-    Thành công → trả đuôi stderr (≤ `STDERR_TAIL_LINES` dòng), vd. để đọc JSON của `loudnorm print_format=json`.
+    Thành công → trả đuôi stderr (≤ `tail_lines` dòng, mặc định `STDERR_TAIL_LINES`), vd. để đọc JSON của `loudnorm print_format=json`.
     """
     cmd = build_command(args)
     try:
@@ -201,7 +202,7 @@ async def run(
             "Vòng lặp sự kiện hiện tại không chạy được tiến trình con (cần ProactorEventLoop trên Windows).",
             code="ffmpeg_unsupported_loop",
         ) from None
-    tail: deque[str] = deque(maxlen=STDERR_TAIL_LINES)
+    tail: deque[str] = deque(maxlen=tail_lines)
     stdout_task = asyncio.create_task(_read_progress(proc.stdout, total_ms, on_progress))
     stderr_task = asyncio.create_task(_read_tail(proc.stderr, tail))
     wait_task = asyncio.create_task(proc.wait())

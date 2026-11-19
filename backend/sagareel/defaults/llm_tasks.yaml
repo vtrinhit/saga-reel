@@ -111,3 +111,12 @@
   template_key: describe_asset
   needs_vision: true
   json_mode: true
+
+# --- task k ---
+# `analyze_channel` đã có ở đầu file (template viết lại bởi task K); thêm `clone_scene` cho clone từ video.
+- key: clone_scene
+  label: Viết lại cảnh để clone video
+  description: Xem khung hình giữa cảnh của video mẫu, viết prompt ảnh/chuyển động mới thay nhân vật theo bảng thay thế (chỉ phân tích, không chép khung hình).
+  template_key: clone_scene
+  needs_vision: true
+  json_mode: true
