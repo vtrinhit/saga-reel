@@ -1,5 +1,6 @@
 import asyncio
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 import anyio
@@ -32,6 +33,9 @@ EXTRA_TYPES = (
     "test.self_cancel",
     "test.gate_transient",
     "test.submit_hang",
+    "test.submit_then",
+    "test.path_result",
+    "test.stubborn",
 )
 
 
@@ -113,6 +117,33 @@ def extra_handlers(test_job_handlers):
         await asyncio.sleep(30)
         return {}
 
+    @jobs.job_handler("test.submit_then", resumable=True)
+    async def submit_then(run):
+        """Đánh dấu submitting rồi lỗi theo `params.raise` (như POST timeout / provider lỗi / bug)."""
+        probe.order.append(run.job_id)
+        await run.save_external(state="submitting")
+        kind = run.params["raise"]
+        if kind == "transient":
+            raise jobs.TransientError("POST timeout", retry_after=0)
+        if kind == "failed":
+            raise jobs.JobFailed("provider_error", "Provider lỗi.")
+        raise ValueError("bug")
+
+    @jobs.job_handler("test.path_result")
+    async def path_result(run):
+        from pathlib import Path
+
+        return {"p": Path("x.mp4")}
+
+    @jobs.job_handler("test.stubborn")
+    async def stubborn(run):
+        probe.runs[run.job_id] = run
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            await probe.gate(run.job_id).wait()  # nuốt huỷ, chỉ dừng khi test mở cổng
+        return {}
+
     @jobs.job_handler("test.gate_transient")
     async def gate_transient(run):
         probe.runs[run.job_id] = run
@@ -135,7 +166,8 @@ def enqueue_job(services, type, params, *, lane="L", **kw) -> int:
 
 def insert_job(services, type, *, status, lane="L", **cols) -> int:
     with services.db.session() as s:
-        job = Job(type=type, status=status, lane=lane, params={}, **cols)
+        cols.setdefault("params", {})
+        job = Job(type=type, status=status, lane=lane, **cols)
         s.add(job)
         s.flush()
         return job.id
@@ -618,6 +650,191 @@ async def test_final_write_gives_up_and_worker_survives(svc, monkeypatch, caplog
         await w.stop()
     assert status(svc, a) == "running"  # để lần khởi động sau recover() xử lý
     assert f"trạng thái cuối của job #{a}" in caplog.text
+
+
+# --- Fix round 1 --------------------------------------------------------------------------------------------------
+
+MARKER = {"state": "submitting"}
+
+
+@pytest.mark.parametrize("kind", ["transient", "failed", "boom"])
+async def test_failure_while_submitting_goes_to_needs_attention_not_retry(svc, kind):
+    a = enqueue_job(svc, "test.submit_then", {"raise": kind}, max_attempts=5)
+    await run_until_idle(svc)
+    job = load(svc, a)
+    assert (job.status, job.error_code) == ("needs_attention", "job_unknown")
+    assert job.external_state == MARKER and job.next_attempt_at is None
+    assert svc.worker_probe.order == [a]  # chạy đúng một lần, không retry mù
+
+
+async def test_queued_job_with_marker_is_never_started(svc):
+    a = insert_job(svc, "test.sleep", status="queued", external_state=MARKER)
+    ok = insert_job(svc, "test.sleep", status="queued", external_state={"state": "submitting"}, external_id="p-1")
+    await run_until_idle(svc)
+    assert a not in svc.worker_probe.order and ok in svc.worker_probe.order
+    job = load(svc, a)
+    assert (job.status, job.error_code) == ("needs_attention", "job_unknown") and job.external_state == MARKER
+    assert status(svc, ok) == "succeeded"
+
+
+def test_recover_flags_queued_job_with_marker(svc):
+    marked = insert_job(svc, "test.sleep", status="queued", external_state=MARKER)
+    plain = insert_job(svc, "test.sleep", status="queued")
+    svc.worker.recover()
+    assert (status(svc, marked), error_code(svc, marked)) == ("needs_attention", "job_unknown")
+    assert status(svc, plain) == "queued"
+
+
+async def test_non_json_result_fails_job_instead_of_stranding_it(svc):
+    a = enqueue_job(svc, "test.path_result", {})
+    await run_until_idle(svc)
+    job = load(svc, a)
+    assert (job.status, job.error_code) == ("failed", "internal_error") and "JSON" in job.error_message
+    assert job.result == {}
+
+
+async def test_non_db_busy_write_error_is_not_retried_and_fails_job(svc, monkeypatch):
+    monkeypatch.setattr(worker_mod, "FINAL_WRITE_DELAYS", (0.01, 0.01))
+    a = enqueue_job(svc, "test.sleep", {"s": 0})
+    w = svc.worker
+    orig_write = w._write_final
+    calls = []
+
+    def bad_first(job_id, values, logs_):
+        calls.append(values["status"])
+        if len(calls) == 1:
+            raise ValueError("không ghi được")
+        return orig_write(job_id, values, logs_)
+
+    w._write_final = bad_first
+    await run_until_idle(svc)
+    assert calls == ["succeeded", "failed"]  # không thử lại cùng dữ liệu hỏng; ghi failed một lần
+    assert (status(svc, a), error_code(svc, a)) == ("failed", "internal_error")
+
+
+async def test_cancel_fallback_is_atomic_with_dispatch(svc):
+    """Retry `retry_after=0` + huỷ đúng lúc ghi trạng thái cuối: dispatcher không được giành lại job xen giữa."""
+    probe = svc.worker_probe
+    w = svc.worker
+    a = enqueue_job(svc, "test.gate_transient", {}, max_attempts=100)
+    orig_gate = jobs.HANDLERS["test.gate_transient"]
+
+    async def gate_zero(run):
+        probe.order.append(run.job_id)
+        probe.runs[run.job_id] = run
+        if run.attempt == 0:
+            await probe.gate(run.job_id).wait()
+            raise jobs.TransientError("tạm lỗi", retry_after=0)
+        await asyncio.sleep(30)  # lần chạy lại (nếu bị giành lại) chạy lâu → phải bị huỷ
+        return {}
+
+    jobs.HANDLERS["test.gate_transient"] = jobs.HandlerSpec("test.gate_transient", gate_zero, False)
+    release = threading.Event()
+    orig_write, orig_cancel_idle = w._write_final, w._cancel_idle
+
+    def slow_write(*args):
+        release.wait(5)
+        return orig_write(*args)
+
+    def slow_cancel_idle(job_id):
+        time.sleep(0.2)  # cửa sổ đủ rộng để dispatcher (nếu không bị khoá) giành lại job
+        return orig_cancel_idle(job_id)
+
+    w._write_final, w._cancel_idle = slow_write, slow_cancel_idle
+    try:
+        await w.start()
+        await wait_until(lambda: a in probe.runs)
+        run = probe.runs[a]
+        probe.gate(a).set()
+        while not run.task.done():
+            await asyncio.sleep(0.01)
+        pending = asyncio.create_task(w.cancel(a))
+        await asyncio.sleep(0.05)
+        release.set()
+        assert await pending is True
+        await asyncio.sleep(0.2)
+        assert status(svc, a) == "cancelled" and w.running_count() == 0
+    finally:
+        release.set()
+        jobs.HANDLERS["test.gate_transient"] = orig_gate
+        await w.stop()
+    assert status(svc, a) == "cancelled"
+
+
+async def test_launch_failure_returns_job_to_queue(svc, monkeypatch, caplog):
+    a = enqueue_job(svc, "test.sleep", {"s": 0})
+    real = worker_mod.JobRun
+    boom = []
+
+    def flaky_jobrun(worker, data):
+        if not boom:
+            boom.append(1)
+            raise RuntimeError("không dựng được JobRun")
+        return real(worker, data)
+
+    monkeypatch.setattr(worker_mod, "JobRun", flaky_jobrun)
+    await run_until_idle(svc)
+    assert boom and status(svc, a) == "succeeded"  # không thành dòng running mồ côi
+    assert f"Không khởi chạy được job #{a}" in caplog.text
+
+
+async def test_workdir_failure_claims_nothing(svc, caplog):
+    jobs_dir = svc.settings.cache_dir / "jobs"
+    jobs_dir.write_text("not a directory", encoding="utf-8")  # mkdir workdir sẽ lỗi
+    a = enqueue_job(svc, "test.sleep", {"s": 0})
+    await svc.worker.start()
+    try:
+        await asyncio.sleep(0.2)
+        assert status(svc, a) == "queued"
+        jobs_dir.unlink()
+        await wait_until(lambda: status(svc, a) == "succeeded")
+    finally:
+        await svc.worker.stop()
+    assert "Vòng điều phối" in caplog.text
+
+
+async def test_cancel_wait_is_bounded(svc, monkeypatch):
+    monkeypatch.setattr(worker_mod, "CANCEL_WAIT_S", 0.1)
+    a = enqueue_job(svc, "test.stubborn", {})
+    await svc.worker.start()
+    try:
+        await wait_until(lambda: a in svc.worker_probe.runs)
+        t0 = time.monotonic()
+        assert await svc.worker.cancel(a) is True
+        assert time.monotonic() - t0 < 1
+        assert status(svc, a) == "running"  # handler chưa dừng
+        svc.worker_probe.gate(a).set()
+        await wait_until(lambda: status(svc, a) == "cancelled")
+    finally:
+        svc.worker_probe.gate(a).set()
+        await svc.worker.stop()
+
+
+async def test_retry_checks_status_first_and_allows_marker_with_external_id(svc, op_ctx):
+    q = insert_job(svc, "test.sleep", status="queued", external_state=MARKER)
+    with pytest.raises(AppError) as ei:
+        await ops.invoke("job.retry", {"ids": [q]}, op_ctx)
+    assert "trạng thái 'queued'" in ei.value.detail
+    known = insert_job(svc, "test.sleep", status="failed", external_id="p-9", external_state=MARKER)
+    out = await ops.invoke("job.retry", {"ids": [known]}, op_ctx)
+    assert out["items"][0]["status"] == "queued" and out["items"][0]["external_id"] is None
+
+
+async def test_clear_attention_resubmit_patch_and_fail_rules(svc, op_ctx):
+    a = insert_job(svc, "test.sleep", status="needs_attention", external_state=MARKER, params={"prompt": "cũ"})
+    out = await ops.invoke("job.clear_attention",
+                           {"id": a, "action": "resubmit", "params_patch": {"prompt": "mới"}}, op_ctx)
+    assert out["status"] == "queued" and out["params"] == {"prompt": "mới"}
+    b = insert_job(svc, "test.sleep", status="needs_attention", external_state=MARKER,
+                   error_code="job_unknown", hint="gợi ý cũ")
+    out = await ops.invoke("job.clear_attention", {"id": b, "action": "fail"}, op_ctx)
+    assert (out["status"], out["error_code"], out["hint"]) == ("failed", "cleared_by_user", None)
+    done = insert_job(svc, "test.sleep", status="succeeded", external_state=MARKER)
+    for action in ("fail", "resubmit"):
+        with pytest.raises(AppError) as ei:
+            await ops.invoke("job.clear_attention", {"id": done, "action": action}, op_ctx)
+        assert ei.value.code == "conflict"
+    assert status(svc, done) == "succeeded"
 
 
 # --- Sự kiện, tiến độ, log ------------------------------------------------------------------------------------------

@@ -219,6 +219,9 @@ def job_resume_all(ctx: OpContext, p: EmptyParams) -> dict:
 class JobClearAttentionParams(BaseModel):
     id: int
     action: Literal["resubmit", "fail"]
+    params_patch: dict[str, Any] | None = Field(
+        default=None, description="Chỉ với resubmit: gộp vào params trước khi gửi lại"
+    )
 
 
 @op(
@@ -229,7 +232,7 @@ class JobClearAttentionParams(BaseModel):
 )
 def job_clear_attention(ctx: OpContext, p: JobClearAttentionParams) -> dict:
     with ctx.services.db.session(immediate=True) as s:
-        data = jobs.job_dict(jobs.clear_attention(s, p.id, p.action))
+        data = jobs.job_dict(jobs.clear_attention(s, p.id, p.action, p.params_patch))
     jobs.notify(ctx.services, data)
     return data
 

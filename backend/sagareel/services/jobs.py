@@ -7,8 +7,10 @@ qua `anyio.to_thread.run_sync`.
 Chống tạo trùng job tốn tiền:
 - `enqueue(..., client_ref=...)` trả lại job **chưa kết thúc** cùng `client_ref` thay vì tạo mới (chỉ an toàn khi
   gọi trong phiên giữ khoá ghi — `db.session(immediate=True)` hoặc session của UnitOfWork; `submit` làm sẵn).
-- Retry tạm thời, khôi phục sau khởi động lại và tắt app đều **giữ** `external_id`/`external_state`. Chỉ
-  `clear_attention(..., "resubmit")` mới xoá dấu `submitting`; `retry_job` từ chối job `needs_attention`.
+- Retry tạm thời, khôi phục sau khởi động lại và tắt app đều **giữ** `external_id`/`external_state`.
+- Dấu `submitting` chưa có `external_id` (không rõ provider đã nhận POST chưa): worker không bao giờ chạy lại job đó
+  (mọi kết quả không thành công, job `queued` mang dấu, khôi phục/tắt app → `needs_attention`/`job_unknown`, giữ dấu).
+  Chỉ `clear_attention` (`resubmit` hoặc `fail`) mới xoá dấu; `retry_job` từ chối job mang dấu và job `needs_attention`.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from sagareel.core.errors import Conflict, NotFound
@@ -45,6 +47,17 @@ JOB_UNKNOWN_HINT = (
     "Kiểm tra phía provider xem job đã được tạo chưa, rồi dùng job.clear_attention: "
     "“resubmit” để xoá đánh dấu và gửi lại, hoặc “fail” để bỏ."
 )
+
+
+def job_unknown_values(detail: str) -> dict[str, Any]:
+    """Giá trị cột đưa job mang dấu `submitting` sang `needs_attention` (giữ nguyên dấu và `external_state`)."""
+    return {
+        "status": "needs_attention",
+        "error_code": "job_unknown",
+        "error_message": f"{detail} Không rõ provider đã nhận job hay chưa.",
+        "hint": JOB_UNKNOWN_HINT,
+        "next_attempt_at": None,
+    }
 
 
 def has_submit_marker(external_id: str | None, external_state: dict | None) -> bool:
@@ -325,16 +338,16 @@ def retry_job(session: Session, job_id: int, params_patch: dict | None = None) -
     Dùng lại chính dòng job (id giữ nguyên cho UI); kết quả cũ, trạng thái provider cũ bị xoá — đây là lần gửi mới.
     """
     job = get_job(session, job_id)
-    if has_submit_marker(job.external_id, job.external_state):
-        raise Conflict(
-            f"Job #{job_id} có thể đã được gửi tới provider (đánh dấu submitting, chưa có external_id).",
-            hint=JOB_UNKNOWN_HINT,
-            extra={"job_id": job_id},
-        )
     if job.status not in RETRYABLE:
         raise Conflict(
             f"Job #{job_id} đang ở trạng thái '{job.status}', không chạy lại được.",
             hint="Chỉ chạy lại job đã xong, thất bại, đã huỷ hoặc bị gián đoạn; job cần xử lý dùng job.clear_attention.",
+        )
+    if has_submit_marker(job.external_id, job.external_state):  # gửi dở, không rõ kết quả → không được gửi lại mù
+        raise Conflict(
+            f"Job #{job_id} có thể đã được gửi tới provider (đánh dấu submitting, chưa có external_id).",
+            hint=JOB_UNKNOWN_HINT,
+            extra={"job_id": job_id},
         )
     if job.client_ref is not None:
         twin = session.scalars(
@@ -371,32 +384,63 @@ def prioritize(session: Session, job_ids: list[int], priority: int) -> list[Job]
     return changed
 
 
-def clear_attention(session: Session, job_id: int, action: Literal["resubmit", "fail"]) -> Job:
+# Job đã dừng (không phải succeeded) còn mang dấu submitting — vd. bị huỷ đúng lúc đang gửi.
+_MARKED_IDLE = frozenset({"failed", "cancelled", "interrupted"})
+
+
+def clear_attention(
+    session: Session, job_id: int, action: Literal["resubmit", "fail"], params_patch: dict | None = None
+) -> Job:
     """Người dùng/agent quyết định cho job `needs_attention`: xoá dấu provider rồi gửi lại, hoặc cho thất bại.
 
-    Đây là đường **duy nhất** xoá dấu `submitting`; nên cũng nhận job đã dừng (thất bại/huỷ/gián đoạn) còn mang dấu
-    đó (vd. bị huỷ đúng lúc đang gửi) — `job.retry` từ chối các job này.
+    Đây là đường **duy nhất** xoá dấu `submitting`; nên cũng nhận job đã dừng (thất bại/huỷ/gián đoạn — không bao giờ
+    `succeeded`) còn mang dấu đó — `job.retry` từ chối các job này. `resubmit` đặt `attempt=0` và gộp `params_patch`;
+    `fail` ghi `error_code="cleared_by_user"`.
     """
     job = get_job(session, job_id)
-    marked_idle = job.status in RETRYABLE and has_submit_marker(job.external_id, job.external_state)
+    marked_idle = job.status in _MARKED_IDLE and has_submit_marker(job.external_id, job.external_state)
     if job.status != "needs_attention" and not marked_idle:
         raise Conflict(
             f"Job #{job_id} không ở trạng thái cần xử lý (hiện là '{job.status}').",
-            hint="Chỉ dùng cho job needs_attention hoặc job đã dừng còn đánh dấu submitting.",
+            hint="Chỉ dùng cho job needs_attention hoặc job đã dừng (không thành công) còn đánh dấu submitting.",
         )
-    if action == "resubmit":
-        job.attempt = 0
     job.external_id = None
     job.external_state = {}
     if action == "resubmit":
         _reset_for_run(job)
+        job.attempt = 0
+        if params_patch:
+            job.params = {**(job.params or {}), **params_patch}
         add_log(session, job.id, "warning", "Đã xoá đánh dấu phía provider và gửi lại theo quyết định của người dùng.")
     else:
         job.status = "failed"
+        job.error_code = "cleared_by_user"
+        job.error_message = "Người dùng đã xoá đánh dấu phía provider và cho job thất bại."
+        job.hint = None
+        job.next_attempt_at = None
         job.finished_at = utcnow()
         add_log(session, job.id, "warning", "Đánh dấu thất bại theo quyết định của người dùng.")
     session.flush()
     return job
+
+
+def flag_marked_queued(session: Session) -> list[Job]:
+    """Job `queued` mang dấu `submitting` chưa có `external_id` → `needs_attention` (không bao giờ được chạy lại mù).
+
+    Worker gọi trước mỗi lần giành job và khi khôi phục; người gọi commit rồi phát `job.updated`.
+    """
+    marked = (
+        (Job.status == "queued")
+        & Job.external_id.is_(None)
+        & (func.json_extract(Job.external_state, f"$.{SUBMIT_MARKER_KEY}") == SUBMIT_MARKER)
+    )
+    rows = list(session.scalars(select(Job).where(marked).order_by(Job.id)))
+    for job in rows:
+        for k, v in job_unknown_values("Job đang chờ chạy lại nhưng còn đánh dấu đang gửi tới provider.").items():
+            setattr(job, k, v)
+        add_log(session, job.id, "warning", "Job còn đánh dấu submitting (chưa có external_id); không chạy lại.")
+    session.flush()
+    return rows
 
 
 def cancel_idle(session: Session, job_id: int) -> Job | None:

@@ -16,6 +16,8 @@ Cấu trúc:
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import json
 import logging
 import random
 import time
@@ -27,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 
 import anyio
 from sqlalchemy import select, update
+from sqlalchemy.exc import OperationalError
 
 from sagareel.core.errors import AppError
 from sagareel.db.base import utcnow
@@ -43,7 +46,8 @@ logger = logging.getLogger("sagareel.worker")
 
 PROGRESS_INTERVAL = 0.25  # tối đa 4 sự kiện tiến độ/giây/job
 STOP_GRACE_S = 10.0
-FINAL_WRITE_DELAYS = (0.1, 0.25, 0.5, 1.0, 2.0)  # chờ giữa các lần thử lại ghi trạng thái cuối
+FINAL_WRITE_DELAYS = (0.1, 0.25, 0.5, 1.0, 2.0)  # chờ giữa các lần thử lại ghi trạng thái cuối khi DB bận
+CANCEL_WAIT_S = 15.0  # `cancel()` chờ handler dừng tối đa chừng này
 _LEVELS = ("debug", "info", "warning", "error")
 
 
@@ -65,12 +69,7 @@ def _interrupt_values(
     """
     if jobs.has_submit_marker(external_id, external_state):
         return (
-            {
-                "status": "needs_attention",
-                "error_code": "job_unknown",
-                "error_message": "Ứng dụng dừng lúc đang gửi job tới provider; không rõ provider đã nhận job hay chưa.",
-                "hint": jobs.JOB_UNKNOWN_HINT,
-            },
+            jobs.job_unknown_values("Ứng dụng dừng lúc đang gửi job tới provider."),
             "warning",
             "Ứng dụng dừng lúc đang gửi job tới provider (đánh dấu submitting, chưa có external_id); cần kiểm tra.",
         )
@@ -328,8 +327,10 @@ class Worker:
     def recover(self) -> None:
         """Gọi một lần khi khởi động, trước `start()` (đồng bộ — chạy trong thread).
 
-        Job `running` còn sót từ lần chạy trước: handler `resumable` → `queued` (giữ `external_*`, không tăng
-        `attempt`); còn lại → `interrupted` (`error_code="interrupted"`). Nạp lại cờ tạm dừng toàn bộ.
+        Job `running` còn sót từ lần chạy trước: đánh dấu `submitting` chưa có `external_id` → `needs_attention`
+        (`job_unknown`); handler `resumable` → `queued` (giữ `external_*`, không tăng `attempt`); còn lại →
+        `interrupted` (`error_code="interrupted"`). Job `queued` mang dấu đó cũng → `needs_attention`. Nạp lại cờ
+        tạm dừng toàn bộ.
         """
         with self.services.db.session(immediate=True) as s:
             self.paused = jobs.is_paused(s)
@@ -340,6 +341,7 @@ class Worker:
                     setattr(job, k, v)
                 jobs.add_log(s, job.id, level, msg)
             s.flush()
+            rows += jobs.flag_marked_queued(s)
             datas = [jobs.job_dict(j) for j in rows]
         for data in datas:
             self._publish(data)
@@ -350,34 +352,32 @@ class Worker:
         """Huỷ job: đang chạy → đặt `run.cancelled`, huỷ task handler, chờ ghi `cancelled`; chưa chạy → `cancelled`.
 
         Trả True nếu job đã/đang bị huỷ bởi yêu cầu này, False nếu job đã kết thúc (hoặc không tồn tại).
+        Chờ handler dừng tối đa `CANCEL_WAIT_S` giây (quá hạn thì trả về; trạng thái `cancelled` vẫn được ghi khi
+        handler thật sự dừng).
         """
-        run: JobRun | None = None
-        if self._lock is not None:
-            async with self._lock:  # loại trừ cửa sổ "DB đã running nhưng task chưa đăng ký"
+        for _ in range(3):
+            # Dưới khoá điều phối: không lần giành job nào chen giữa lúc tra `_runs` và compare-and-set.
+            async with self._lock if self._lock is not None else contextlib.nullcontext():
                 run = self._runs.get(job_id)
                 if run is None:
                     data = await anyio.to_thread.run_sync(self._cancel_idle, job_id)
-        else:
-            data = await anyio.to_thread.run_sync(self._cancel_idle, job_id)
-        if run is None:
-            if data is None:
-                return False
-            self._publish(data)
-            return True
-        if not run.task.done() and not run.cancel_requested:
-            run.cancel_requested = True
-            run.cancelled.set()
-            run.task.cancel()
-        await asyncio.wait([run.supervisor])
-        if run.cancel_requested:
-            return True
-        # Handler vừa xong trước khi kịp huỷ: lần ghi cuối có thể đưa job về queued (retry) / needs_attention →
-        # vẫn huỷ được bằng compare-and-set như job chưa chạy.
-        data = await anyio.to_thread.run_sync(self._cancel_idle, job_id)
-        if data is None:
-            return False
-        self._publish(data)
-        return True
+                    if data is None:
+                        return False
+                    self._publish(data)
+                    return True
+            if not run.task.done() and not run.cancel_requested:
+                run.cancel_requested = True
+                run.cancelled.set()
+                run.task.cancel()
+            done, _ = await asyncio.wait([run.supervisor], timeout=CANCEL_WAIT_S)
+            if not done:
+                logger.warning("Job #%s chưa dừng sau %.0f s kể từ khi huỷ", job_id, CANCEL_WAIT_S)
+                return run.cancel_requested
+            if run.cancel_requested:
+                return True
+            # Handler vừa tự xong trước khi kịp huỷ: lần ghi cuối có thể đưa job về queued (retry) /
+            # needs_attention, thậm chí đã được giành lại thành lần chạy mới → lặp lại để huỷ đúng trạng thái mới.
+        return False
 
     def _cancel_idle(self, job_id: int) -> dict | None:
         with self.services.db.session() as s:
@@ -411,12 +411,24 @@ class Worker:
             if self._stopping and claimed:  # đang tắt: trả job vừa giành về hàng đợi, không chạy
                 await anyio.to_thread.run_sync(self._unclaim, [d["id"] for d in claimed])
                 return
-            for data in claimed:
-                self._launch(data)
+            for i, data in enumerate(claimed):
+                try:
+                    self._launch(data)
+                except Exception:  # không để lại dòng "running" mồ côi: trả phần chưa chạy về hàng đợi
+                    logger.exception("Không khởi chạy được job #%s; trả về hàng đợi", data["id"])
+                    await anyio.to_thread.run_sync(self._unclaim, [d["id"] for d in claimed[i:]])
+                    break
 
     def _claim(self, counts: dict[str, int]) -> list[dict]:
-        """(Thread) Giành job tới hạn cho từng lane còn chỗ. `lane_limit` gọi ngoài transaction ghi."""
+        """(Thread) Giành job tới hạn cho từng lane còn chỗ. `lane_limit` gọi ngoài transaction ghi.
+
+        Job `queued` mang dấu `submitting` chưa có `external_id` không bao giờ được giành: chuyển `needs_attention`.
+        """
         db = self.services.db
+        with db.session() as s:
+            flagged = [jobs.job_dict(j) for j in jobs.flag_marked_queued(s)]
+        for data in flagged:
+            self._publish(data)
         now = utcnow()
         due = (Job.status == "queued") & (Job.next_attempt_at.is_(None) | (Job.next_attempt_at <= now))
         with db.session() as s:
@@ -439,6 +451,8 @@ class Worker:
                     select(Job.id).where(due, Job.lane == lane).order_by(Job.priority.desc(), Job.id).limit(n)
                 ))
                 for job_id in ids:
+                    # Thư mục làm việc tạo trước khi giành: lỗi ở đây huỷ cả transaction, không để dòng running mồ côi.
+                    (self.services.settings.cache_dir / "jobs" / str(job_id)).mkdir(parents=True, exist_ok=True)
                     res = s.execute(
                         update(Job)
                         .where(Job.id == job_id, Job.status == "queued")
@@ -450,8 +464,6 @@ class Worker:
                         job = s.get(Job, job_id)
                         s.refresh(job)
                         claimed.append(jobs.job_dict(job))
-        for data in claimed:
-            (self.services.settings.cache_dir / "jobs" / str(data["id"])).mkdir(parents=True, exist_ok=True)
         return claimed
 
     def _unclaim(self, ids: list[int]) -> None:
@@ -464,7 +476,7 @@ class Worker:
             )
 
     def _launch(self, data: dict) -> None:
-        run = JobRun(self, data)
+        run = JobRun(self, data)  # có thể ném trước khi đăng ký gì (dispatch trả job về hàng đợi)
         self._runs[run.job_id] = run
         self._lane_counts[run.lane] += 1
         self._publish(data)
@@ -513,27 +525,65 @@ class Worker:
         except Exception:
             logger.exception("Không ghi được trạng thái cuối của job #%s", run.job_id)
         finally:
-            self._runs.pop(run.job_id, None)
+            if self._runs.get(run.job_id) is run:  # job có thể đã được giành lại thành lần chạy mới
+                del self._runs[run.job_id]
+            self.wake()  # job vừa về queued (retry_after nhỏ) được giành ngay
 
     async def _write_final_with_retry(
         self, job_id: int, values: dict[str, Any], logs: list[tuple[str, str]]
     ) -> dict | None:
-        """Ghi trạng thái cuối; lỗi (vd. DB bận quá busy_timeout) → chờ ngắn (không giữ transaction) rồi thử lại.
+        """Ghi trạng thái cuối.
 
-        Hết lượt → ném lỗi (giám sát ghi log); job còn `running` tới lần khởi động sau, `recover()` xử lý.
+        - DB bận/khoá (`OperationalError`) → chờ ngắn (không giữ transaction) rồi thử lại; hết lượt → ném lỗi (giám sát
+          ghi log), job còn `running` tới lần khởi động sau, `recover()` xử lý.
+        - Lỗi khác (dữ liệu không ghi được…) → không thử lại vô ích: ghi một lần `failed`/`internal_error`.
         """
+        try:
+            return await self._write_final_busy_retry(job_id, values, logs)
+        except OperationalError:
+            raise
+        except Exception as e:
+            tb = "".join(traceback.format_exception(e))
+            logger.error("Không ghi được kết quả của job #%s; đánh dấu thất bại:\n%s", job_id, tb)
+            fail = {
+                "status": "failed", "error_code": "internal_error",
+                "error_message": f"Không ghi được kết quả job: {type(e).__name__}: {e}",
+                "hint": "Xem nhật ký job để biết chi tiết.", "finished_at": utcnow(), "result": {},
+            }
+            return await self._write_final_busy_retry(job_id, fail, [("error", tb)])
+
+    async def _write_final_busy_retry(
+        self, job_id: int, values: dict[str, Any], logs: list[tuple[str, str]]
+    ) -> dict | None:
         for delay in (*FINAL_WRITE_DELAYS, None):
             try:
                 return await anyio.to_thread.run_sync(self._write_final, job_id, values, logs)
-            except Exception:
+            except OperationalError:
                 if delay is None:
                     raise
-                logger.warning("Ghi trạng thái cuối của job #%s lỗi; thử lại sau %.2f s", job_id, delay,
+                logger.warning("DB bận khi ghi trạng thái cuối của job #%s; thử lại sau %.2f s", job_id, delay,
                                exc_info=True)
                 await asyncio.sleep(delay)
         return None  # không tới được
 
     def _final_values(self, run: JobRun, outcome: tuple) -> tuple[dict[str, Any], list[tuple[str, str]]]:
+        values, logs = self._outcome_values(run, outcome)
+        # Chống tạo trùng job tốn tiền: lần chạy không thành công khi còn dấu `submitting` chưa có `external_id`
+        # (vd. timeout đúng lúc POST) → không bao giờ tự chạy lại; chờ người quyết định. Huỷ chủ động vẫn là
+        # `cancelled` (dấu được giữ: `job.retry` từ chối, chỉ `job.clear_attention` xử lý).
+        if (
+            values["status"] not in ("succeeded", "cancelled", "needs_attention")
+            and jobs.has_submit_marker(run.external_id, run.external)
+        ):
+            detail = values.get("error_message") or values["status"]
+            values = {
+                **jobs.job_unknown_values(f"Lần chạy lỗi khi đang gửi job tới provider ({detail})."),
+                "attempt": values.get("attempt", run.attempt),
+            }
+            logs = [*logs, ("warning", "Còn đánh dấu submitting (chưa có external_id): không tự chạy lại; cần kiểm tra.")]
+        return values, logs
+
+    def _outcome_values(self, run: JobRun, outcome: tuple) -> tuple[dict[str, Any], list[tuple[str, str]]]:
         now = utcnow()
         kind = outcome[0]
         if kind == "cancelled":
@@ -546,11 +596,17 @@ class Worker:
             if result is None:
                 result = {}
             if isinstance(result, dict):
+                try:
+                    json.dumps(result, ensure_ascii=False)
+                except (TypeError, ValueError) as e:
+                    outcome = ("error", TypeError(f"Kết quả job không chuyển được sang JSON: {e}"))
+            if outcome[0] == "ok" and isinstance(result, dict):
                 return {
                     "status": "succeeded", "result": result, "progress": 100.0, "eta_at": None,
                     "error_code": None, "error_message": None, "hint": None, "finished_at": now,
                 }, []
-            outcome = ("error", TypeError(f"Handler job phải trả dict, nhận {type(result).__name__}"))
+            if outcome[0] == "ok":
+                outcome = ("error", TypeError(f"Handler job phải trả dict, nhận {type(result).__name__}"))
         e = outcome[1]
         if isinstance(e, TransientError):
             attempt = run.attempt + 1
