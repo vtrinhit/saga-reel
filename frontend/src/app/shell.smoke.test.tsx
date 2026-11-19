@@ -64,7 +64,7 @@ describe('shell (smoke)', () => {
       password_set: { owner: false, viewer: false },
     });
     await render('/projects');
-    expect(container.textContent).toContain('Chưa có project');
+    expect(container.textContent).toContain('Chưa có dự án nào.');
     expect(container.textContent).toContain('Máy nhà');
   });
 
