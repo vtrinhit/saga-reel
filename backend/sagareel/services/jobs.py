@@ -1,0 +1,401 @@
+"""Hàng đợi job bền trong SQLite (spec §5.5): trạng thái, lỗi điều khiển worker, registry handler, thao tác trên DB.
+
+Dòng `job`/`job_log` là dữ liệu sổ sách của máy, không phải dữ liệu người dùng: ghi bằng transaction ngắn của
+`db.session()` (không UnitOfWork, không revision). Hàm ở đây là đồng bộ và nhận `Session`; code async gọi chúng
+qua `anyio.to_thread.run_sync`.
+
+Chống tạo trùng job tốn tiền:
+- `enqueue(..., client_ref=...)` trả lại job **chưa kết thúc** cùng `client_ref` thay vì tạo mới (chỉ an toàn khi
+  gọi trong phiên giữ khoá ghi — `db.session(immediate=True)` hoặc session của UnitOfWork; `submit` làm sẵn).
+- Retry tạm thời, khôi phục sau khởi động lại và tắt app đều **giữ** `external_id`/`external_state`. Chỉ
+  `clear_attention(..., "resubmit")` mới xoá dấu `submitting`; `retry_job` từ chối job `needs_attention`.
+"""
+
+from __future__ import annotations
+
+import inspect
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Literal
+
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
+
+from sagareel.core.errors import Conflict, NotFound
+from sagareel.db.base import utcnow
+from sagareel.db.models import Job, JobLog
+from sagareel.services import system_state
+
+if TYPE_CHECKING:
+    from sagareel.container import Services
+    from sagareel.services.worker import JobRun
+
+TERMINAL = frozenset({"succeeded", "failed", "cancelled"})
+ACTIVE = frozenset({"queued", "running"})  # còn tự tiến triển mà không cần ai làm gì
+STATUSES = TERMINAL | ACTIVE | {"waiting_review", "waiting_input", "paused", "interrupted", "needs_attention"}
+# Trạng thái được "chạy lại" (đặt lại thành queued). needs_attention đi qua `clear_attention`.
+RETRYABLE = frozenset({"succeeded", "failed", "cancelled", "interrupted"})
+
+PAUSED_KEY = "jobs_paused"
+
+
+# --- Lỗi điều khiển worker ------------------------------------------------------------------------------------------
+
+
+class TransientError(Exception):
+    """Lỗi tạm thời (429/502/503/timeout/mạng): worker đưa job về `queued` và thử lại sau backoff.
+
+    `retry_after` (giây) tôn trọng `Retry-After`/`retryAt` của provider; `0` nghĩa là thử lại ngay.
+    """
+
+    def __init__(self, msg: str, retry_after: float | None = None) -> None:
+        super().__init__(msg)
+        self.msg = msg
+        self.retry_after = retry_after
+
+
+class JobFailed(Exception):
+    """Job thất bại có chủ đích: worker ghi `failed` với đúng `code`/`msg`/`hint` của instance (lớp con dùng mã riêng)."""
+
+    def __init__(self, code: str, msg: str, hint: str | None = None) -> None:
+        super().__init__(msg)
+        self.code = code
+        self.msg = msg
+        self.hint = hint
+
+
+class NeedsAttention(Exception):
+    """Cần người dùng/agent quyết định (vd. đã đánh dấu `submitting` nhưng không có `external_id`) → `needs_attention`."""
+
+    def __init__(self, code: str, msg: str, hint: str | None = None) -> None:
+        super().__init__(msg)
+        self.code = code
+        self.msg = msg
+        self.hint = hint
+
+
+class JobStateLost(Exception):
+    """`save_external` không ghi được vì job không còn `running` (đã bị huỷ/đặt lại bên ngoài).
+
+    Handler **không** được đi tiếp (vd. gửi POST tốn tiền) khi gặp lỗi này.
+    """
+
+
+# --- Registry handler ---------------------------------------------------------------------------------------------
+
+Handler = Callable[["JobRun"], Awaitable[dict | None]]
+
+
+@dataclass(frozen=True)
+class HandlerSpec:
+    type: str
+    fn: Handler
+    resumable: bool
+
+
+HANDLERS: dict[str, HandlerSpec] = {}
+
+
+def job_handler(type: str, *, resumable: bool = False) -> Callable[[Handler], Handler]:  # noqa: A002 — tên theo interface
+    """Đăng ký `async def h(run: JobRun) -> dict` cho loại job `type`.
+
+    `resumable=True`: handler nối lại được sau khi app khởi động lại (dựa vào `run.external_id`/`run.external`
+    hoặc `client_ref` ổn định) → job `running` bị bỏ dở được đưa về `queued` thay vì `interrupted`.
+    """
+
+    def decorator(fn: Handler) -> Handler:
+        if not inspect.iscoroutinefunction(fn):
+            raise TypeError(f"Handler job {type!r} phải là async def")
+        if type in HANDLERS:
+            raise ValueError(f"Handler job {type!r} đã được đăng ký")
+        HANDLERS[type] = HandlerSpec(type=type, fn=fn, resumable=resumable)
+        return fn
+
+    return decorator
+
+
+def unregister_handler(type: str) -> None:  # noqa: A002
+    HANDLERS.pop(type, None)
+
+
+def get_handler(type: str) -> HandlerSpec | None:  # noqa: A002
+    return HANDLERS.get(type)
+
+
+# --- Serialize ----------------------------------------------------------------------------------------------------
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+def job_dict(job: Job) -> dict[str, Any]:
+    """Hình JSON của một job (op trả về, payload sự kiện `job.updated`)."""
+    return {
+        "id": job.id,
+        "type": job.type,
+        "status": job.status,
+        "priority": job.priority,
+        "lane": job.lane,
+        "project_id": job.project_id,
+        "sequence_id": job.sequence_id,
+        "clip_id": job.clip_id,
+        "parent_id": job.parent_id,
+        "params": dict(job.params or {}),
+        "progress": job.progress,
+        "stage": job.stage,
+        "eta_at": _iso(job.eta_at),
+        "client_ref": job.client_ref,
+        "external_id": job.external_id,
+        "external_state": dict(job.external_state or {}),
+        "attempt": job.attempt,
+        "max_attempts": job.max_attempts,
+        "next_attempt_at": _iso(job.next_attempt_at),
+        "error_code": job.error_code,
+        "error_message": job.error_message,
+        "hint": job.hint,
+        "result": dict(job.result or {}),
+        "cost_estimate": dict(job.cost_estimate or {}),
+        "cost_actual": dict(job.cost_actual or {}),
+        "created_at": _iso(job.created_at),
+        "started_at": _iso(job.started_at),
+        "finished_at": _iso(job.finished_at),
+        "updated_at": _iso(job.updated_at),
+    }
+
+
+def log_dict(row: JobLog) -> dict[str, Any]:
+    return {"id": row.id, "job_id": row.job_id, "level": row.level, "message": row.message, "at": _iso(row.created_at)}
+
+
+# --- Tạo job ------------------------------------------------------------------------------------------------------
+
+
+def enqueue(
+    session: Session,
+    type: str,  # noqa: A002
+    params: dict,
+    *,
+    lane: str,
+    priority: int = 0,
+    project_id: int | None = None,
+    sequence_id: int | None = None,
+    clip_id: int | None = None,
+    parent_id: int | None = None,
+    client_ref: str | None = None,
+    max_attempts: int = 3,
+    cost_estimate: dict | None = None,
+) -> Job:
+    """Thêm job `queued`. Có job chưa kết thúc cùng `client_ref` → trả job đó (idempotent).
+
+    Kiểm tra-rồi-chèn chỉ idempotent khi phiên giữ khoá ghi (`db.session(immediate=True)` / UnitOfWork). Người gọi
+    commit; sau commit nên phát `job.updated` và `worker.wake()` (xem `submit`). Không gọi thì worker vẫn thấy job ở
+    nhịp tick kế tiếp.
+    """
+    if client_ref is not None:
+        existing = session.scalars(
+            select(Job).where(Job.client_ref == client_ref, Job.status.not_in(TERMINAL)).order_by(Job.id).limit(1)
+        ).first()
+        if existing is not None:
+            return existing
+    job = Job(
+        type=type,
+        status="queued",
+        priority=priority,
+        lane=lane,
+        project_id=project_id,
+        sequence_id=sequence_id,
+        clip_id=clip_id,
+        parent_id=parent_id,
+        params=dict(params),
+        client_ref=client_ref,
+        max_attempts=max_attempts,
+        cost_estimate=dict(cost_estimate or {}),
+    )
+    session.add(job)
+    session.flush()
+    return job
+
+
+def notify(services: Services, data: dict) -> None:
+    """Phát `job.updated` cho một job đã commit và đánh thức worker (gọi được từ thread bất kỳ)."""
+    services.bus.publish("job.updated", data, project_id=data.get("project_id"))
+    worker = getattr(services, "worker", None)
+    if worker is not None:
+        worker.wake()
+
+
+def submit(services: Services, type: str, params: dict, **kw: Any) -> dict:  # noqa: A002
+    """`enqueue` trong phiên khoá ghi riêng, commit, phát sự kiện, đánh thức worker. Trả `job_dict`. Đồng bộ."""
+    with services.db.session(immediate=True) as s:
+        data = job_dict(enqueue(s, type, params, **kw))
+    notify(services, data)
+    return data
+
+
+# --- Đọc ----------------------------------------------------------------------------------------------------------
+
+
+def not_found(job_id: int) -> NotFound:
+    return NotFound(f"Không tìm thấy job #{job_id}.", hint="Gọi job.list để xem các job hiện có.")
+
+
+def get_job(session: Session, job_id: int) -> Job:
+    job = session.get(Job, job_id)
+    if job is None:
+        raise not_found(job_id)
+    return job
+
+
+def list_jobs(
+    session: Session,
+    *,
+    status: str | None = None,
+    type: str | None = None,  # noqa: A002
+    lane: str | None = None,
+    project_id: int | None = None,
+    cursor: int | None = None,
+    limit: int = 50,
+) -> tuple[list[Job], int | None]:
+    """Job mới nhất trước (`id` giảm dần). `cursor` = `next_cursor` của trang trước (lấy các job có id nhỏ hơn)."""
+    q = select(Job)
+    if status is not None:
+        q = q.where(Job.status == status)
+    if type is not None:
+        q = q.where(Job.type == type)
+    if lane is not None:
+        q = q.where(Job.lane == lane)
+    if project_id is not None:
+        q = q.where(Job.project_id == project_id)
+    if cursor is not None:
+        q = q.where(Job.id < cursor)
+    rows = list(session.scalars(q.order_by(Job.id.desc()).limit(limit + 1)))
+    more = len(rows) > limit
+    rows = rows[:limit]
+    return rows, (rows[-1].id if more and rows else None)
+
+
+def job_logs(session: Session, job_id: int, *, after_id: int | None = None, limit: int = 200) -> list[JobLog]:
+    get_job(session, job_id)
+    q = select(JobLog).where(JobLog.job_id == job_id)
+    if after_id is not None:
+        q = q.where(JobLog.id > after_id)
+    return list(session.scalars(q.order_by(JobLog.id).limit(limit)))
+
+
+def add_log(session: Session, job_id: int, level: str, message: str) -> JobLog:
+    row = JobLog(job_id=job_id, level=level, message=message)
+    session.add(row)
+    session.flush()
+    return row
+
+
+# --- Thao tác của người dùng/agent ----------------------------------------------------------------------------------
+
+
+def _reset_for_run(job: Job) -> None:
+    job.status = "queued"
+    job.next_attempt_at = None
+    job.error_code = None
+    job.error_message = None
+    job.hint = None
+    job.progress = 0.0
+    job.stage = ""
+    job.eta_at = None
+    job.started_at = None
+    job.finished_at = None
+
+
+def retry_job(session: Session, job_id: int, params_patch: dict | None = None) -> Job:
+    """Chạy lại một job đã xong/thất bại/huỷ/bị gián đoạn: đặt lại thành `queued`, `attempt=0`, gộp `params_patch`.
+
+    Dùng lại chính dòng job (id giữ nguyên cho UI); kết quả cũ, trạng thái provider cũ bị xoá — đây là lần gửi mới.
+    """
+    job = get_job(session, job_id)
+    if job.status not in RETRYABLE:
+        raise Conflict(
+            f"Job #{job_id} đang ở trạng thái '{job.status}', không chạy lại được.",
+            hint="Chỉ chạy lại job đã xong, thất bại, đã huỷ hoặc bị gián đoạn; job cần xử lý dùng job.clear_attention.",
+        )
+    if job.client_ref is not None:
+        twin = session.scalars(
+            select(Job.id).where(Job.client_ref == job.client_ref, Job.status.not_in(TERMINAL), Job.id != job.id)
+        ).first()
+        if twin is not None:
+            raise Conflict(
+                f"Đã có job #{twin} đang hoạt động cho cùng nội dung (client_ref).",
+                hint=f"Theo dõi hoặc huỷ job #{twin} trước khi chạy lại.",
+            )
+    _reset_for_run(job)
+    job.attempt = 0
+    job.result = {}
+    job.cost_actual = {}
+    job.external_id = None
+    job.external_state = {}
+    if params_patch:
+        job.params = {**(job.params or {}), **params_patch}
+    session.flush()
+    add_log(session, job.id, "info", "Chạy lại theo yêu cầu" + (" (có sửa tham số)" if params_patch else "") + ".")
+    return job
+
+
+def prioritize(session: Session, job_ids: list[int], priority: int) -> list[Job]:
+    """Đổi ưu tiên các job chưa kết thúc; job đã kết thúc bị bỏ qua. Id không tồn tại → NotFound."""
+    changed = []
+    for job_id in job_ids:
+        job = get_job(session, job_id)
+        if job.status in TERMINAL:
+            continue
+        job.priority = priority
+        changed.append(job)
+    session.flush()
+    return changed
+
+
+def clear_attention(session: Session, job_id: int, action: Literal["resubmit", "fail"]) -> Job:
+    """Người dùng/agent quyết định cho job `needs_attention`: xoá dấu provider rồi gửi lại, hoặc cho thất bại."""
+    job = get_job(session, job_id)
+    if job.status != "needs_attention":
+        raise Conflict(
+            f"Job #{job_id} không ở trạng thái cần xử lý (hiện là '{job.status}').",
+            hint="Chỉ dùng cho job đang ở trạng thái needs_attention.",
+        )
+    job.external_id = None
+    job.external_state = {}
+    if action == "resubmit":
+        _reset_for_run(job)
+        add_log(session, job.id, "warning", "Đã xoá đánh dấu phía provider và gửi lại theo quyết định của người dùng.")
+    else:
+        job.status = "failed"
+        job.finished_at = utcnow()
+        add_log(session, job.id, "warning", "Đánh dấu thất bại theo quyết định của người dùng.")
+    session.flush()
+    return job
+
+
+def cancel_idle(session: Session, job_id: int) -> Job | None:
+    """Huỷ job chưa kết thúc mà **không** đang chạy (compare-and-set). Trả job nếu đã đổi, None nếu không."""
+    res = session.execute(
+        update(Job)
+        .where(Job.id == job_id, Job.status.not_in(TERMINAL | {"running"}))
+        .values(status="cancelled", finished_at=utcnow(), updated_at=utcnow())
+        .execution_options(synchronize_session=False)
+    )
+    if res.rowcount != 1:
+        return None
+    add_log(session, job_id, "info", "Đã huỷ.")
+    job = session.get(Job, job_id)
+    session.refresh(job)
+    return job
+
+
+# --- Tạm dừng toàn bộ (bền qua khởi động lại) ---------------------------------------------------------------------
+
+
+def is_paused(session: Session) -> bool:
+    return bool(system_state.get(session, PAUSED_KEY, False))
+
+
+def set_paused(session: Session, paused: bool) -> None:
+    system_state.set(session, PAUSED_KEY, paused)

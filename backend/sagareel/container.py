@@ -6,11 +6,15 @@ Các task sau bổ sung trường: bus, worker, providers, resolver.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from sagareel.config import AppSettings
 from sagareel.core.resolver import Resolver, default_resolver
 from sagareel.core.events import EventBus
 from sagareel.db.session import Database
+
+if TYPE_CHECKING:
+    from sagareel.services.worker import Worker
 
 
 @dataclass
@@ -20,3 +24,10 @@ class Services:
     db: Database
     resolver: Resolver = field(default_factory=default_resolver)
     bus: EventBus = field(default_factory=EventBus, kw_only=True)
+    # Worker hàng đợi job (`services/worker.py`), dựng trong `create_app` (hoặc fixture test) sau Services.
+    worker: Worker | None = field(default=None, kw_only=True)
+    # Giới hạn song song theo lane khi chưa có cấu hình kết nối provider (mặc định 2).
+    lane_limits: dict[str, int] = field(default_factory=dict, kw_only=True)
+
+    def lane_limit(self, lane: str) -> int:
+        return self.lane_limits.get(lane, 2)

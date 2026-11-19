@@ -23,6 +23,7 @@ from sagareel.core.errors import AppError, internal_error, payload, validation_f
 from sagareel.core.resolver import SCHEMA_PATH, Resolver, load_schema
 from sagareel.core.events import EventBus
 from sagareel.db.session import Database
+from sagareel.services.worker import Worker
 
 __all__ = ["APP_NAME", "create_app"]
 
@@ -85,6 +86,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         resolver=Resolver(load_schema(SCHEMA_PATH)),
         bus=EventBus(),
     )
+    services.worker = Worker(services, lane_limit=services.lane_limit)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -92,9 +94,13 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         try:
             # Truy cập DB từ code async luôn qua thread (không chặn event loop).
             await anyio.to_thread.run_sync(services.db.migrate)
+            # Job `running` sót từ lần trước → queued (nối lại được) hoặc interrupted; rồi mới chạy worker.
+            await anyio.to_thread.run_sync(services.worker.recover)
+            await services.worker.start()
             # Seed, worker… được các task sau bổ sung. Không tự gọi provider nào khi khởi động.
             yield
         finally:
+            await services.worker.stop()
             services.db.dispose()
 
     app = FastAPI(title=APP_NAME, version=__version__, lifespan=lifespan)
