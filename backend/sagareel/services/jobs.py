@@ -17,6 +17,7 @@ Chống tạo trùng job tốn tiền:
 from __future__ import annotations
 
 import inspect
+import math
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -276,7 +277,7 @@ def job_dict(job: Job) -> dict[str, Any]:
         "error_code": job.error_code,
         "error_message": job.error_message,
         "hint": job.hint,
-        "result": dict(job.result or {}),
+        "result": json_safe(dict(job.result or {})),
         "cost_estimate": dict(job.cost_estimate or {}),
         "cost_actual": dict(job.cost_actual or {}),
         "created_at": _iso(job.created_at),
@@ -284,6 +285,17 @@ def job_dict(job: Job) -> dict[str, Any]:
         "finished_at": _iso(job.finished_at),
         "updated_at": _iso(job.updated_at),
     }
+
+
+def json_safe(value: Any) -> Any:
+    """NaN/±inf (vd. loudness của đoạn âm thanh rất ngắn = -inf LUFS) → None: JSON chuẩn không có các giá trị này."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(v) for v in value]
+    return value
 
 
 def log_dict(row: JobLog) -> dict[str, Any]:

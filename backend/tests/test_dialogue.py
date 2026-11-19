@@ -233,3 +233,36 @@ def test_plan_clip_pure_rules():
     assert timing.choose_ai_duration(6000, [6, 10, 15]) == (6, True)
     assert timing.choose_ai_duration(6001, [10, 6]) == (10, True)
 
+
+
+def test_translate_dub_and_list_audio_duration(client, owner_ctx, project, seq, monkeypatch):
+    """Task BF: audio.translate_dub (LLM translate → translations → TTS theo ngôn ngữ); dialogue.list kèm độ dài
+    âm thanh đang chọn."""
+    import _fixtures_j
+
+    fake = _fixtures_j.install(monkeypatch)
+    fake.on_fn("translate", lambda v: {"target_language": "en", "items": [
+        {"id": it["id"], "text": "EN " + it["text"]} for it in __import__("json").loads(v["input"])["items"]]})
+    setup_fake_tts(client)
+    seq_id, clips = seq
+    l1 = dialogue.create(owner_ctx, clips[0], "Con ơi, về ăn cơm đi.")
+    l2 = dialogue.create(owner_ctx, clips[1], "Dạ.", translations={"en": "Yes."})
+    dry = rest(client, "audio.translate_dub", {"sequence_id": seq_id, "lang": "en", "dry_run": True})
+    assert dry["estimate"]["to_translate"] == 1 and dry["estimate"]["llm_calls"] == 1 and not fake.calls
+    out = rest(client, "audio.translate_dub", {"sequence_id": seq_id, "lang": "en"})
+    assert out["translated"] == 1 and out["missing"] == [] and isinstance(out["change_set_id"], int)
+    with owner_ctx.services.db.session() as s:
+        assert s.get(DialogueLine, l1["id"]).translations["en"] == "EN Con ơi, về ăn cơm đi."
+        assert s.get(DialogueLine, l2["id"]).translations["en"] == "Yes."  # đã có → giữ
+    wait_jobs(client, out["tts"]["job_ids"])
+    with owner_ctx.services.db.session() as s:
+        en = s.scalars(select(Take).where(Take.owner_type == "dialogue", Take.lang == "en")).all()
+    assert len(en) == 2
+    r = client.post("/api/ops/audio.translate_dub", json={"sequence_id": seq_id, "lang": "vi"})
+    assert r.status_code == 422  # ngôn ngữ chính
+
+    res = rest(client, "audio.generate", {"sequence_id": seq_id})
+    wait_jobs(client, res["job_ids"])
+    items = rest(client, "dialogue.list", {"sequence_id": seq_id})["items"]
+    first = next(x for x in items if x["id"] == l1["id"])
+    assert first["audio_media_id"] and first["audio_duration_ms"] and first["audio_duration_ms"] > 0

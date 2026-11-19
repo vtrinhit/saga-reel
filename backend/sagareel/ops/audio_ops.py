@@ -46,6 +46,24 @@ def audio_generate(ctx: OpContext, p: AudioGenerateParams) -> dict:
                              force=p.force)
 
 
+class TranslateDubParams(BaseModel):
+    sequence_id: int
+    lang: str = Field(pattern=r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$", description="Ngôn ngữ đích, vd. en, ja, zh-CN")
+    force: bool = Field(default=False, description="Dịch lại cả câu đã có bản dịch")
+    tts: bool = Field(default=True, description="Đọc TTS bản dịch (giọng theo voice_profile.per_lang)")
+    dry_run: bool = False
+
+
+@op("audio.translate_dub", summary="Dịch lời thoại của tập sang ngôn ngữ khác (LLM translate → translations, hoàn tác "
+    "được) rồi lồng tiếng TTS theo giọng từng ngôn ngữ; dry_run ước tính", params=TranslateDubParams, costly=True,
+    long_running=True, mcp="tool")
+async def audio_translate_dub(ctx: OpContext, p: TranslateDubParams) -> dict:
+    from sagareel.services.audio import dub
+
+    return await dub.translate_dub(ctx, p.sequence_id, p.lang, dry_run=p.dry_run or ctx.dry_run, force=p.force,
+                                   tts=p.tts)
+
+
 @op("audio.duration_plan", summary="Đề xuất thời lượng clip theo giọng (voice_drives/clip_drives/none)",
     params=DurationPlanParams, read_only=True, idempotent=True, mcp="tool")
 def audio_duration_plan(ctx: OpContext, p: DurationPlanParams) -> dict:

@@ -123,3 +123,20 @@ def test_job_queue_position(owner_ctx):
     out = {j["id"]: j["queue_position"] for j in _inv("job.list", {}, owner_ctx)["items"]}
     assert (out[ids[2]], out[ids[0]], out[ids[1]], out[ids[3]]) == (1, 2, 3, 1)
     assert _inv("job.get", {"id": ids[1]}, owner_ctx)["queue_position"] == 3
+
+
+def test_clip_list_includes_selected_media(owner_ctx, project, seq, make_clip_tiny):
+    from _fixtures_b import add_take
+    from sagareel.db.models import Clip
+
+    db = owner_ctx.services.db
+    vid = make_clip_tiny(db, project)
+    a = clips.create(owner_ctx, seq, {})
+    b = clips.create(owner_ctx, seq, {})
+    t = add_take(db, a["id"], "video", media_id=vid)
+    with db.session() as s:
+        s.get(Clip, a["id"]).video_take_id = t
+    items = {x["id"]: x for x in _inv("clip.list", {"sequence_id": seq}, owner_ctx)["items"]}
+    assert items[a["id"]]["video_media_id"] == vid and items[a["id"]]["thumb_media_id"] == vid
+    assert items[a["id"]]["source_duration_ms"] and items[a["id"]]["image_media_id"] is None
+    assert items[b["id"]]["thumb_media_id"] is None and items[b["id"]]["source_duration_ms"] is None

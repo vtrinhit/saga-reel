@@ -216,6 +216,30 @@ def count_flags(s: Session, sequence_ids: list[int]) -> dict[int, dict[str, int]
     return out
 
 
+def selected_media(s: Session, rows: list[Clip]) -> dict[int, dict[str, Any]]:
+    """Media của take đang chọn cho từng clip (một truy vấn): `image_media_id`, `video_media_id`,
+    `thumb_media_id` (ảnh, không thì video — có thumbnail ngay: `/media/<id>/thumb`; null nếu file đã vào thùng rác),
+    `source_duration_ms` (độ dài video provider đang chọn)."""
+    from sagareel.db.models import Media
+
+    take_ids = {t for c in rows for t in (c.image_take_id, c.video_take_id) if t}
+    info: dict[int, tuple[int, int | None, bool]] = {}
+    if take_ids:
+        for tid, mid, dur, trashed in s.execute(
+            select(Take.id, Media.id, Media.duration_ms, Media.trashed_at).join(Media, Media.id == Take.media_id)
+            .where(Take.id.in_(take_ids))
+        ):
+            info[tid] = (mid, dur, trashed is not None)
+    out: dict[int, dict[str, Any]] = {}
+    for c in rows:
+        img = info.get(c.image_take_id) if c.image_take_id else None
+        vid = info.get(c.video_take_id) if c.video_take_id else None
+        thumb = next((x[0] for x in (img, vid) if x is not None and not x[2]), None)
+        out[c.id] = {"image_media_id": img[0] if img else None, "video_media_id": vid[0] if vid else None,
+                     "thumb_media_id": thumb, "source_duration_ms": vid[1] if vid else None}
+    return out
+
+
 def list_page(s: Session, sequence_id: int, cursor: str | None = None, limit: int = 100,
               flt: dict[str, Any] | None = None) -> dict[str, Any]:
     get_sequence(s, sequence_id)
@@ -229,7 +253,8 @@ def list_page(s: Session, sequence_id: int, cursor: str | None = None, limit: in
     rows = s.scalars(q.order_by(Clip.rank, Clip.id).limit(limit + 1)).all()
     more = len(rows) > limit
     rows = rows[:limit]
-    return {"items": [clip_out(c) for c in rows],
+    media_of = selected_media(s, rows)
+    return {"items": [{**clip_out(c), **media_of.get(c.id, {})} for c in rows],
             "next_cursor": f"{rows[-1].rank}:{rows[-1].id}" if more else None}
 
 
