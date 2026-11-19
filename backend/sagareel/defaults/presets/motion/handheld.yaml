@@ -1,0 +1,10 @@
+# Rung tay nhẹ: zoom cố định, tâm dao động chậm (hai tần số lệch nhau để không lặp đều).
+key: handheld
+name: Cầm tay (rung nhẹ)
+kind: motion
+type: shake
+zoom: 1.06
+z: "{zoom}"
+x: "(iw-iw/zoom)*(0.5+0.18*sin(on/11)+0.07*sin(on/4.3))"
+y: "(ih-ih/zoom)*(0.5+0.15*cos(on/13)+0.06*sin(on/5.1))"
+post: [grain]

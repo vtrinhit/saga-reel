@@ -1,0 +1,10 @@
+# Pan: zoom cố định 1,15 để có phần cắt; quãng đi giới hạn bởi max_pan_width_per_s (4 % chiều rộng/giây).
+key: pan_right
+name: Lia phải
+kind: motion
+type: pan
+zoom: 1.15
+z: "{zoom}"
+x: "(iw-iw/zoom)*({start}+{span}*{ease})"
+y: "(ih-ih/zoom)*{focus_y}"
+post: [grain, vignette]

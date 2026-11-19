@@ -1,0 +1,6 @@
+key: dissolve
+name: Hoà tan
+kind: transition
+xfade: dissolve
+duration_ms: 500
+new_scene_duration_ms: 700

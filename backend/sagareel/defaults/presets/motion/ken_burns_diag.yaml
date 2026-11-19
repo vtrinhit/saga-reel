@@ -1,0 +1,10 @@
+# Phóng vào + trôi chéo (trên-trái → dưới-phải).
+key: ken_burns_diag
+name: Ken Burns chéo
+kind: motion
+type: zoom_pan
+amt: 0.08
+z: "1.06+{amt}*{ease}"
+x: "(iw-iw/zoom)*({start}+{span}*{ease})"
+y: "(ih-ih/zoom)*({start}+{span}*{ease})"
+post: [grain, vignette]

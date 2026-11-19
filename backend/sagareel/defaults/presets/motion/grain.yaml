@@ -1,0 +1,6 @@
+# Lớp hậu kỳ (post): hạt phim đổi theo thời gian. Giữ nhẹ (x264 tốn bitrate cho hạt).
+key: grain
+name: Hạt phim
+kind: motion
+type: post
+filter: "noise=alls=5:allf=t"

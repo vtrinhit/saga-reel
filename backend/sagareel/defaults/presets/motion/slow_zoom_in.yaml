@@ -1,0 +1,10 @@
+# Ảnh tĩnh → chuyển động (post-production.md §3). Biểu thức zoompan; {ease} = smoothstep 3t²−2t³, t = on/D.
+key: slow_zoom_in
+name: Phóng chậm vào
+kind: motion
+type: zoom
+amt: 0.08            # tổng mức phóng (0,04–0,10); bị giới hạn bởi max_zoom_per_s × thời lượng
+z: "1+{amt}*{ease}"
+x: "(iw-iw/zoom)*{focus_x}"
+y: "(ih-ih/zoom)*{focus_y}"
+post: [grain, vignette]
