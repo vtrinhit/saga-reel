@@ -991,3 +991,33 @@ def test_login_verification_concurrency_is_bounded(local_client, owner_password,
     assert 1 <= peak <= 3
     assert authed["status"] == 200 and authed["seconds"] < 1.0
     assert authed["active_after"] > 0  # vẫn đang dò khi request cookie đã xong
+
+
+# --- Media: người xem không tải file gốc ------------------------------------------------------------------------
+
+
+def test_viewer_cannot_download_original_media(local_client, remote_client, viewer_password, viewer_token, tmp_path):
+    """Người xem được xem trực tiếp và xem thumbnail, nhưng `?download=1` (tải file gốc) → 403 `forbidden`."""
+    from PIL import Image
+
+    from sagareel.services import media
+
+    services = local_client.app.state.services
+    src = tmp_path / "anh.png"
+    Image.new("RGB", (64, 48), (10, 120, 200)).save(src, "PNG")
+    with services.db.session() as s:
+        mid = media.register(s, src, kind="image", origin="upload", settings=services.settings).id
+
+    assert _login(remote_client, viewer_password).json()["role"] == "viewer"
+    bearer = {**REMOTE_H, "Authorization": f"Bearer {viewer_token}"}
+    for client, headers in ((remote_client, REMOTE_H), (remote_client, bearer)):
+        r = client.get(f"/media/{mid}", params={"download": 1}, headers=headers)
+        assert r.status_code == 403 and r.json()["error_code"] == "forbidden", r.text
+        assert "content-disposition" not in r.headers
+        r = client.get(f"/media/{mid}", headers=headers)
+        assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+        assert client.get(f"/media/{mid}/thumb", headers=headers).status_code == 200
+
+    # Chủ (máy cục bộ đã đăng nhập) vẫn tải được.
+    r = local_client.get(f"/media/{mid}", params={"download": 1})
+    assert r.status_code == 200 and r.headers["content-disposition"].startswith("attachment")

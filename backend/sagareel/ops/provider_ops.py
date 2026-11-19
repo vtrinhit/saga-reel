@@ -339,6 +339,7 @@ async def provider_check(ctx: OpContext, p: ProviderCheckParams) -> dict:
 # --- Chạy thử ---------------------------------------------------------------------------------------------------------
 
 _DEFAULT_KEYS = {"image": "image.connection", "video": "video.connection", "tts": "tts.connection"}
+STT_NOT_CONFIGURED_HINT = "Thêm kết nối STT qua API trong Settings, hoặc dán lời thoại thủ công"
 
 
 def _target(ctx: OpContext, kind: str, connection: int | str | None) -> tuple[Connection, bool, Adapter]:
@@ -353,6 +354,9 @@ def _target(ctx: OpContext, kind: str, connection: int | str | None) -> tuple[Co
                     ProviderConnection.kind == kind, ProviderConnection.deleted_at.is_(None),
                     ProviderConnection.enabled.is_(True),
                 ).order_by(ProviderConnection.id).limit(1))
+        if connection is None and kind == "stt":
+            raise AppError("stt_not_configured", "Chưa có kết nối nhận dạng lời (STT) nào đang bật.",
+                           hint=STT_NOT_CONFIGURED_HINT, status=409)
         if connection is None:
             raise AppError("no_connection", f"Chưa có kết nối {kind} nào.",
                            hint="Thêm kết nối trong Cài đặt → Provider (provider.create).", status=422)
@@ -395,8 +399,10 @@ async def _dispatch(
                     budget.check(s, budget_kind, estimate.get("units", 1), conn.id, resolver=ctx.services.resolver)
         if dry_run:
             return {"estimate": estimate}
+        attempts = {"max_attempts": pj.MAX_ATTEMPTS[job_type]} if job_type in pj.MAX_ATTEMPTS else {}
         data = jobs.submit(ctx.services, job_type, {"connection_id": conn.id, **params},
-                           lane=ProviderService.lane(conn), project_id=ctx.project_id, cost_estimate=estimate)
+                           lane=ProviderService.lane(conn), project_id=ctx.project_id, cost_estimate=estimate,
+                           **attempts)
         return {"job_id": data["id"]}
 
     return await anyio.to_thread.run_sync(run)

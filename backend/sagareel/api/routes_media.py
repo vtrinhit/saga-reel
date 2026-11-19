@@ -1,11 +1,12 @@
 """Phục vụ file media và thumbnail.
 
 - `GET /media/{media_id}`: `FileResponse` (Starlette tự xử lý `Range` → 206); `?download=1` thêm
-  `Content-Disposition: attachment`.
+  `Content-Disposition: attachment` — chỉ chủ (`role == "owner"`); còn lại (viewer, không có principal) nhận 403 `forbidden` (xem trực tiếp và thumbnail
+  vẫn được).
 - `GET /media/{media_id}/thumb?w=320`: JPEG cache theo `(sha256, w)` ở `cache_dir/thumbs`; `w` làm tròn lên
   {160, 320, 480, 720}. Ảnh: Pillow; video: khung đầu qua ffmpeg.
 
-Xác thực (Task 8) đến sau dưới dạng middleware nên route ở đây không tự kiểm tra.
+Xác thực do middleware làm (`request.state.principal`); route chỉ kiểm thêm vai trò cho `?download=1`.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse
 
 from sagareel.container import Services
-from sagareel.core.errors import ErrorPayload, NotFound
+from sagareel.core.errors import ErrorPayload, Forbidden, NotFound
 from sagareel.db.models import Media
 from sagareel.services import media as media_svc
 
@@ -39,6 +40,9 @@ def _load(services: Services, media_id: int) -> tuple[Media, Path]:
 
 @router.get("/media/{media_id}", response_class=FileResponse, summary="Tải file media (hỗ trợ Range)")
 async def get_media(request: Request, media_id: int, download: bool = False) -> FileResponse:
+    principal = getattr(request.state, "principal", None)
+    if download and (principal is None or principal.role != "owner"):  # chặn mặc định: chỉ chủ được tải file gốc
+        raise Forbidden("Chỉ chủ được tải file gốc; người xem chỉ xem trực tiếp hoặc ảnh thu nhỏ.")
     services: Services = request.app.state.services
     m, path = await anyio.to_thread.run_sync(_load, services, media_id)
     if download:

@@ -12,6 +12,7 @@ chỉ poll; có dấu mà không có `external_id` → `JobUnknown("maivideo_job
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, ClassVar
 
 import anyio
@@ -27,10 +28,13 @@ from sagareel.providers.base import (
     JobUnknown,
     ProviderJobError,
     ProviderUnavailable,
+    http_health_status,
 )
 from sagareel.providers.image import _paid
 from sagareel.providers.registry import register_adapter
-from sagareel.services.jobs import FORCE_NEW_HINT, TransientError
+from sagareel.services.jobs import FORCE_NEW_HINT, JobStateLost, TransientError
+
+logger = logging.getLogger("sagareel.providers.maivideo")
 
 DEFAULT_BASE_URL = "https://maivideo.top"
 DEFAULT_MODEL = "gpt-image-2.0"
@@ -140,8 +144,8 @@ class MaiVideoImageAdapter(ImageAdapter):
         if r.status_code in (401, 403):
             return Health(status="dead", detail=f"MaiVideo từ chối khoá API (HTTP {r.status_code}).")
         if r.status_code != 200:
-            return Health(status="dead", detail=f"MaiVideo trả lỗi HTTP {r.status_code}: "
-                                                f"{_paid.error_detail(r, self.key)[:200]}")
+            return Health(status=http_health_status(r.status_code),
+                          detail=f"MaiVideo trả lỗi HTTP {r.status_code}: {_paid.error_detail(r, self.key)[:200]}")
         try:
             data = r.json()
         except ValueError:
@@ -213,9 +217,22 @@ class MaiVideoImageAdapter(ImageAdapter):
         job_id = _job_id(data)
         if not job_id:
             raise await paid.keep(f"HTTP {resp.status_code}, thiếu job_id")
-        if run is not None:
-            await run.save_external(job_id, state="submitted", post_error=None)
+        # Ghi log trước: nếu lưu `external_id` hỏng, mã job vẫn còn để người dùng đối chiếu. `run.log` đi qua cùng bộ
+        # ghi DB (có thể đang hỏng) nên ghi thêm vào log ứng dụng. Không bao giờ ghi khoá.
+        logger.warning("MaiVideo đã nhận job %s (job #%s)", job_id, getattr(run, "job_id", None))
         self._log(run, "info", f"MaiVideo đã nhận job {job_id}.")
+        if run is not None:
+            try:
+                await run.save_external(job_id, state="submitted", post_error=None)
+            except JobStateLost:
+                raise  # job đã bị huỷ/đặt lại: không đi tiếp
+            except Exception as e:
+                raise JobUnknown(
+                    f"MaiVideo đã nhận job {job_id} nhưng không lưu được mã job ({type(e).__name__}).",
+                    hint=f"Job MaiVideo {job_id} đã được tạo (đã tính tiền). Lấy ảnh của job này trên MaiVideo rồi "
+                         "gọi job.clear_attention(action=fail); chỉ gửi lại (action=resubmit) nếu job đó không có ảnh.",
+                    code="maivideo_job_unknown",
+                ) from e
         return job_id
 
     async def _status(self, c: httpx.AsyncClient, job_id: str) -> dict | object:

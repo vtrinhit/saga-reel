@@ -211,6 +211,24 @@ async def test_health_bad_key_is_dead_without_leaking_key(adapter):
     assert KEY not in h.detail
 
 
+@respx.mock
+@pytest.mark.parametrize("status", [429, 500, 502, 503])
+async def test_health_rate_limit_or_server_error_is_unknown(adapter, status):
+    health = respx.get(f"{BASE}/health").mock(return_value=httpx.Response(status))
+    h = await adapter.check_health()
+    assert h.status == "unknown" and str(status) in h.detail
+    health.mock(return_value=httpx.Response(200, json={"ok": True}))
+    respx.get(f"{BASE}/grok/accounts").mock(return_value=api_error(status, "busy", "Bận"))
+    h = await adapter.check_health()
+    assert h.status == "unknown" and str(status) in h.detail and KEY not in h.detail
+
+
+@respx.mock
+async def test_health_other_4xx_is_dead(adapter):
+    respx.get(f"{BASE}/health").mock(return_value=httpx.Response(404))
+    assert (await adapter.check_health()).status == "dead"
+
+
 async def test_health_not_configured_without_url(http):
     h = await make_adapter(http, base_url="").check_health()
     assert h.status == "not_configured"
