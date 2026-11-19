@@ -496,7 +496,26 @@ async def test_failed_job_maps_kind_and_hint(adapter, run_ctx, req):
     with pytest.raises(ProviderJobError) as ei:
         await adapter.generate(req, run_ctx)
     assert ei.value.code == "provider_moderated"
-    assert ei.value.hint == "Grok kiểm duyệt nội dung — đổi ảnh/prompt, gửi lại y nguyên không giúp được."
+    assert ei.value.hint.startswith("Grok kiểm duyệt nội dung — đổi ảnh/prompt, gửi lại y nguyên không giúp được.")
+    # Job đã được GrokTele nhận: chạy lại thường chỉ hỏi lại đúng job này; job mới cần force_new.
+    assert "force_new" in ei.value.hint and "trả phí mới" in ei.value.hint
+
+
+@respx.mock
+async def test_accepted_job_errors_hint_force_new(adapter, run_ctx, req):
+    """404/thiếu file sau khi GrokTele đã nhận: gợi ý đúng thực tế (force_new = job trả phí mới)."""
+    respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted())
+    respx.get(f"{BASE}/grok/jobs/job_1").mock(return_value=httpx.Response(404))
+    with pytest.raises(ProviderJobError) as ei:
+        await adapter.generate(req, run_ctx)
+    assert ei.value.code == "provider_not_found" and "force_new" in ei.value.hint
+    run2 = FakeRun(job_id=44)
+    respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted("job_2"))
+    respx.get(f"{BASE}/grok/jobs/job_2").mock(return_value=httpx.Response(200, json={
+        "jobId": "job_2", "status": "succeeded", "progress": 1, "result": {"filePath": str(req.out_path) + ".x"}}))
+    with pytest.raises(ProviderJobError) as ei:
+        await adapter.generate(req, run2)
+    assert ei.value.code == "provider_missing_file" and "force_new" in ei.value.hint
 
 
 @respx.mock

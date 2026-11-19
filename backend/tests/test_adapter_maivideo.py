@@ -271,6 +271,8 @@ async def test_job_error_status_is_provider_failed(adapter, req, run_ctx):
     with pytest.raises(ProviderJobError) as e:
         await adapter.generate(req, run_ctx)
     assert e.value.code == "provider_failed" and "vi phạm nội dung" in e.value.msg
+    # MaiVideo đã nhận job: chạy lại thường chỉ kiểm tra lại job này; job mới (sửa prompt) cần force_new.
+    assert "force_new" in e.value.hint and "trả phí mới" in e.value.hint
 
 
 @respx.mock

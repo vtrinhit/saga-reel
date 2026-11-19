@@ -13,7 +13,7 @@ from sagareel.app import create_app
 from sagareel.core import ops
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError
-from sagareel.db.models import Job, JobLog
+from sagareel.db.models import Job, JobLog, Spend
 from sagareel.db.session import Database
 from sagareel.services import jobs
 from sagareel.services import worker as worker_mod
@@ -1027,6 +1027,61 @@ async def test_job_retry_keeps_accepted_provider_job_unless_force_new(svc, op_ct
     plain = insert_job(svc, "test.sleep", status=st, external_state={"state": None, "client_ref": "r-3"})
     out = (await ops.invoke("job.retry", {"ids": [plain]}, op_ctx))["items"][0]
     assert (out["external_id"], out["external_state"]) == (None, {})
+
+
+async def test_job_retry_params_patch_on_accepted_job_requires_force_new(svc, op_ctx):
+    """Provider đã nhận job: sửa tham số mà nối lại job cũ thì vô nghĩa → 422, phải chọn force_new (job mới)."""
+    a = insert_job(svc, "test.sleep", status="failed", external_id="p-1", external_state={"state": "submitted"},
+                   params={"prompt": "cũ"})
+    with pytest.raises(AppError) as ei:
+        await ops.invoke("job.retry", {"ids": [a], "params_patch": {"prompt": "mới"}}, op_ctx)
+    assert (ei.value.code, ei.value.status) == ("params_patch_requires_new_job", 422)
+    assert "force_new" in ei.value.hint and "trả phí mới" in ei.value.hint
+    job = load(svc, a)
+    assert (job.status, job.params, job.external_id) == ("failed", {"prompt": "cũ"}, "p-1")
+    out = (await ops.invoke("job.retry", {"ids": [a], "params_patch": {"prompt": "mới"}, "force_new": True},
+                            op_ctx))["items"][0]
+    assert (out["status"], out["params"], out["external_id"]) == ("queued", {"prompt": "mới"}, None)
+
+
+def _spend_rows(svc) -> list[tuple[int | None, float]]:
+    with svc.db.session() as s:
+        return [(r.job_id, r.units) for r in s.scalars(select(Spend).order_by(Spend.id))]
+
+
+def _add_spend(svc, job_id) -> None:
+    with svc.db.session() as s:
+        s.add(Spend(kind="image", units=1.0, job_id=job_id, connection_id=None))
+
+
+@pytest.mark.parametrize("cols, extra, detached", [
+    ({"status": "succeeded"}, {}, True),  # job đồng bộ đã xong (không có external_id): dòng đã chốt
+    ({"status": "succeeded", "external_id": "p-1"}, {"force_new": True}, True),
+    ({"status": "failed", "external_id": "p-1"}, {"force_new": True}, True),  # đã nhận rồi lỗi: có thể đã tính tiền
+    ({"status": "failed", "external_id": "p-1"}, {}, False),  # nối lại đúng job đó: finalize chốt chính dòng này
+    ({"status": "interrupted"}, {}, False),  # chỗ giữ chưa trả tiền (tắt app trước khi gửi): lần sau thay thế
+])
+async def test_job_retry_detaches_spend_of_past_paid_attempts(svc, op_ctx, cols, extra, detached):
+    """Không bao giờ xoá dòng chi tiêu của lần trả tiền trước: chạy lại thành lần gửi mới thì tách dòng khỏi job
+    (`job_id = NULL`, vẫn được tính)."""
+    a = insert_job(svc, "test.sleep", external_state={"state": "submitted"} if cols.get("external_id") else {},
+                   **cols)
+    _add_spend(svc, a)
+    await ops.invoke("job.retry", {"ids": [a], **extra}, op_ctx)
+    assert _spend_rows(svc) == [(None if detached else a, 1.0)]
+
+
+@pytest.mark.parametrize("cols, action, detached", [
+    ({"external_id": "p-1", "external_state": {"state": "submitted"}}, "resubmit", True),
+    ({"external_id": "p-1", "external_state": {"state": "submitted"}}, "fail", True),
+    ({"external_state": {"state": "submitting"}}, "fail", True),  # giữ chỗ mập mờ: giữ trong sổ (thận trọng)
+    ({"external_state": {"state": "submitting"}}, "resubmit", False),  # người dùng xác nhận chưa tạo: lần sau thay
+])
+async def test_clear_attention_detaches_spend_that_may_be_paid(svc, op_ctx, cols, action, detached):
+    a = insert_job(svc, "test.sleep", status="needs_attention", **cols)
+    _add_spend(svc, a)
+    await ops.invoke("job.clear_attention", {"id": a, "action": action}, op_ctx)
+    assert _spend_rows(svc) == [(None if detached else a, 1.0)]
 
 
 def test_job_retry_force_new_param_documented():

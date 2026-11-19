@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from sagareel.core.errors import Conflict, NotFound
+from sagareel.core.errors import AppError, Conflict, NotFound
 from sagareel.db.base import utcnow
 from sagareel.db.models import Job, JobLog
 from sagareel.services import system_state
@@ -47,6 +47,13 @@ SUBMIT_MARKER_KEY, SUBMIT_MARKER = "state", "submitting"
 JOB_UNKNOWN_HINT = (
     "Kiểm tra phía provider xem job đã được tạo chưa, rồi dùng job.clear_attention: "
     "“resubmit” để xoá đánh dấu và gửi lại, hoặc “fail” để bỏ."
+)
+
+
+# Gợi ý cho lỗi xảy ra SAU KHI provider đã nhận job (có external_id): `job.retry` thường chỉ nối lại đúng job đó.
+FORCE_NEW_HINT = (
+    "Provider đã nhận job này: “Chạy lại” thường chỉ kiểm tra lại đúng job đó (không tốn thêm); muốn tạo lại hoặc đổi "
+    "prompt/tham số thì dùng job.retry với force_new=true (tạo job trả phí mới)."
 )
 
 
@@ -359,6 +366,8 @@ def retry_job(
     Dùng lại chính dòng job (id giữ nguyên cho UI); kết quả cũ bị xoá. Provider đã nhận job (`external_id`): mặc định
     **giữ** `external_id`/`external_state` để lần chạy tới nối lại (poll) đúng job đó — không trả tiền lần hai;
     `force_new=True` xoá chúng → tạo job trả phí mới. Chưa có `external_id`: trạng thái provider cũ bị xoá như trước.
+    Nối lại kèm `params_patch` → 422 `params_patch_requires_new_job`. Lần gửi mới sau lần đã trả tiền (`force_new`, job
+    đã xong) tách dòng `spend` cũ khỏi job (`budget.detach`) để chúng vẫn được tính.
     """
     job = get_job(session, job_id)
     if job.status not in RETRYABLE:
@@ -385,6 +394,20 @@ def retry_job(
             )
     resume = bool(job.external_id) and not force_new
     new_paid = bool(job.external_id) and force_new
+    if resume and params_patch:
+        raise AppError(
+            "params_patch_requires_new_job",
+            f"Job #{job_id} đã được provider nhận (external_id {job.external_id}); chạy lại sẽ nối lại đúng job đó nên "
+            "tham số sửa đổi không có tác dụng.",
+            hint="Muốn đổi prompt/tham số thì chạy lại với force_new=true (tạo job trả phí mới); bỏ params_patch để "
+                 "chỉ nối lại job cũ (không tốn thêm).",
+            status=422,
+            extra={"job_id": job_id, "external_id": job.external_id},
+        )
+    # Lần gửi mới (không nối lại) sau một lần đã/có thể đã trả tiền: tách dòng chi tiêu cũ khỏi job để giữ chỗ/trả chỗ
+    # của lần mới không bao giờ xoá được chúng (vẫn được tính vào ngân sách).
+    if new_paid or (job.status == "succeeded" and not resume):
+        _budget().detach(session, job.id)
     _reset_for_run(job)
     job.attempt = 0
     job.result = {}
@@ -435,6 +458,11 @@ def clear_attention(
             f"Job #{job_id} không ở trạng thái cần xử lý (hiện là '{job.status}').",
             hint="Chỉ dùng cho job needs_attention hoặc job đã dừng (không thành công) còn đánh dấu submitting.",
         )
+    # Dòng chi tiêu có thể đã trả tiền thì giữ trong sổ (tách khỏi job): provider đã nhận (external_id), hoặc người
+    # dùng cho thất bại (giữ chỗ mập mờ — thận trọng). Chỉ `resubmit` một job chỉ mang dấu `submitting` (người dùng xác
+    # nhận provider chưa tạo) mới để lần gửi mới thay chỗ giữ đó.
+    if job.external_id or action == "fail":
+        _budget().detach(session, job.id)
     job.external_id = None
     job.external_state = {}
     if action == "resubmit":
@@ -484,10 +512,14 @@ def cancel_idle(session: Session, job_id: int) -> Job | None:
     session.refresh(job)
     if not job.external_id and not (job.external_state or {}).get(SUBMIT_MARKER_KEY):
         # Người dùng huỷ job provider chưa từng nhận: trả chỗ ngân sách còn sót (vd. từ lần tắt app trước khi gửi).
-        from sagareel.services import budget
-
-        budget.release(session, job_id)
+        _budget().release(session, job_id)
     return job
+
+
+def _budget() -> Any:
+    from sagareel.services import budget  # import muộn: budget → settings không được kéo vào lúc nạp module jobs
+
+    return budget
 
 
 # --- Tạm dừng toàn bộ (bền qua khởi động lại) ---------------------------------------------------------------------

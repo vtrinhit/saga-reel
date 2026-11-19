@@ -48,7 +48,7 @@ from sagareel.providers.base import (
     VideoResult,
 )
 from sagareel.providers.registry import register_adapter
-from sagareel.services.jobs import NeedsAttention, TransientError
+from sagareel.services.jobs import FORCE_NEW_HINT, NeedsAttention, TransientError
 
 if TYPE_CHECKING:
     from sagareel.services.worker import JobRun
@@ -308,7 +308,7 @@ class MultiKitVideoAdapter(VideoAdapter):
         raise ProviderJobError(
             "missing_file",
             f"GrokTele báo xong job {job_id} nhưng không có file video hợp lệ (cần tồn tại và > 5 KB) tại {produced}.",
-            hint="Xem log của GrokTele/MultiKit rồi chạy lại job.",
+            hint="Xem log của GrokTele/MultiKit. " + FORCE_NEW_HINT,
         )
 
     @staticmethod
@@ -408,7 +408,7 @@ class MultiKitVideoAdapter(VideoAdapter):
                                               hint=KEY_HINT)
                 elif r.status_code == 404:
                     raise ProviderJobError("not_found", f"GrokTele không còn job {job_id}.",
-                                           hint="Chạy lại job để gửi yêu cầu mới.")
+                                           hint=FORCE_NEW_HINT)
                 elif not r.is_success:
                     network_errors += 1
                 else:
@@ -459,7 +459,7 @@ class MultiKitVideoAdapter(VideoAdapter):
         cls = _RemoteCancelled if status.startswith("cancel") else ProviderJobError
         return cls(
             kind, f"Job GrokTele {job_id} thất bại [{kind}]: {message}",
-            hint=_ERROR_HINTS.get(kind, "Xem log của GrokTele/MultiKit rồi chạy lại job."),
+            hint=_ERROR_HINTS.get(kind, "Xem log của GrokTele/MultiKit.") + " " + FORCE_NEW_HINT,
         )
 
     async def _result(self, path: Path, job: dict, *, job_id: str, ref: str, deduped: bool,
@@ -468,7 +468,7 @@ class MultiKitVideoAdapter(VideoAdapter):
             info = await anyio.to_thread.run_sync(probe, path)
         except FFmpegError as e:
             raise ProviderJobError("invalid_file", f"File video GrokTele trả về không đọc được: {path.name}.",
-                                   hint="Chạy lại job để tạo lại video.") from e
+                                   hint=FORCE_NEW_HINT) from e
         try:
             aspect_sent = self._aspect_sent(req.aspect)
         except CapabilityError:  # chỉ để ghi meta; job đã xong

@@ -123,6 +123,17 @@ def release(session: Session, job_id: int) -> int:
     return len(rows)
 
 
+def detach(session: Session, job_id: int) -> int:
+    """Tách mọi dòng `spend` khỏi job (`job_id = NULL`, dòng vẫn được tính) — dùng khi job sắp chạy một lần gửi MỚI
+    mà các dòng cũ thuộc lần đã/có thể đã trả tiền: `reserve`/`release` của lần mới không bao giờ xoá được chúng.
+    Trả số dòng đã tách."""
+    rows = session.scalars(select(Spend).where(Spend.job_id == job_id)).all()
+    for row in rows:
+        row.job_id = None
+    session.flush()
+    return len(rows)
+
+
 def reserve(
     session: Session,
     kind: str,

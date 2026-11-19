@@ -68,8 +68,17 @@ Thư mục `<kind>/` mới cần một `__init__.py` (có thể rỗng) để `d
 - **Ngân sách**: handler giữ chỗ trước khi gọi `generate`; không giữ lại khi đã có `external_id`/`state` (nối lại),
   chỉ trả chỗ khi chắc chắn provider không nhận (lỗi mà không có `external_id`/dấu `submitting`, hoặc người dùng huỷ
   job chưa được nhận). Tắt app không trả chỗ và không gọi `cancel(external_id)` — chỉ người dùng huỷ mới báo provider.
-- **Chạy lại** (`job.retry`): job đã có `external_id` mặc định nối lại đúng job cũ (không gửi lại);
-  `force_new=true` tạo job trả phí mới.
+  Dòng chi tiêu của lần đã/có thể đã trả tiền **không bao giờ bị xoá**: khi job bắt đầu một lần gửi mới (`job.retry`
+  với `force_new`, chạy lại job đã xong, `job.clear_attention` của job đã có `external_id`) các dòng cũ được tách khỏi
+  job (`job_id = NULL`, vẫn tính vào tổng) — `reserve`/`release` chỉ đụng tới chỗ giữ chưa trả tiền của lần chạy hiện
+  tại. Chỗ giữ của job `needs_attention` (dấu `submitting`, không rõ provider đã tính tiền chưa) được **giữ** — kể cả
+  sau `job.clear_attention(action=fail)` (tách khỏi job, vẫn tính): thận trọng, có thể tính dư một lượt. Chỉ
+  `clear_attention(action=resubmit)` của job chỉ mang dấu (người dùng xác nhận provider chưa tạo) cho lần gửi mới thay
+  chỗ giữ đó.
+- **Chạy lại** (`job.retry`): job đã có `external_id` mặc định nối lại đúng job cũ (không gửi lại, không tốn thêm);
+  `force_new=true` tạo job trả phí mới. Kèm `params_patch` mà không `force_new` → lỗi 422
+  `params_patch_requires_new_job` (job cũ đã tồn tại phía provider, sửa tham số không có tác dụng). Gợi ý lỗi xảy ra
+  sau khi provider đã nhận job dùng `services.jobs.FORCE_NEW_HINT`; job `needs_attention` → `job.clear_attention`.
 - Tôn trọng `run.cancelled` (asyncio.Event) trong vòng poll.
 
 ## Lỗi chuẩn (`providers.base`)

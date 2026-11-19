@@ -30,7 +30,7 @@ from sagareel.providers.base import (
 )
 from sagareel.providers.image import _paid
 from sagareel.providers.registry import register_adapter
-from sagareel.services.jobs import TransientError
+from sagareel.services.jobs import FORCE_NEW_HINT, TransientError
 
 DEFAULT_BASE_URL = "https://maivideo.top"
 DEFAULT_MODEL = "gpt-image-2.0"
@@ -268,7 +268,7 @@ class MaiVideoImageAdapter(ImageAdapter):
                 if status in FAILED_STATUSES:
                     reason = _first_error(data) or status
                     raise ProviderJobError("failed", f"MaiVideo báo job {job_id} lỗi: {reason}",
-                                           hint="Sửa prompt/ảnh tham chiếu rồi chạy lại (lần chạy lại là job mới).")
+                                           hint="Sửa prompt/ảnh tham chiếu nếu cần. " + FORCE_NEW_HINT)
                 if run is not None:
                     run.progress(None, stage=f"MaiVideo: {status or 'đang xử lý'}")
             if loop.time() >= deadline:

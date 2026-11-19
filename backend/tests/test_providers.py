@@ -1087,6 +1087,35 @@ def test_reserve_never_drops_or_blocks_row_of_accepted_job(session):
     assert budget.spent(session, "image") == 3
 
 
+async def test_force_new_retry_keeps_earlier_spend_counted(services, ctl):
+    """job.retry(force_new) sau một lần đã trả tiền: dòng cũ vẫn được tính (tách khỏi job) → trần 1 chặn lần mới;
+    nâng trần lên 2 thì lần mới chạy và tổng = 2."""
+    from sagareel.services import jobs
+
+    ctl.gate.set()
+    job_id = submit_try(services, ctl)
+    await run_idle(services)
+    assert job_row(services, job_id).status == "succeeded"
+
+    def retry(**kw) -> None:
+        with services.db.session(immediate=True) as s:
+            jobs.retry_job(s, job_id, **kw)
+
+    retry(force_new=True)
+    await run_idle(services)
+    job = job_row(services, job_id)
+    assert (job.status, job.error_code) == ("failed", "budget_exceeded")
+    assert [(j, u) for _, j, u in spends(services)] == [(None, 1.0)]
+    with services.db.session() as s:
+        set_global(s, **{"budget.images_total": 2})
+    retry()
+    await run_idle(services)
+    assert job_row(services, job_id).status == "succeeded" and ctl.submits == 2
+    assert [(j, u) for _, j, u in spends(services)] == [(None, 1.0), (job_id, 1.0)]
+    with services.db.session() as s:
+        assert budget.spent(s, "image") == 2
+
+
 @pytest.mark.parametrize("accepted", [False, True])
 def test_cancel_idle_job_releases_only_never_accepted(services, ctl, accepted):
     """Job `queued` còn chỗ giữ từ lần tắt app: người dùng huỷ → trả chỗ nếu provider chưa nhận."""
