@@ -1,0 +1,29 @@
+# Preset quy trình: tự động gần hoàn toàn — chỉ dừng duyệt animatic trước khi tạo video (tốn tiền nhất).
+# Spec §13 + phụ lục film-craft §2 ("animatic trước, video sau"), §5 (gate:pilot tuỳ chọn). Tắt mọi gate = tự động 100%.
+key: full_auto
+name: Tự động (duyệt animatic)
+data:
+  label: Tự động — duyệt animatic trước khi tạo video
+  description: Viết bible → dàn ý → kịch bản → chia clip → prompt → ảnh → âm thanh → animatic (dừng duyệt) → video → dựng.
+  batch: {mode: parallel, release_after: outline}
+  steps:
+    - {step: write_bible}
+    - {step: outline}
+    - {step: "gate:outline", enabled: false, rerun: [outline]}
+    - {step: write_script}
+    - {step: memory_summarize}
+    - {step: split_clips}
+    - {step: image_prompts}
+    - {step: motion_prompts}
+    - {step: dialogue}
+    - {step: generate_images}
+    - {step: auto_select}
+    - {step: generate_audio}
+    - {step: subtitles}
+    - {step: render_animatic}
+    - {step: "gate:animatic", rerun: [image_prompts, generate_images, render_animatic]}
+    - {step: "gate:pilot", enabled: false}
+    - {step: generate_videos}
+    - {step: render}
+    - {step: "gate:final", enabled: false, rerun: [render]}
+    - {step: export, enabled: false}
