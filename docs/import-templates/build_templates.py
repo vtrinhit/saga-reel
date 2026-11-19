@@ -1,0 +1,59 @@
+"""Sinh clips.csv và clips.xlsx từ cùng một bảng mẫu (chạy một lần: `python build_templates.py`)."""
+
+from __future__ import annotations
+
+import csv
+from pathlib import Path
+
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+
+HERE = Path(__file__).parent
+HEADER = ["Cảnh", "Nhân vật", "Prompt ảnh", "Prompt video", "Thoại", "Thời lượng", "Nối", "Engine", "Cỡ cảnh",
+          "Chuyển động máy", "Ghi chú"]
+ROWS = [
+    ["Cảnh 1: Quán cà phê đêm mưa", "AN",
+     "Toàn cảnh quán cà phê nhỏ ven phố trong đêm mưa, đèn vàng ấm, kính mờ hơi nước",
+     "Máy quay đẩy chậm vào cửa kính, mưa rơi nhẹ", "", 5, "cut", "still_motion", "Toàn cảnh", "Dolly in",
+     "Mở đầu, chưa có thoại"],
+    ["", "AN:áo_mưa",
+     "Cận cảnh An ngồi một mình bên cửa sổ, hai tay ôm ly cà phê đã nguội, ánh mắt xa xăm",
+     "An khẽ thở dài, hơi nước bay lên từ ly cà phê", "AN: Anh ấy lại không đến.", 6, "cut", "ai_video",
+     "Cận cảnh", "Đứng yên", ""],
+    ["", "AN, MINH", "Minh đẩy cửa bước vào, áo ướt đẫm, tay cầm một bó hoa nhỏ",
+     "Chuông cửa rung lên, Minh bước vào, An ngẩng đầu nhìn",
+     "MINH: Xin lỗi, anh đến muộn.\nAN: Em đã đợi anh cả buổi tối.", 7, "continue", "ai_video", "Trung cảnh",
+     "Pan phải", "Nối liền cảnh trước"],
+    ["Cảnh 2: Ban công căn hộ", "AN, MINH",
+     "Hai người đứng trên ban công nhìn thành phố sau cơn mưa, ánh đèn phản chiếu trên mặt đường ướt",
+     "Gió nhẹ thổi tóc An, máy quay lia chậm theo hai người", "MINH: Từ giờ, anh sẽ không để em đợi nữa.", 6,
+     "fade", "ai_video", "Toàn cảnh", "Pan phải", ""],
+    ["", "AN", "Cận cảnh nụ cười của An, đôi mắt long lanh dưới ánh đèn thành phố",
+     "An mỉm cười rồi quay sang nhìn Minh", "AN: Em tin anh.", 4, "cut", "ai_video", "Đặc tả", "Đứng yên", ""],
+    ["", "", "Hai chiếc ly cà phê đặt cạnh nhau trên lan can, bình minh ló dạng phía xa",
+     "Máy quay kéo ra xa, ánh sáng ấm dần lên", "NR: Và đêm mưa ấy trở thành kỷ niệm đẹp nhất của họ.", 6, "fade",
+     "still_motion", "Toàn cảnh", "Pull out", "Cảnh kết (ô Cảnh để trống = vẫn Cảnh 2)"],
+]
+
+with open(HERE / "clips.csv", "w", encoding="utf-8-sig", newline="") as f:  # BOM để Excel mở đúng tiếng Việt
+    w = csv.writer(f)
+    w.writerow(HEADER)
+    w.writerows(ROWS)
+
+wb = Workbook()
+ws = wb.active
+ws.title = "Clips"
+ws.append(HEADER)
+for r in ROWS:
+    ws.append(r)
+for c in ws[1]:
+    c.font = Font(bold=True)
+    c.fill = PatternFill("solid", fgColor="F2D24B")
+for i, width in enumerate([26, 14, 60, 48, 44, 12, 10, 14, 12, 16, 32], start=1):
+    ws.column_dimensions[get_column_letter(i)].width = width
+for row in ws.iter_rows(min_row=2):
+    for c in row:
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+ws.freeze_panes = "A2"
+wb.save(HERE / "clips.xlsx")
