@@ -89,8 +89,8 @@ class OpenAIImagesAdapter(ImageAdapter):
         if r.status_code in (401, 403):
             return Health(status="dead", detail=f"Máy chủ ảnh từ chối khoá API (HTTP {r.status_code}).")
         if not r.is_success:
-            return Health(status="dead", detail=f"Máy chủ ảnh trả lỗi HTTP {r.status_code}: "
-                                                f"{_paid.error_detail(r, self.key)[:200]}")
+            return Health(status=_paid.health_status_for(r.status_code),
+                          detail=f"Máy chủ ảnh trả lỗi HTTP {r.status_code}: {_paid.error_detail(r, self.key)[:200]}")
         models: list[str] = []
         try:
             data = r.json()

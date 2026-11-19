@@ -186,5 +186,17 @@ async def test_health(make):
     assert (await make().check_health()).status == "dead"
 
 
+@respx.mock
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+async def test_health_rate_limit_or_server_error_is_unknown(make, status):
+    respx.get(f"{BASE}/models").mock(return_value=httpx.Response(status, json={"error": {"message": "bận"}}))
+    h = await make().check_health()
+    assert h.status == "unknown" and str(status) in h.detail and KEY not in h.detail
+    respx.get(f"{BASE}/models").mock(return_value=httpx.Response(403))
+    assert (await make().check_health()).status == "dead"
+    respx.get(f"{BASE}/models").mock(return_value=httpx.Response(404))
+    assert (await make().check_health()).status == "dead"
+
+
 async def test_health_without_base_url_is_not_configured(make):
     assert (await make(base_url="").check_health()).status == "not_configured"

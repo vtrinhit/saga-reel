@@ -330,6 +330,47 @@ async def test_too_many_refs_is_capability_error(adapter, tmp_path, run_ctx):
     assert route.call_count == 0 and run_ctx.saves == []
 
 
+class _BrokenSaveRun(RunStub):
+    """`save_external(job_id, …)` hỏng (vd. DB khoá/đầy) sau khi MaiVideo đã nhận job."""
+
+    def __init__(self, workdir, exc: BaseException) -> None:
+        super().__init__(workdir)
+        self.exc = exc
+
+    async def save_external(self, external_id=None, **state):
+        if external_id is not None:
+            self.logs.append(("debug", "<save_external job_id>"))
+            raise self.exc
+        await super().save_external(external_id, **state)
+
+
+@respx.mock
+async def test_job_id_logged_before_save_and_db_error_is_job_unknown_with_id(adapter, req, tmp_path):
+    import sqlite3
+
+    run = _BrokenSaveRun(tmp_path / "w", sqlite3.OperationalError("database is locked"))
+    respx.post(URL).mock(return_value=httpx.Response(200, json={"job_id": "j-777", "status": "queued"}))
+    poll = respx.get(f"{URL}/j-777").mock(return_value=httpx.Response(200, json=DONE))
+    with pytest.raises(JobUnknown) as e:
+        await adapter.generate(req, run)
+    assert e.value.code == "maivideo_job_unknown" and "j-777" in str(e.value)
+    assert KEY not in str(e.value) + (e.value.hint or "")
+    msgs = [m for _, m in run.logs]
+    first_with_id = next(i for i, m in enumerate(msgs) if "j-777" in m)
+    assert first_with_id < msgs.index("<save_external job_id>")  # job id đã vào log trước khi lưu
+    assert poll.call_count == 0
+
+
+@respx.mock
+async def test_job_state_lost_on_save_propagates(adapter, req, tmp_path):
+    from sagareel.services.jobs import JobStateLost
+
+    run = _BrokenSaveRun(tmp_path / "w", JobStateLost("Job #1 không còn chạy"))
+    respx.post(URL).mock(return_value=httpx.Response(200, json={"job_id": "j-778"}))
+    with pytest.raises(JobStateLost):
+        await adapter.generate(req, run)
+
+
 async def test_missing_key_is_unavailable(make, req, run_ctx):
     with pytest.raises(ProviderUnavailable):
         await make(api_key="").generate(req, run_ctx)
@@ -373,6 +414,20 @@ async def test_health_bad_key_is_dead(adapter, status):
     respx.get(MODELS_URL).mock(return_value=httpx.Response(status))
     h = await adapter.check_health()
     assert h.status == "dead" and KEY not in h.detail
+
+
+@respx.mock
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504, 521, 530])
+async def test_health_rate_limit_or_server_error_is_unknown(adapter, status):
+    respx.get(MODELS_URL).mock(return_value=httpx.Response(status, json={"error": f"lỗi {KEY}"}))
+    h = await adapter.check_health()
+    assert h.status == "unknown" and str(status) in h.detail and KEY not in h.detail
+
+
+@respx.mock
+async def test_health_other_4xx_is_dead(adapter):
+    respx.get(MODELS_URL).mock(return_value=httpx.Response(404))
+    assert (await adapter.check_health()).status == "dead"
 
 
 @respx.mock

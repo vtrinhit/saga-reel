@@ -100,6 +100,12 @@ def retry_after_s(resp: httpx.Response) -> float | None:
     return None
 
 
+def health_status_for(status_code: int) -> str:
+    """Trạng thái sức khoẻ khi provider trả HTTP lỗi: 429 (hết lượt tạm thời) và 5xx/cổng → `unknown` (có thể chỉ
+    là tạm thời, không kết luận được); còn lại (401/403 sai khoá, 4xx khác) → `dead`."""
+    return "unknown" if status_code == 429 or status_code >= 500 else "dead"
+
+
 def redact(text: str, secret: str) -> str:
     return text.replace(secret, "••••") if secret else text
 
