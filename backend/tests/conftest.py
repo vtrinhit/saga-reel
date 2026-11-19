@@ -28,6 +28,21 @@ def client(settings):
         yield c
 
 
+LOCAL_BASE_URL = "http://127.0.0.1:8990"
+LOCAL_PEER = ("127.0.0.1", 50000)
+
+
+@pytest.fixture
+def make_local_client():
+    """Tạo TestClient CỤC BỘ cho một app tự dựng (Host 127.0.0.1:8990, IP loopback → chủ không cần đăng nhập khi
+    chưa đặt mật khẩu). TestClient mặc định (`testserver`, IP `testclient`) bị middleware bảo mật chặn."""
+
+    def make(app, **kwargs) -> TestClient:
+        return TestClient(app, base_url=LOCAL_BASE_URL, client=LOCAL_PEER, **kwargs)
+
+    return make
+
+
 @pytest.fixture
 def db(tmp_path) -> Iterator[Database]:
     """Database đã migrate trên tmp_path; dispose engine sau test (Windows giữ handle SQLite/WAL nếu không)."""

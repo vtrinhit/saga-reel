@@ -9,7 +9,6 @@ from typing import Literal
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
 from sagareel.app import create_app
@@ -93,8 +92,8 @@ def test_ops():
 
 
 @pytest.fixture
-def app_client(settings, test_ops):
-    with TestClient(create_app(settings)) as c:
+def app_client(settings, test_ops, make_local_client):
+    with make_local_client(create_app(settings)) as c:
         yield c
 
 
@@ -581,3 +580,32 @@ def test_auth_error_on_catalog_fetch_is_exit_2(capsys):
 
     assert cli_main.main(["ops"], transport=httpx.MockTransport(handler)) == 2
     assert capsys.readouterr().err == "unauthorized: Cần đăng nhập. (gợi ý: Đặt SAGAREEL_TOKEN.)\n"
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Bảo mật (Task 8): CLI nói chuyện với app như một client cục bộ
+
+
+def test_cli_requests_are_local(cli, requests_seen):
+    out = cli(["call", "system.info", "--json"])
+    assert out.code == 0, out.stderr
+    for req in requests_seen:
+        assert req.headers["host"] == "127.0.0.1:8990"  # SAGAREEL_URL mặc định → Host tin cậy + cục bộ
+        assert not any(h in req.headers for h in ("x-forwarded-for", "forwarded", "cf-connecting-ip", "x-real-ip"))
+        assert "authorization" not in req.headers  # không có SAGAREEL_TOKEN → không gửi Bearer
+
+
+def test_cli_needs_token_once_owner_password_set(app_client, transport, capsys, monkeypatch):
+    run = _runner(capsys, monkeypatch, transport)
+    tok = app_client.post("/api/ops/token.create", json={"name": "cli", "role": "owner"}).json()["token"]
+    r = app_client.post("/api/ops/auth.set_password", json={"role": "owner", "password": "mat-khau-cli-123"})
+    assert r.status_code == 200, r.text
+    # `remote.require_login_local` mặc định bật: có mật khẩu chủ rồi thì cục bộ cũng phải xác thực.
+    out = run(["call", "system.info", "--json"])
+    assert out.code == 2 and out.stderr.startswith("auth_required:")
+    monkeypatch.setenv("SAGAREEL_TOKEN", tok)
+    out = run(["call", "system.info", "--json"])
+    assert out.code == 0, out.stderr
+    assert json.loads(out.stdout)["app"]
+    out = run(["test", "cli-create", "--name", "qua token", "--json"])
+    assert out.code == 0 and json.loads(out.stdout)["name"] == "qua token"

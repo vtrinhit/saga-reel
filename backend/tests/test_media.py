@@ -15,7 +15,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
 from PIL import Image
 
 from sagareel.app import create_app
@@ -53,8 +52,8 @@ def session(db):
 
 
 @pytest.fixture
-def client_with_media(settings, tmp_path, sample_video):
-    with TestClient(create_app(settings)) as c:
+def client_with_media(settings, tmp_path, sample_video, make_local_client):
+    with make_local_client(create_app(settings)) as c:
         with c.app.state.services.db.session() as s:
             vid = shutil.copy(sample_video, tmp_path / "clip.mp4")
             video = media.register(s, Path(vid), kind="video", origin="fake", settings=settings)
@@ -304,10 +303,10 @@ def test_reconcile_drops_or_restores_duplicate_copy(session, settings, tmp_path)
     assert first.stored_path.is_file() and not other.exists()
 
 
-def test_media_served_when_db_lives_outside_data_dir(tmp_path, sample_video):
+def test_media_served_when_db_lives_outside_data_dir(tmp_path, sample_video, make_local_client):
     base = load_settings(data_dir=tmp_path / "data", env_file=tmp_path / ".env.local", outputs_dir=tmp_path / "out")
     s = dataclasses.replace(base, db_path=tmp_path / "elsewhere" / "db.sqlite")
-    with TestClient(create_app(s)) as c:
+    with make_local_client(create_app(s)) as c:
         with c.app.state.services.db.session() as sess:
             mid = media.register(sess, Path(shutil.copy(sample_video, tmp_path / "v.mp4")), kind="video",
                                  origin="fake", settings=s).id
@@ -453,3 +452,15 @@ def test_media_ops_are_viewer_readable():
     load_all()
     for name in ("media.get", "media.list"):
         assert REGISTRY[name].read_only and REGISTRY[name].viewer
+
+
+def test_media_requires_auth_for_remote(client_with_media):
+    """Qua tunnel (header chuyển tiếp) chưa xác thực → 401 cho file gốc, bản tải về và thumbnail; Bearer thì được."""
+    c, mid = client_with_media.client, client_with_media.video_id
+    remote = {"CF-Connecting-IP": "1.2.3.4"}
+    for path in (f"/media/{mid}", f"/media/{mid}?download=1", f"/media/{mid}/thumb"):
+        r = c.get(path, headers=remote)
+        assert r.status_code == 401 and r.json()["error_code"] == "auth_required", path
+    tok = c.post("/api/ops/token.create", json={"name": "xem-media", "role": "owner"}).json()["token"]
+    r = c.get(f"/media/{mid}", headers={**remote, "Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200 and r.headers["content-type"] == "video/mp4"

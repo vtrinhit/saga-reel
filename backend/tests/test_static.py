@@ -5,7 +5,6 @@ from __future__ import annotations
 import dataclasses
 
 import pytest
-from fastapi.testclient import TestClient
 
 from sagareel.app import create_app
 
@@ -24,9 +23,9 @@ def dist(tmp_path):
 
 
 @pytest.fixture
-def spa_client(settings, dist):
+def spa_client(settings, dist, make_local_client):
     app = create_app(dataclasses.replace(settings, frontend_dist=dist))
-    with TestClient(app) as c:
+    with make_local_client(app) as c:
         yield c
 
 
@@ -76,7 +75,7 @@ def test_media_is_never_answered_by_spa_fallback(spa_client):
         assert INDEX not in r.text, path
 
 
-def test_routers_included_after_static_still_receive_requests(settings, dist):
+def test_routers_included_after_static_still_receive_requests(settings, dist, make_local_client):
     """Router include SAU router tĩnh (như khi gộp nhánh thêm route vào cuối create_app) vẫn nhận request của mình."""
     from fastapi import APIRouter
 
@@ -92,7 +91,7 @@ def test_routers_included_after_static_still_receive_requests(settings, dist):
         return {"media": x}
 
     app.include_router(later)
-    with TestClient(app) as c:
+    with make_local_client(app) as c:
         assert c.get("/api/zz-later/5").json() == {"api": 5}
         assert c.get("/media/zz-later/6").json() == {"media": 6}
         assert c.get("/settings/providers").text == INDEX  # SPA vẫn chạy cho đường dẫn khác
@@ -177,9 +176,24 @@ def test_static_routes_hidden_from_openapi(spa_client, dist):
     assert not any(oid.startswith(name) for oid in operation_ids for name in spa_names)
 
 
-def test_absent_dist_serves_nothing_and_api_still_works(settings, tmp_path):
+def test_absent_dist_serves_nothing_and_api_still_works(settings, tmp_path, make_local_client):
     app = create_app(dataclasses.replace(settings, frontend_dist=tmp_path / "khong-co-dist"))
-    with TestClient(app) as c:
+    with make_local_client(app) as c:
         assert c.get("/api/health").json()["ok"] is True
         assert c.get("/").status_code == 404
         assert c.get("/settings").status_code == 404
+
+
+def test_spa_served_to_remote_unauthenticated_but_api_and_media_need_auth(spa_client):
+    """Qua tunnel, chưa đăng nhập: SPA (màn đăng nhập) vẫn tải được; API, media, SSE, OpenAPI thì bị chặn."""
+    remote = {"CF-Connecting-IP": "1.2.3.4"}
+    for path in ("/", "/login", "/settings/providers"):
+        r = spa_client.get(path, headers=remote)
+        assert r.status_code == 200 and r.text == INDEX, path
+    assert spa_client.get("/assets/app-123.js", headers=remote).status_code == 200
+    assert spa_client.get("/favicon.svg", headers=remote).status_code == 200
+    for path in ("/api/ops", "/media/1", "/media/1/thumb", "/api/events", "/openapi.json", "/docs"):
+        r = spa_client.get(path, headers=remote)
+        assert r.status_code == 401 and r.json()["error_code"] == "auth_required", path
+    s = spa_client.get("/api/auth/status", headers=remote).json()
+    assert s["authenticated"] is False and s["local"] is False

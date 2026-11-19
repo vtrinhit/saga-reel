@@ -590,7 +590,9 @@ def test_token_name_validated(local_client):
 
 def test_bearer_on_media_and_events(remote_client, owner_token):
     h = {**REMOTE_H, "Authorization": f"Bearer {owner_token}"}
-    assert remote_client.get("/media/khong-co.png", headers=h).status_code == 404  # qua xác thực, chưa có route
+    assert remote_client.get("/media/999999", headers=h).status_code == 404  # qua xác thực, media không tồn tại
+    r = remote_client.get("/media/999999", headers=REMOTE_H)
+    assert r.status_code == 401 and r.json()["error_code"] == "auth_required"
 
 
 # --- Bắt đăng nhập cả ở máy cục bộ -------------------------------------------------------------------------------

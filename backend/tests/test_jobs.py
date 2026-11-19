@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 
 import anyio
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 
@@ -1072,8 +1071,8 @@ def test_production_registry_has_no_test_handlers():
     assert not [t for t in jobs.HANDLERS if t.startswith("test.")]
 
 
-def test_job_wait_times_out(settings, test_job_handlers):
-    with TestClient(create_app(settings)) as client:
+def test_job_wait_times_out(settings, test_job_handlers, make_local_client):
+    with make_local_client(create_app(settings)) as client:
         services = client.app.state.services
         a = enqueue_job(services, "test.sleep", {"s": 30})
         r = client.post("/api/ops/job.wait", json={"ids": [a], "timeout_s": 1})
@@ -1089,7 +1088,7 @@ def test_job_wait_times_out(settings, test_job_handlers):
         db.dispose()
 
 
-def test_lifespan_recovers_then_starts_worker(settings, test_job_handlers):
+def test_lifespan_recovers_then_starts_worker(settings, test_job_handlers, make_local_client):
     db = Database(settings.db_path)
     db.migrate()
     with db.session() as s:
@@ -1097,7 +1096,7 @@ def test_lifespan_recovers_then_starts_worker(settings, test_job_handlers):
         resumable = Job(type="test.resumable", status="running", lane="L", params={})
         s.add_all([stuck, resumable])
     db.dispose()
-    with TestClient(create_app(settings)) as client:
+    with make_local_client(create_app(settings)) as client:
         services = client.app.state.services
         assert services.worker.started
         r = client.post("/api/ops/job.wait", json={"ids": [stuck.id, resumable.id], "timeout_s": 5})
