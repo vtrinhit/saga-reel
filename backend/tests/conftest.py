@@ -134,9 +134,11 @@ def test_job_handlers():
 @pytest.fixture
 def services(settings, test_job_handlers):
     """Services trên DB tạm đã migrate, có worker (chưa chạy; tick nhanh cho test)."""
+    from sagareel import handlers
     from sagareel.container import Services
     from sagareel.services.worker import Worker
 
+    handlers.load_all()
     database = Database(settings.db_path)
     database.migrate()
     svc = Services(settings=settings, boot_id="w" * 32, db=database)
@@ -145,3 +147,79 @@ def services(settings, test_job_handlers):
         yield svc
     finally:
         database.dispose()
+
+
+# --- M1+ (Task W0): ngữ cảnh chủ sở hữu, project "demo", clip video tí hon -----------------------------------------
+
+
+@pytest.fixture
+def owner_ctx(request, settings):
+    """`OpContext` chủ sở hữu trên cùng DB với test: fixture `services` nếu test dùng nó, rồi `db`, không thì DB tại
+    `settings.db_path` (chung với app của fixture `client`)."""
+    from sagareel.container import Services
+    from sagareel.core.context import OpContext
+
+    owned: Database | None = None
+    if "services" in request.fixturenames:
+        svc = request.getfixturevalue("services")
+    else:
+        if "db" in request.fixturenames:
+            database = request.getfixturevalue("db")
+        else:
+            database = owned = Database(settings.db_path)
+            database.migrate()
+        svc = Services(settings=settings, boot_id="o" * 32, db=database)
+    try:
+        yield OpContext(services=svc, actor="user:owner", role="owner")
+    finally:
+        if owned is not None:
+            owned.dispose()
+
+
+@pytest.fixture
+def project(owner_ctx) -> int:
+    """Id của project "demo" (tên "Demo") vừa tạo qua `services.projects.create`."""
+    from sagareel.services import projects
+
+    return projects.create(owner_ctx, name="Demo", key="demo")["id"]
+
+
+@pytest.fixture(scope="session")
+def _clip_tiny_source(tmp_path_factory):
+    """Video gốc 64×112, 1 s, 30 fps, có tiếng — sinh một lần cho cả phiên test."""
+    import subprocess
+
+    out = tmp_path_factory.mktemp("clip_tiny") / "tiny.mp4"
+    subprocess.run(
+        ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+         "-f", "lavfi", "-i", "testsrc2=s=64x112:d=1:r=30", "-f", "lavfi", "-i", "sine=d=1",
+         "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(out)],
+        check=True, stdin=subprocess.DEVNULL, capture_output=True,
+    )
+    return out
+
+
+@pytest.fixture
+def make_clip_tiny(settings, _clip_tiny_source, tmp_path):
+    """Factory: `make_clip_tiny(database, project_id=None) -> media_id` — đăng ký một media video 64×112 1 s.
+
+    Mỗi lần gọi chép file gốc (kho media chuyển file vào `data/media`) và đổi vài byte metadata để sha256 khác nhau
+    → mỗi lần một bản ghi media mới.
+    """
+    import shutil
+
+    from sagareel.services import media
+
+    counter = iter(range(1_000_000))
+
+    def make(database: Database, project_id: int | None = None) -> int:
+        n = next(counter)
+        dst = tmp_path / f"clip_tiny_{n}.mp4"
+        shutil.copy(_clip_tiny_source, dst)
+        with open(dst, "ab") as f:  # byte thừa sau moov: ffprobe bỏ qua, sha256 đổi
+            f.write(f"sagareel-tiny-{n}".encode())
+        with database.session() as s:
+            m = media.register(s, dst, kind="video", origin="fake", settings=settings, project_id=project_id)
+            return m.id
+
+    return make

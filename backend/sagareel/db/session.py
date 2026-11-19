@@ -47,6 +47,16 @@ def _begin_immediate(conn) -> None:
         conn.exec_driver_sql("BEGIN IMMEDIATE")
 
 
+# Bảng không có model: bảng ảo FTS5 `bible_fts` (migration 0004) và các bảng bóng của nó (`bible_fts_data`…).
+UNMODELED_TABLE_PREFIXES = ("bible_fts",)
+
+
+def include_name(name, type_, parent_names) -> bool:
+    """Bộ lọc Alembic (`include_name`): so schema/autogenerate bỏ qua bảng không có model (không sinh `drop_table`
+    cho bảng ảo FTS5)."""
+    return not (type_ == "table" and name is not None and name.startswith(UNMODELED_TABLE_PREFIXES))
+
+
 def sqlite_url(db_path: Path) -> str:
     return f"sqlite:///{Path(db_path).resolve().as_posix()}"
 

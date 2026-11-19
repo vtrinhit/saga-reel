@@ -36,7 +36,9 @@ def _url() -> str:
 
 
 def _configure(**kwargs) -> None:
-    context.configure(target_metadata=target_metadata, render_as_batch=True, **kwargs)
+    from sagareel.db.session import include_name  # bỏ qua bảng ảo FTS5 không có model
+
+    context.configure(target_metadata=target_metadata, render_as_batch=True, include_name=include_name, **kwargs)
 
 
 def run_migrations_offline() -> None:

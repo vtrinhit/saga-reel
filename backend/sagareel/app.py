@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from sagareel import APP_NAME, __version__
+from sagareel import handlers as handlers_pkg
 from sagareel import ops as ops_pkg
 from sagareel.api.middleware import SecurityMiddleware
 from sagareel.api.routes_auth import build_router as build_auth_router
@@ -143,6 +144,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         }
 
     ops_pkg.load_all()
+    handlers_pkg.load_all()  # job handler theo tính năng (`sagareel/handlers/*.py`) tự đăng ký
     app.include_router(build_router())
     app.include_router(build_events_router())
     app.include_router(media_router)

@@ -29,7 +29,10 @@ def test_migrate_creates_tables_and_matches_models(db):
     from alembic.migration import MigrationContext
     from alembic.autogenerate import compare_metadata
     with db.engine.connect() as conn:
-        assert compare_metadata(MigrationContext.configure(conn), Base.metadata) == []
+        from sagareel.db.session import include_name  # bỏ qua bảng ảo FTS5 (bible_fts*) không có model
+
+        mc = MigrationContext.configure(conn, opts={"include_name": include_name})
+        assert compare_metadata(mc, Base.metadata) == []
         assert conn.exec_driver_sql("PRAGMA journal_mode").scalar() == "wal"
 
 
