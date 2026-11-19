@@ -70,7 +70,7 @@ def test_ops():
 @pytest.fixture
 def client(settings, test_ops):
     # Route sinh lúc tạo app → đăng ký op test trước khi dựng app.
-    with TestClient(create_app(settings)) as c:
+    with TestClient(create_app(settings), base_url="http://127.0.0.1:8990", client=("127.0.0.1", 50000)) as c:
         yield c
 
 

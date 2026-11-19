@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Request
 from pydantic import BaseModel
 
-from sagareel.core import ops
+from sagareel.core import ops, security
 from sagareel.core.context import OpContext
 from sagareel.core.errors import ErrorPayload
 
@@ -25,8 +25,20 @@ _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 
 def context_from_request(request: Request) -> OpContext:
-    """Dựng OpContext cho một request. Task 8 thay bằng principal thật từ `request.state.principal`."""
-    return OpContext(services=request.app.state.services, actor="user:owner", role="owner")
+    """Dựng OpContext từ `request.state.principal` (do `SecurityMiddleware` đặt).
+
+    Không có principal → 401 `auth_required` (không bao giờ mặc định là owner).
+    """
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        raise security.auth_required()
+    return OpContext(
+        services=request.app.state.services,
+        actor=principal.actor,
+        role=principal.role,
+        via=principal.via,
+        rate_key=getattr(request.state, "rate_key", None),
+    )
 
 
 def _make_endpoint(spec: ops.OpSpec):

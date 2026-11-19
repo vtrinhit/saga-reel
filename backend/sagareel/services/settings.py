@@ -89,6 +89,8 @@ def set_global(ctx: OpContext, values: dict[str, Any]) -> None:
                 data[key] = value
         if data != g.data:
             g.data = data
+    # Cấu hình truy cập (`remote.*`) của middleware bảo mật được cache 5 s: đổi là có hiệu lực ngay.
+    ctx.services.auth_cache.invalidate()
 
 
 def explain(ctx: OpContext, run_overrides: dict[str, Any] | None = None) -> list[Resolved]:

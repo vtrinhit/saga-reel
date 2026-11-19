@@ -22,7 +22,9 @@ def settings(tmp_path) -> AppSettings:
 
 @pytest.fixture
 def client(settings):
-    with TestClient(create_app(settings)) as c:
+    # Client CỤC BỘ (Host 127.0.0.1:8990, IP loopback): chủ sở hữu không cần đăng nhập. Host mặc định `testserver`
+    # của TestClient bị middleware bảo mật chặn (`untrusted_host`).
+    with TestClient(create_app(settings), base_url="http://127.0.0.1:8990", client=("127.0.0.1", 50000)) as c:
         yield c
 
 

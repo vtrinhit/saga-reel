@@ -20,7 +20,9 @@ def _serve(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     settings = dataclasses.replace(settings, host=args.host, port=args.port)
-    uvicorn.run(create_app(settings), host=settings.host, port=settings.port)
+    # proxy_headers=False: giữ IP socket thật trong scope["client"] (uvicorn mặc định tin X-Forwarded-* từ 127.0.0.1
+    # và ghi đè IP/scheme) — middleware bảo mật tự đọc header của tunnel khi cần.
+    uvicorn.run(create_app(settings), host=settings.host, port=settings.port, proxy_headers=False)
     return 0
 
 

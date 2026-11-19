@@ -83,9 +83,17 @@ remote.public_hosts:
   description: Danh sách host công khai được phép truy cập từ xa.
 remote.require_login_local:
   type: bool
-  default: false
-  description: Bắt đăng nhập cả khi truy cập từ máy cục bộ.
+  default: true
+  description: >-
+    Bắt đăng nhập cả khi truy cập từ máy cục bộ (mặc định bật: reverse proxy kiểu nginx `proxy_pass` không gắn header
+    chuyển tiếp trông giống hệt máy cục bộ). Chỉ có hiệu lực khi đã đặt mật khẩu chủ sở hữu.
 remote.allow_viewer:
   type: bool
   default: false
   description: Cho phép tài khoản chỉ xem truy cập từ xa.
+remote.client_ip_header:
+  type: str
+  default: cf-connecting-ip
+  description: >-
+    Header (do tunnel/proxy ghi đè) chứa IP thật của client, dùng để giới hạn đăng nhập sai theo IP. Để trống = chỉ
+    dùng IP kết nối.
