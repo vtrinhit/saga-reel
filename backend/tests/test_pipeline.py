@@ -207,6 +207,31 @@ async def test_child_failure_fails_pipeline(services, owner_ctx, proj, fake_llm,
         await services.worker.stop()
 
 
+async def test_rerun_failed_lead_keeps_batch_followers(services, owner_ctx, proj, fake_llm, children):
+    s1, s2 = make_seq(owner_ctx, proj, 1), make_seq(owner_ctx, proj, 2)
+    key = workflow(owner_ctx, proj, "t7", [{"step": "render_animatic"}],
+                   batch={"mode": "parallel", "release_after": "render_animatic"})
+    children.kind["render.start"] = "test.boom"
+    await services.worker.start()
+    try:
+        await anyio.to_thread.run_sync(engine.start, owner_ctx, [s1, s2], key, {})
+        await wait_for(status_is(services, s1, "failed"))
+        assert run_state(services, s2)["status"] == "pending_release"
+        children.kind["render.start"] = "test.sleep"
+        await anyio.to_thread.run_sync(engine.start, owner_ctx, [s1], key, {})  # chỉ chạy lại tập dẫn
+        await wait_for(status_is(services, s2, "done"))
+        assert run_state(services, s1)["status"] == "done"
+    finally:
+        await services.worker.stop()
+
+
+async def test_cancel_lead_cancels_pending_followers(services, owner_ctx, proj):
+    s1, s2 = make_seq(owner_ctx, proj, 1), make_seq(owner_ctx, proj, 2)
+    await anyio.to_thread.run_sync(engine.start, owner_ctx, [s1, s2], "full_auto", {})
+    out = await engine.cancel(owner_ctx, s1)
+    assert out["cancelled_followers"] == [s2] and run_state(services, s2)["status"] == "cancelled"
+
+
 # --- author mode agent: waiting_input → context.pack → prompts.submit → chạy tiếp -----------------------------------
 
 

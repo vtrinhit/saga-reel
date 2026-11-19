@@ -345,7 +345,7 @@ async def test_adapt_novel_splits_at_cliffhanger(owner_ctx, proj, fake_llm):
 # --- Bộ nhớ dài: tập 200 nhớ chuyện tập 3 -----------------------------------------------------------------------------
 
 
-def test_episode_200_context_contains_episode_3_fact_within_budget(owner_ctx, proj):
+async def test_episode_200_context_contains_episode_3_fact_within_budget(owner_ctx, proj, fake_llm):
     db = owner_ctx.services.db
     with db.session() as s:
         s.add(Asset(project_id=proj, kind="character", key="linh", name="Linh", description="Linh"))
@@ -383,6 +383,12 @@ def test_episode_200_context_contains_episode_3_fact_within_budget(owner_ctx, pr
     assert packed["dropped"], "ngân sách phải thực sự cắt bớt (dữ liệu thô vượt xa ngân sách)"
     assert packed["sections"].get("recent") == memory.RECENT_FULL
     assert "Tập 199 «Tập 199»" in v["context"] and packed["sections"].get("arcs", 0) > 0
+    # đúng như LLM nhận: chạy write_script với LLM giả ghi lại tin nhắn đã render (cả thân template)
+    fake_llm.on("story_write_script", "CẢNH 1 — Đà Lạt — đêm. MINH: Chiếc hộp ở đâu? " * 3)
+    await writer.write_script(owner_ctx, sid)
+    msgs = fake_llm.calls_of("story_write_script")[0]["messages"]
+    sent = " ".join(m["content"] for m in msgs)
+    assert "hộp gỗ đựng di chúc" in sent and len(sent) <= 12000 * T.CHARS_PER_TOKEN
     # ngân sách nhỏ hơn qua cài đặt → ngữ cảnh nhỏ hơn mà vẫn giữ mục liên quan
     with db.session() as s:
         from sagareel.db.models import Project

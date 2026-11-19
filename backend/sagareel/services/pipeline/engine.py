@@ -743,7 +743,7 @@ def start(ctx: OpContext, sequence_ids: list[int], workflow_key: str = W.DEFAULT
     fresh: list[int] = []
     for sid in ids:
         cur = existing[sid]
-        if cur and cur.get("status") in ACTIVE and not restart:
+        if cur and cur.get("status") in ACTIVE and cur.get("status") != "pending_release" and not restart:
             if cur.get("workflow") != workflow_key:
                 raise Conflict(f"Tập #{sid} đang chạy quy trình '{cur.get('workflow')}'.",
                                code="pipeline_running", hint="Huỷ (pipeline.cancel) hoặc truyền restart=true.")
@@ -753,6 +753,13 @@ def start(ctx: OpContext, sequence_ids: list[int], workflow_key: str = W.DEFAULT
     out_jobs = []
     if fresh:
         lead, followers = fresh[0], fresh[1:]
+        # chạy lại tập dẫn (lỗi/huỷ/xong): các tập lô cũ còn chờ thả vẫn theo tập dẫn mới, không bị bỏ rơi
+        prev_next = ((existing[lead] or {}).get("release") or {}).get("next") or []
+        if prev_next:
+            with ctx.services.db.session() as s:
+                carried = [i for i in prev_next if i not in fresh
+                           and load_state(s, i).get("status") == "pending_release"]
+            followers = followers + carried
         lead_after = "gate:pilot" if pilot_on else batch["release_after"]
         for sid in fresh:
             is_lead = sid == lead
@@ -763,7 +770,8 @@ def start(ctx: OpContext, sequence_ids: list[int], workflow_key: str = W.DEFAULT
                 release = None
             st = init_state(workflow_key, steps, settings=settings_, params=params,
                             genre_overrides=dict(ov.get("genre_overrides") or {}), pilot=is_lead and pilot_on,
-                            batch_ids=fresh, release=release, status="queued" if is_lead else "pending_release")
+                            batch_ids=[lead, *followers], release=release,
+                            status="queued" if is_lead else "pending_release")
             save_state(ctx.services, sid, st, project_id=project_id)
         out_jobs.append(ensure_job(ctx.services, lead, delay_s=0))
     for sid in resumed:
@@ -927,7 +935,21 @@ async def cancel(ctx: OpContext, sequence_id: int) -> dict[str, Any]:
     st["status"] = "cancelled"
     st["waiting"] = None
     await _thread(save_state, ctx.services, sequence_id, st, project_id=project_id)
-    return {"sequence_id": sequence_id, "status": "cancelled", "cancelled_jobs": cancelled}
+    followers = []
+    for fid in (st.get("release") or {}).get("next") or []:  # tập lô đang chờ tập dẫn này: huỷ theo
+        def drop(fid=fid) -> bool:
+            with ctx.services.db.session() as s:
+                fst = load_state(s, fid)
+            if fst.get("status") != "pending_release":
+                return False
+            fst["status"] = "cancelled"
+            save_state(ctx.services, fid, fst, project_id=project_id)
+            return True
+
+        if await _thread(drop):
+            followers.append(fid)
+    return {"sequence_id": sequence_id, "status": "cancelled", "cancelled_jobs": cancelled,
+            "cancelled_followers": followers}
 
 
 def status(ctx: OpContext, *, sequence_ids: list[int] | None = None, project_id: int | None = None) -> dict:
