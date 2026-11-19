@@ -1,0 +1,9 @@
+# Preset phụ đề dọc 9:16 có hộp nền (BorderStyle 3: hộp vẽ bằng OutlineColour, Outline = độ đệm quanh chữ).
+# Kế thừa 9x16 (khoá `inherit`), chỉ ghi phần khác. Hộp mờ `&H66000000` — chưa render thử bằng mắt.
+name: "Dọc 9:16 — hộp nền"
+inherit: 9x16
+border_style: 3
+outline: 14
+shadow: 0
+colours:
+  outline: "&H66000000"

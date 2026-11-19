@@ -1,0 +1,12 @@
+# Preset phụ đề ngang 16:9 (1920×1080) — số liệu từ docs/research/film-craft/post-production.md, khối "Mặc định đề xuất".
+name: "Ngang 16:9 — chữ viền"
+inherit: 9x16
+play_res: [1920, 1080]
+fontsize: 54
+outline: 4
+shadow: 1
+border_style: 1
+alignment: 2
+margin_l: 192
+margin_r: 192
+margin_v: 70

@@ -115,3 +115,28 @@ library.drift_threshold:
   type: int
   default: 70
   description: Điểm drift check (0–100) dưới ngưỡng này thì clip bị gắn cờ drift.
+# --- task d ---
+audio.duration_sync:
+  type: enum
+  default: voice_drives
+  choices: [voice_drives, clip_drives, none]
+  description: >-
+    Khớp thời lượng giọng ↔ clip. voice_drives — giọng quyết định độ dài clip (ai_video chọn 6/10/15 ≥ giọng);
+    clip_drives — tăng tốc giọng bằng atempo ≤ 1.25 (cảnh báo nếu cần hơn); none — không tự khớp.
+audio.dialogue_lufs:
+  type: float
+  default: -16.0
+  description: Độ to mỗi câu thoại sau chuẩn hoá (LUFS, loudnorm hai lượt linear, TP −1.5).
+audio.target_lufs:
+  type: float
+  default: -14.0
+  description: Độ to tổng của bản trộn cuối (LUFS, TP −1); preset nền tảng có thể ghi đè.
+subtitle.style:
+  type: str
+  default: 9x16
+  description: Preset phụ đề (subtitle_style) — 9x16, 9x16_box, 16x9 hoặc preset tự tạo.
+subtitle.mode:
+  type: enum
+  default: outline
+  choices: [outline, karaoke_fill, word_pop]
+  description: Kiểu hiện phụ đề — chữ viền, karaoke tô từ đã đọc, hoặc phóng từ đang đọc.

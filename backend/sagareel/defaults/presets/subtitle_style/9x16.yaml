@@ -1,0 +1,40 @@
+# Preset phụ đề dọc 9:16 (1080×1920) — số liệu từ docs/research/film-craft/post-production.md, khối "Mặc định đề xuất".
+# Dùng bởi sagareel.services.audio.subtitles.load_style("9x16"). Mọi khoá ở đây là dữ liệu (preset kind subtitle_style).
+name: "Dọc 9:16 — chữ viền"
+play_res: [1080, 1920]
+font: "Be Vietnam Pro"            # family trong file TTF đóng gói (defaults/fonts), ass=…:fontsdir=…
+font_file: BeVietnamPro-Bold.ttf  # file dùng để đo độ rộng (Bold -1)
+bold: true
+fontsize: 68
+outline: 6
+shadow: 2
+border_style: 1                   # 1 = viền + bóng, 3 = hộp (vẽ bằng OutlineColour)
+alignment: 2
+margin_l: 140
+margin_r: 140
+margin_v: 700
+spacing: 0                        # không dùng Spacing với shaping phức tạp (libass)
+colours:
+  primary: "&H0000FFFF"           # vàng — với \k là phần ĐÃ đọc
+  secondary: "&H00FFFFFF"         # trắng — với \k là phần CHƯA đọc
+  outline: "&H00000000"
+  back: "&H64000000"
+  emphasis: "&H000000FF"
+normalize: NFC
+max_lines: 2
+max_words_per_chunk: 6
+min_chunk_seconds: 1.0
+max_chars_per_second: 17
+header:
+  ScaledBorderAndShadow: "yes"
+  WrapStyle: 0
+  "YCbCr Matrix": "TV.709"
+style: outline                    # outline | karaoke_fill | word_pop
+styles:
+  outline: {karaoke: false}
+  karaoke_fill: {karaoke: true}                                   # "\k per word", từ đã đọc giữ màu vàng
+  word_pop: {karaoke: false, per_word_events: true, active_scale: 110}  # 1 event/từ, \1c từ đang đọc, \fscx110\fscy110
+emphasis_words: []                # từ nhấn ({\1c<emphasis>\b1}), tối đa 1–2 từ/cụm
+lead_ms: 50                       # Dialogue.Start = từ đầu − 0,05 s
+tail_ms: 150                      # Dialogue.End = từ cuối + 0,15 s
+safe_check: "PlayResY - MarginV <= PlayResY - safe.bottom; MarginL/R >= safe.left/right"
