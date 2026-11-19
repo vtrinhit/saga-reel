@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sagareel.db.base import Base, Plain
@@ -37,3 +38,5 @@ class ApiToken(Plain, Base):
     expires_at: Mapped[datetime | None]
     last_used_at: Mapped[datetime | None]
     revoked_at: Mapped[datetime | None]
+    # Chỉ hợp lệ trên request cục bộ thật (`security.is_local`): token agent cục bộ trong `data/local-agent.token`.
+    local_only: Mapped[bool] = mapped_column(default=False, server_default=false())

@@ -265,3 +265,114 @@ def test_resolve_data_dir_matches_load_settings(tmp_path, monkeypatch):
     s = load_settings(root=root, env_file=tmp_path / ".env.local", outputs_dir=tmp_path / "out")
     assert s.data_dir == resolve_data_dir(root)
     assert local_agent.token_path(s.data_dir) == s.data_dir / "local-agent.token"
+
+
+# --- Phán quyết điều phối (a): token agent cục bộ chỉ hợp lệ trên request cục bộ thật ------------------------------
+
+PUBLIC = "studio.example.com"
+
+
+@pytest.fixture
+def local_only_app(settings, make_local_client):
+    app = create_app(settings)
+    with make_local_client(app) as c:
+        r = c.post("/api/ops/settings.set_global", json={"values": {"remote.public_hosts": [PUBLIC]}})
+        assert r.status_code == 200, r.text
+        assert c.post("/api/ops/auth.set_password", json={"role": "owner", "password": OWNER_PW}).status_code == 200
+        yield app, c, _token_file(settings).read_text(encoding="utf-8").strip()
+
+
+def test_local_agent_row_is_marked_local_only(local_only_app):
+    app, c, raw = local_only_app
+    with app.state.services.db.session() as s:
+        tok = s.scalars(select(ApiToken).where(ApiToken.token_hash == hashlib.sha256(raw.encode()).hexdigest())).one()
+        assert tok.local_only is True
+    r = c.post("/api/ops/token.create", json={"name": "agent-thuong", "role": "owner"},
+               headers={"Authorization": f"Bearer {raw}"})
+    assert r.status_code == 403  # token không tạo được token (giữ nguyên)
+
+
+def test_local_agent_token_accepted_on_local_request(local_only_app):
+    app, c, raw = local_only_app
+    r = c.get("/api/auth/status", headers={"Authorization": f"Bearer {raw}"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["role"] == "owner" and body["via"] == "token"
+    assert c.post("/api/ops/system.info", json={}, headers={"Authorization": f"Bearer {raw}"}).status_code == 200
+
+
+@pytest.mark.parametrize("extra", [
+    {"CF-Connecting-IP": "1.2.3.4"},
+    {"X-Forwarded-For": "1.2.3.4"},
+    {"Forwarded": "for=1.2.3.4"},
+    {"Host": PUBLIC},
+    {"Host": "127.0.0.1:9999"},
+])
+def test_local_agent_token_rejected_when_not_local(local_only_app, extra):
+    app, c, raw = local_only_app
+    r = c.post("/api/ops/system.info", json={}, headers={"Authorization": f"Bearer {raw}", **extra})
+    assert r.status_code == 401 and r.json()["error_code"] == "auth_required", r.text
+
+
+def test_local_agent_token_rejected_from_non_loopback_peer(local_only_app, settings):
+    from fastapi.testclient import TestClient
+
+    app, c, raw = local_only_app
+    remote = TestClient(app, base_url="http://127.0.0.1:8990", client=("192.168.1.20", 50000))
+    remote.portal = c.portal
+    try:
+        r = remote.post("/api/ops/system.info", json={}, headers={"Authorization": f"Bearer {raw}"})
+        assert r.status_code == 401 and r.json()["error_code"] == "auth_required"
+    finally:
+        remote.close()
+
+
+def test_local_agent_token_rejected_remotely_even_without_local_login(local_only_app):
+    app, c, raw = local_only_app
+    h = {"Authorization": f"Bearer {raw}"}
+    assert c.post("/api/ops/settings.set_global", json={"values": {"remote.require_login_local": False}},
+                  headers=h).status_code == 200
+    app.state.services.auth_cache.invalidate()
+    assert c.post("/api/ops/system.info", json={}, headers=h).status_code == 200
+    r = c.post("/api/ops/system.info", json={}, headers={**h, "CF-Connecting-IP": "1.2.3.4"})
+    assert r.status_code == 401
+
+
+def test_ordinary_token_still_works_through_tunnel(local_only_app):
+    app, c, raw = local_only_app
+    tok = c.post("/api/ops/token.create", json={"name": "agent1", "role": "owner"},
+                 headers={"Authorization": f"Bearer {raw}"})
+    assert tok.status_code == 403  # tạo bằng phiên đăng nhập
+    assert c.post("/api/auth/login", json={"password": OWNER_PW, "remember": False}).status_code == 200
+    tok = c.post("/api/ops/token.create", json={"name": "agent1", "role": "owner"},
+                 headers={"X-SR-CSRF": c.cookies["sr_csrf"]})
+    assert tok.status_code == 200, tok.text
+    r = c.post("/api/ops/system.info", json={},
+               headers={"Authorization": f"Bearer {tok.json()['token']}", "CF-Connecting-IP": "1.2.3.4",
+                        "Host": PUBLIC})
+    assert r.status_code == 200, r.text
+
+
+def test_migration_0003_marks_existing_local_agent_rows(tmp_path):
+    import sqlite3
+
+    from alembic import command
+
+    from sagareel.db.session import Database, alembic_config
+
+    db = Database(tmp_path / "m.db")
+    try:
+        command.upgrade(alembic_config(db.url), "0002")
+        conn = sqlite3.connect(tmp_path / "m.db")
+        conn.executemany(
+            "INSERT INTO api_token (name, token_hash, role, created_at) VALUES (?, ?, 'owner', '2026-11-19 00:00:00')",
+            [("local-agent", "h1"), ("agent1", "h2")],
+        )
+        conn.commit()
+        conn.close()
+        db.migrate()
+        with db.session() as s:
+            assert {t.name: t.local_only for t in s.scalars(select(ApiToken))} == {"local-agent": True,
+                                                                                    "agent1": False}
+    finally:
+        db.dispose()

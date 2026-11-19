@@ -2,11 +2,13 @@
 
 Dùng khi quên mật khẩu chủ, hoặc mật khẩu bị người khác đặt trước chủ máy: ai vào được thư mục data là chủ máy.
 
-    sagareel reset-password [--role owner|viewer] [--data-dir PATH] [--password-stdin] [--clear]
+    sagareel reset-password [--role owner|viewer] [--data-dir PATH] [--password-stdin] [--clear] [--keep-viewer]
 
 - Hỏi mật khẩu hai lần bằng getpass (hoặc đọc một dòng từ stdin với `--password-stdin`), băm bằng
-  `security.hash_password`, ghi bảng `auth_secret`, thu hồi MỌI phiên đăng nhập và token API của vai trò đó (gồm token
-  agent cục bộ nếu là owner — app tạo token mới vào `data/local-agent.token` lần khởi động sau).
+  `security.hash_password`, ghi bảng `auth_secret`.
+- `--role owner` là đường khôi phục sau xâm nhập: thu hồi MỌI phiên đăng nhập và MỌI token API của mọi vai trò, xoá
+  mật khẩu người xem (trừ khi `--keep-viewer`), rồi tạo lại token agent cục bộ (`data/local-agent.token`, dòng
+  `local_only`). `--role viewer`: chỉ thu hồi phiên/token viewer. In ra số lượng đã thu hồi/xoá, không in bí mật.
 - `--clear` xoá mật khẩu người xem (và thu hồi phiên/token viewer); mật khẩu chủ không xoá được.
 - App phải tắt: lệnh giữ khoá độc quyền trên DB (`PRAGMA locking_mode=EXCLUSIVE` + `BEGIN IMMEDIATE`, chờ ngắn). App
   đang chạy luôn giữ kết nối WAL mở nên khoá không lấy được → báo `app_running` (mã thoát 2). (`BEGIN IMMEDIATE` đơn
@@ -51,6 +53,9 @@ def _build_parser() -> argparse.ArgumentParser:
     g.add_argument("--password-stdin", action="store_true",
                    help="Đọc mật khẩu mới từ dòng đầu của stdin thay vì hỏi ẩn hai lần")
     g.add_argument("--clear", action="store_true", help="Xoá mật khẩu người xem (chỉ dùng với --role viewer)")
+    p.add_argument("--keep-viewer", action="store_true",
+                   help="Khi đặt lại mật khẩu chủ: giữ mật khẩu người xem (mặc định xoá; phiên/token viewer vẫn bị "
+                        "thu hồi)")
     return p
 
 
@@ -135,12 +140,31 @@ def _now() -> str:
     return utcnow().strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
-def _revoke(conn: sqlite3.Connection, role: str, now: str) -> tuple[int, int]:
-    sessions = conn.execute("UPDATE session SET revoked_at = ? WHERE role = ? AND revoked_at IS NULL",
-                            (now, role)).rowcount
-    tokens = conn.execute("UPDATE api_token SET revoked_at = ? WHERE role = ? AND revoked_at IS NULL",
-                          (now, role)).rowcount
+def _revoke(conn: sqlite3.Connection, role: str | None, now: str) -> tuple[int, int]:
+    """Thu hồi phiên + token API còn hiệu lực của `role` (None = mọi vai trò); trả (số phiên, số token)."""
+    where, params = ("AND role = ?", (now, role)) if role else ("", (now,))
+    sessions = conn.execute(f"UPDATE session SET revoked_at = ? WHERE revoked_at IS NULL {where}", params).rowcount
+    tokens = conn.execute(f"UPDATE api_token SET revoked_at = ? WHERE revoked_at IS NULL {where}", params).rowcount
     return sessions, tokens
+
+
+def _recreate_local_token(conn: sqlite3.Connection, data_dir: Path, now: str) -> bool:
+    """Ghi token agent cục bộ mới vào file rồi thêm dòng `local_only` (chỉ hash). Dòng cũ đã bị thu hồi cùng mọi token.
+    Ghi file lỗi → không thêm dòng (app tạo lại lúc khởi động), trả False. Không bao giờ in token."""
+    from sagareel import local_agent
+    from sagareel.core import security
+
+    raw, digest = security.new_secret_token()
+    try:
+        local_agent.write_token_file(local_agent.token_path(data_dir), raw)
+    except OSError:
+        return False
+    conn.execute(
+        "INSERT INTO api_token (name, token_hash, role, expires_at, last_used_at, revoked_at, local_only, created_at)"
+        " VALUES (?, ?, 'owner', NULL, NULL, NULL, 1, ?)",
+        (local_agent.TOKEN_NAME, digest, now),
+    )
+    return True
 
 
 # --- Mật khẩu -----------------------------------------------------------------------------------------------------
@@ -184,6 +208,9 @@ def _run(args: argparse.Namespace) -> int:
     if args.clear and args.role == "owner":
         raise CliError("invalid_arguments", "Không thể xoá mật khẩu chủ sở hữu.",
                        hint="`--clear` chỉ dùng với `--role viewer`; muốn đặt lại mật khẩu chủ thì bỏ `--clear`.")
+    if args.keep_viewer and args.role != "owner":
+        raise CliError("invalid_arguments", "`--keep-viewer` chỉ dùng khi đặt lại mật khẩu chủ sở hữu.",
+                       hint="Bỏ `--keep-viewer`, hoặc dùng `--role owner`.")
     db_path = _data_dir(args.data_dir) / DB_FILENAME
     if not db_path.is_file():
         raise CliError("db_not_found", f"Không tìm thấy cơ sở dữ liệu {db_path}.",
@@ -201,17 +228,22 @@ def _run(args: argparse.Namespace) -> int:
         password = _read_password(args)
         new_hash = security.hash_password(password)
 
-    other = "viewer" if args.role == "owner" else "owner"
+    owner_reset = args.role == "owner"
+    viewer_cleared = False
+    token_written: bool | None = None  # None = không đụng token cục bộ (reset/xoá viewer)
     with _exclusive(db_path) as conn:
         hashes = _hashes(conn)
         now = _now()
         if new_hash is None:
-            existed = conn.execute("DELETE FROM auth_secret WHERE role = 'viewer'").rowcount > 0
+            viewer_cleared = conn.execute("DELETE FROM auth_secret WHERE role = 'viewer'").rowcount > 0
         else:
             if args.role == "viewer" and "owner" not in hashes:
                 raise _owner_required()
-            # Mật khẩu trùng vai trò kia: đăng nhập thử owner trước → người xem sẽ thành chủ.
-            if other in hashes and security.verify_password(password, hashes[other]):
+            # Mật khẩu trùng vai trò kia (khi vai trò kia còn giữ mật khẩu): đăng nhập thử owner trước → người xem sẽ
+            # thành chủ.
+            other = "viewer" if owner_reset else "owner"
+            other_kept = other in hashes and (not owner_reset or args.keep_viewer)
+            if other_kept and security.verify_password(password, hashes[other]):
                 raise CliError("password_reused", "Mật khẩu chủ sở hữu và mật khẩu người xem phải khác nhau.",
                                hint="Chọn mật khẩu khác.")
             if args.role in hashes:
@@ -219,17 +251,31 @@ def _run(args: argparse.Namespace) -> int:
             else:
                 conn.execute("INSERT INTO auth_secret (role, password_hash, created_at) VALUES (?, ?, ?)",
                              (args.role, new_hash, now))
-        sessions, tokens = _revoke(conn, args.role, now)
+            if owner_reset and not args.keep_viewer:
+                # Khôi phục sau xâm nhập: mật khẩu người xem có thể do kẻ xâm nhập đặt.
+                viewer_cleared = conn.execute("DELETE FROM auth_secret WHERE role = 'viewer'").rowcount > 0
+        # Đặt lại mật khẩu chủ = thu hồi MỌI phiên và MỌI token của mọi vai trò; còn lại chỉ vai trò đó.
+        sessions, tokens = _revoke(conn, None if owner_reset else args.role, now)
+        if owner_reset:
+            token_written = _recreate_local_token(conn, db_path.parent, now)
 
-    revoked = f"Đã thu hồi {sessions} phiên đăng nhập và {tokens} token API của vai trò {args.role}."
     if new_hash is None:
-        head = ("Đã xoá mật khẩu người xem (viewer)." if existed
+        head = ("Đã xoá mật khẩu người xem (viewer)." if viewer_cleared
                 else "Vai trò người xem (viewer) chưa có mật khẩu, không có gì để xoá.")
     else:
         head = f"Đã đặt lại mật khẩu cho vai trò {ROLE_LABEL[args.role]}."
-    print(f"{head} {revoked}")
-    if args.role == "owner":
-        print("Token agent cục bộ (data/local-agent.token) sẽ được tạo lại khi khởi động app.")
+    scope = "của mọi vai trò" if owner_reset else f"của vai trò {args.role}"
+    print(f"{head} Đã thu hồi {sessions} phiên đăng nhập và {tokens} token API {scope}.")
+    if owner_reset:
+        if args.keep_viewer:
+            print("Giữ mật khẩu người xem (--keep-viewer).")
+        elif viewer_cleared:
+            print("Đã xoá mật khẩu người xem (viewer); đặt lại sau nếu cần.")
+        if token_written:
+            print("Đã tạo token agent cục bộ mới (data/local-agent.token).")
+    if token_written is False:
+        print("warning: Không ghi được file token agent cục bộ (data/local-agent.token); app sẽ tạo lại khi khởi động.",
+              file=sys.stderr)
     return EXIT_OK
 
 

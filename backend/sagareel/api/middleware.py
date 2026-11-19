@@ -100,12 +100,14 @@ class SecurityMiddleware:
         principal: Principal | None = None
         raw_session: str | None = None
         bearer = bearer_token(conn.headers.get("authorization"))
+        local = security.is_local(conn)
         if bearer is not None:
             if bearer:
-                principal = await anyio.to_thread.run_sync(auth.authenticate_token, services, bearer, cfg)
+                # `local`: token agent cục bộ (`local_only`) chỉ hợp lệ trên request cục bộ thật.
+                principal = await anyio.to_thread.run_sync(auth.authenticate_token, services, bearer, cfg, local)
             if principal is None and protected:
                 return security.auth_required("Token API không hợp lệ, đã hết hạn hoặc đã bị thu hồi.")
-        elif security.is_local(conn) and not cfg.local_login_required:
+        elif local and not cfg.local_login_required:
             principal = Principal(role="owner", actor="user:owner", via="local")
         else:
             raw_session = conn.cookies.get(SESSION_COOKIE) or None

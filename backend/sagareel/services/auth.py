@@ -120,12 +120,18 @@ def _role_allowed(role: str, cfg: AccessConfig) -> bool:
     return role == "owner" or (role == "viewer" and cfg.viewer_enabled)
 
 
-def authenticate_token(services: Services, raw: str, cfg: AccessConfig) -> Principal | None:
-    """Token API (`Authorization: Bearer`) hợp lệ → Principal `agent:<tên>`; sai/hết hạn/thu hồi → None."""
+def authenticate_token(services: Services, raw: str, cfg: AccessConfig, local: bool = False) -> Principal | None:
+    """Token API (`Authorization: Bearer`) hợp lệ → Principal `agent:<tên>`; sai/hết hạn/thu hồi → None.
+
+    `local` = request cục bộ thật (`security.is_local`, không phụ thuộc `remote.require_login_local`). Token
+    `local_only` (agent cục bộ) qua tunnel/proxy/Host công khai/IP khác → None (401), kể cả khi còn hiệu lực.
+    """
     now = utcnow()
     with services.db.session() as s:
         row = s.scalars(select(ApiToken).where(ApiToken.token_hash == security.sha256_hex(raw))).first()
         if row is None or row.revoked_at is not None or _expired(row.expires_at, now):
+            return None
+        if row.local_only and not local:
             return None
         if not _role_allowed(row.role, cfg):
             return None
@@ -456,6 +462,7 @@ def _local_agent_row_valid(row: ApiToken | None) -> bool:
         and row.role == "owner"
         and row.revoked_at is None
         and row.expires_at is None
+        and row.local_only
     )
 
 
@@ -496,7 +503,8 @@ def ensure_local_agent_token(services: Services) -> str:
         return "failed"
     with services.db.session(immediate=True) as s:
         _revoke_local_agent_rows(s, utcnow())
-        s.add(ApiToken(name=local_agent.TOKEN_NAME, token_hash=digest, role="owner", expires_at=None))
+        s.add(ApiToken(name=local_agent.TOKEN_NAME, token_hash=digest, role="owner", expires_at=None,
+                       local_only=True))
     logger.info("Đã tạo token agent cục bộ mới (file %s).", path)
     return "created"
 

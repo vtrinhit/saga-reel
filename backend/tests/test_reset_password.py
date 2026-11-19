@@ -77,22 +77,97 @@ def run(capsys, monkeypatch):
     return _run
 
 
-def test_reset_owner_from_stdin_revokes_owner_sessions_and_tokens(seeded, run):
+def _local_agent_rows(settings) -> list[ApiToken]:
+    db = Database(settings.db_path)
+    try:
+        with db.session() as s:
+            return list(s.scalars(select(ApiToken).where(ApiToken.name == "local-agent").order_by(ApiToken.id)))
+    finally:
+        db.dispose()
+
+
+def test_reset_owner_revokes_everything_clears_viewer_and_recreates_local_token(seeded, run):
     before = _state(seeded)
     code, out, err, asked = run(["--data-dir", str(seeded.data_dir), "--password-stdin"], stdin=NEW_PW + "\r\n")
     assert code == 0, err
     assert asked == []
     after = _state(seeded)
     assert security.verify_password(NEW_PW, after["hashes"]["owner"])
-    assert after["hashes"]["viewer"] == before["hashes"]["viewer"]
-    assert all(after["sessions"][f"owner-s{i}"] is not None for i in range(2))
-    assert all(after["tokens"][f"owner-t{i}"] is not None for i in range(2))
-    assert after["tokens"]["owner-t1"] == before["tokens"]["owner-t1"]  # đã thu hồi từ trước: giữ mốc cũ
-    assert all(after["sessions"][f"viewer-s{i}"] is None for i in range(2))
-    assert after["tokens"]["viewer-t0"] is None
+    assert "viewer" not in after["hashes"]  # khôi phục sau xâm nhập: mật khẩu người xem bị xoá
+    for role in ("owner", "viewer"):  # mọi phiên + mọi token của MỌI vai trò
+        assert all(after["sessions"][f"{role}-s{i}"] is not None for i in range(2))
+        assert all(after["tokens"][f"{role}-t{i}"] is not None for i in range(2))
+        assert after["tokens"][f"{role}-t1"] == before["tokens"][f"{role}-t1"]  # đã thu hồi từ trước: giữ mốc cũ
+    # Token agent cục bộ mới: file + dòng local_only còn hiệu lực, khớp hash.
+    raw = (seeded.data_dir / "local-agent.token").read_text(encoding="utf-8").strip()
+    rows = _local_agent_rows(seeded)
+    assert len(rows) == 1 and rows[0].revoked_at is None and rows[0].local_only is True
+    assert rows[0].role == "owner" and rows[0].token_hash == security.sha256_hex(raw)
     assert "Đã đặt lại mật khẩu" in out and "owner" in out
-    assert "2 phiên" in out and "1 token" in out
-    assert NEW_PW not in out + err
+    assert "4 phiên" in out and "2 token" in out
+    assert "Đã xoá mật khẩu người xem" in out
+    assert NEW_PW not in out + err and raw not in out + err
+
+
+def test_reset_owner_replaces_existing_local_agent_token(seeded, run):
+    from sagareel import local_agent
+
+    db = Database(seeded.db_path)
+    raw_old, digest = security.new_secret_token()
+    with db.session() as s:
+        s.add(ApiToken(name="local-agent", token_hash=digest, role="owner", local_only=True))
+    db.dispose()
+    local_agent.write_token_file(seeded.data_dir / "local-agent.token", raw_old)
+    code, out, err, _ = run(["--data-dir", str(seeded.data_dir), "--password-stdin"], stdin=NEW_PW + "\n")
+    assert code == 0, err
+    raw = (seeded.data_dir / "local-agent.token").read_text(encoding="utf-8").strip()
+    assert raw != raw_old
+    rows = _local_agent_rows(seeded)
+    assert [r.revoked_at is None for r in rows] == [False, True]
+    assert "3 token" in out  # owner-t0, viewer-t0, local-agent cũ
+
+
+def test_reset_owner_keep_viewer(seeded, run):
+    before = _state(seeded)
+    code, out, err, _ = run(["--keep-viewer", "--data-dir", str(seeded.data_dir), "--password-stdin"],
+                            stdin=NEW_PW + "\n")
+    assert code == 0, err
+    after = _state(seeded)
+    assert after["hashes"]["viewer"] == before["hashes"]["viewer"]
+    assert all(after["sessions"][f"viewer-s{i}"] is not None for i in range(2))  # phiên viewer vẫn bị thu hồi
+    assert after["tokens"]["viewer-t0"] is not None
+    assert "Giữ mật khẩu người xem" in out
+
+
+def test_reset_owner_keep_viewer_refuses_viewer_password(seeded, run):
+    before = _state(seeded)
+    code, _, err, _ = run(["--keep-viewer", "--data-dir", str(seeded.data_dir), "--password-stdin"],
+                          stdin="mat-khau-xem-222\n")
+    assert code == 2 and err.startswith("password_reused: ")
+    assert _state(seeded) == before
+    # Không giữ viewer: mật khẩu người xem cũ bị xoá nên trùng cũng không sao.
+    code, _, err, _ = run(["--data-dir", str(seeded.data_dir), "--password-stdin"], stdin="mat-khau-xem-222\n")
+    assert code == 0, err
+
+
+def test_keep_viewer_only_for_owner(seeded, run):
+    code, _, err, _ = run(["--role", "viewer", "--keep-viewer", "--data-dir", str(seeded.data_dir),
+                           "--password-stdin"], stdin=NEW_PW + "\n")
+    assert code == 2 and err.startswith("invalid_arguments: ")
+
+
+def test_reset_owner_token_file_failure_still_resets(seeded, run, monkeypatch):
+    from sagareel import local_agent
+
+    def boom(*a, **kw):
+        raise OSError("đĩa đầy")
+
+    monkeypatch.setattr(local_agent, "write_token_file", boom)
+    code, out, err, _ = run(["--data-dir", str(seeded.data_dir), "--password-stdin"], stdin=NEW_PW + "\n")
+    assert code == 0, err
+    assert security.verify_password(NEW_PW, _state(seeded)["hashes"]["owner"])
+    assert _local_agent_rows(seeded) == []  # không có token sống mà không ai giữ
+    assert "local-agent.token" in err and "khởi động" in err
 
 
 def test_reset_prompts_twice_with_getpass(seeded, run):
@@ -133,6 +208,7 @@ def test_reset_viewer_revokes_only_viewer(seeded, run):
     assert all(after["sessions"][f"viewer-s{i}"] is not None for i in range(2))
     assert after["tokens"]["viewer-t0"] is not None
     assert after["sessions"]["owner-s0"] is None and after["tokens"]["owner-t0"] is None
+    assert not (seeded.data_dir / "local-agent.token").exists()  # reset viewer không đụng token cục bộ
 
 
 def test_viewer_reset_needs_owner_password(settings, run):
@@ -237,10 +313,11 @@ def test_end_to_end_owner_reset_rotates_local_agent_token(settings, make_local_c
     code, out, err, _ = run(["--data-dir", str(settings.data_dir), "--password-stdin"], stdin=NEW_PW + "\n")
     assert code == 0, err
     assert old not in out + err
+    new = token_file.read_text(encoding="utf-8").strip()  # reset đã tạo lại file
+    assert new != old
     app = create_app(settings)
     with make_local_client(app) as c:
-        new = token_file.read_text(encoding="utf-8").strip()
-        assert new != old
+        assert token_file.read_text(encoding="utf-8").strip() == new  # app khởi động giữ token reset vừa tạo
         assert c.post("/api/ops/system.info", json={}, headers={"Authorization": f"Bearer {old}"}).status_code == 401
         assert c.post("/api/ops/system.info", json={}, headers={"Authorization": f"Bearer {new}"}).status_code == 200
         assert c.post("/api/auth/login", json={"password": "mat-khau-cu-111", "remember": False}).status_code == 401
