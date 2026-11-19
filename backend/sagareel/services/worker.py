@@ -430,7 +430,12 @@ class Worker:
         for data in flagged:
             self._publish(data)
         now = utcnow()
-        due = (Job.status == "queued") & (Job.next_attempt_at.is_(None) | (Job.next_attempt_at <= now))
+        # `~submit_marked()`: phòng thủ thêm — job mang dấu không bao giờ được giành dù bước gắn cờ ở trên bỏ sót.
+        due = (
+            (Job.status == "queued")
+            & (Job.next_attempt_at.is_(None) | (Job.next_attempt_at <= now))
+            & ~jobs.submit_marked()
+        )
         with db.session() as s:
             lanes = list(s.scalars(select(Job.lane).where(due).distinct()))
         free = {}
@@ -445,14 +450,22 @@ class Worker:
         if not free:
             return []
         claimed: list[dict] = []
+        unavailable: list[dict] = []
         with db.session() as s:
             for lane, n in free.items():
                 ids = list(s.scalars(
                     select(Job.id).where(due, Job.lane == lane).order_by(Job.priority.desc(), Job.id).limit(n)
                 ))
                 for job_id in ids:
-                    # Thư mục làm việc tạo trước khi giành: lỗi ở đây huỷ cả transaction, không để dòng running mồ côi.
-                    (self.services.settings.cache_dir / "jobs" / str(job_id)).mkdir(parents=True, exist_ok=True)
+                    # Thư mục làm việc tạo trước khi giành. Lỗi chỉ ảnh hưởng job này (failed), không chặn job khác.
+                    workdir = self.services.settings.cache_dir / "jobs" / str(job_id)
+                    try:
+                        workdir.mkdir(parents=True, exist_ok=True)
+                    except OSError as e:
+                        job = self._fail_workdir(s, job_id, workdir, e, now)
+                        if job is not None:
+                            unavailable.append(jobs.job_dict(job))
+                        continue
                     res = s.execute(
                         update(Job)
                         .where(Job.id == job_id, Job.status == "queued")
@@ -464,7 +477,30 @@ class Worker:
                         job = s.get(Job, job_id)
                         s.refresh(job)
                         claimed.append(jobs.job_dict(job))
+        for data in unavailable:
+            self._publish(data)
         return claimed
+
+    @staticmethod
+    def _fail_workdir(s, job_id: int, workdir, e: OSError, now) -> Job | None:
+        res = s.execute(
+            update(Job)
+            .where(Job.id == job_id, Job.status == "queued")
+            .values(
+                status="failed", error_code="workdir_unavailable",
+                error_message=f"Không tạo được thư mục làm việc của job ({workdir}): {e}",
+                hint="Kiểm tra quyền ghi và dung lượng thư mục data/cache/jobs rồi chạy lại.",
+                finished_at=now, updated_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        if res.rowcount != 1:
+            return None
+        logger.error("Job #%s: không tạo được thư mục làm việc %s: %s", job_id, workdir, e)
+        jobs.add_log(s, job_id, "error", f"Không tạo được thư mục làm việc {workdir}: {e}")
+        job = s.get(Job, job_id)
+        s.refresh(job)
+        return job
 
     def _unclaim(self, ids: list[int]) -> None:
         with self.services.db.session() as s:
@@ -476,13 +512,25 @@ class Worker:
             )
 
     def _launch(self, data: dict) -> None:
-        run = JobRun(self, data)  # có thể ném trước khi đăng ký gì (dispatch trả job về hàng đợi)
+        """Đăng ký và chạy một job vừa giành. Lỗi giữa chừng → gỡ hết đăng ký rồi ném (dispatch trả job về hàng đợi)."""
+        run = JobRun(self, data)
         self._runs[run.job_id] = run
         self._lane_counts[run.lane] += 1
-        self._publish(data)
-        run._start_writer()
-        run.task = asyncio.create_task(self._call_handler(run), name=f"job-{run.job_id}")
-        run.supervisor = asyncio.create_task(self._supervise(run), name=f"job-{run.job_id}-supervisor")
+        try:
+            self._publish(data)
+            run._start_writer()
+            run.task = asyncio.create_task(self._call_handler(run), name=f"job-{run.job_id}")
+            run.supervisor = asyncio.create_task(self._supervise(run), name=f"job-{run.job_id}-supervisor")
+        except BaseException:
+            if self._runs.get(run.job_id) is run:
+                del self._runs[run.job_id]
+            self._lane_counts[run.lane] -= 1
+            if self._lane_counts[run.lane] <= 0:
+                del self._lane_counts[run.lane]
+            for task in (run.task, run._writer):
+                if task is not None:
+                    task.cancel()
+            raise
 
     @staticmethod
     async def _call_handler(run: JobRun) -> Any:
@@ -601,10 +649,14 @@ class Worker:
                 except (TypeError, ValueError) as e:
                     outcome = ("error", TypeError(f"Kết quả job không chuyển được sang JSON: {e}"))
             if outcome[0] == "ok" and isinstance(result, dict):
-                return {
+                values = {
                     "status": "succeeded", "result": result, "progress": 100.0, "eta_at": None,
                     "error_code": None, "error_message": None, "hint": None, "finished_at": now,
-                }, []
+                }
+                if jobs.has_submit_marker(run.external_id, run.external):
+                    # Handler đồng bộ (không lưu external_id) đã trả kết quả: gửi không còn mơ hồ → bỏ dấu.
+                    values["external_state"] = jobs.drop_submit_marker(run.external)
+                return values, []
             if outcome[0] == "ok":
                 outcome = ("error", TypeError(f"Handler job phải trả dict, nhận {type(result).__name__}"))
         e = outcome[1]

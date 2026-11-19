@@ -36,6 +36,7 @@ EXTRA_TYPES = (
     "test.submit_then",
     "test.path_result",
     "test.stubborn",
+    "test.sync_submit",
 )
 
 
@@ -128,6 +129,12 @@ def extra_handlers(test_job_handlers):
         if kind == "failed":
             raise jobs.JobFailed("provider_error", "Provider lỗi.")
         raise ValueError("bug")
+
+    @jobs.job_handler("test.sync_submit")
+    async def sync_submit(run):
+        """Provider đồng bộ: đánh dấu submitting, nhận kết quả ngay, không có external_id."""
+        await run.save_external(state="submitting", note="đồng bộ")
+        return {"url": "https://example.invalid/x.png"}
 
     @jobs.job_handler("test.path_result")
     async def path_result(run):
@@ -778,19 +785,68 @@ async def test_launch_failure_returns_job_to_queue(svc, monkeypatch, caplog):
     assert f"Không khởi chạy được job #{a}" in caplog.text
 
 
-async def test_workdir_failure_claims_nothing(svc, caplog):
-    jobs_dir = svc.settings.cache_dir / "jobs"
-    jobs_dir.write_text("not a directory", encoding="utf-8")  # mkdir workdir sẽ lỗi
+async def test_workdir_failure_fails_only_that_job(svc):
     a = enqueue_job(svc, "test.sleep", {"s": 0})
+    b = enqueue_job(svc, "test.sleep", {"s": 0})
+    jobs_dir = svc.settings.cache_dir / "jobs"
+    jobs_dir.mkdir(parents=True, exist_ok=True)
+    (jobs_dir / str(a)).write_text("not a directory", encoding="utf-8")  # mkdir workdir của a sẽ lỗi
+    await run_until_idle(svc)
+    job = load(svc, a)
+    assert (job.status, job.error_code) == ("failed", "workdir_unavailable") and job.hint
+    assert a not in svc.worker_probe.order
+    assert status(svc, b) == "succeeded"  # job khác vẫn được giành và chạy
+
+
+async def test_launch_failure_after_registration_is_undone(svc, monkeypatch):
+    a = enqueue_job(svc, "test.sleep", {"s": 0})
+    real = worker_mod.JobRun._start_writer
+    boom = []
+
+    def flaky_start_writer(self):
+        if not boom:
+            boom.append(1)
+            raise RuntimeError("không khởi động được writer")
+        return real(self)
+
+    monkeypatch.setattr(worker_mod.JobRun, "_start_writer", flaky_start_writer)
+    w = svc.worker
+    await w.start()
+    try:
+        await wait_until(lambda: status(svc, a) == "succeeded")
+        await asyncio.sleep(0.05)
+        # đăng ký của lần khởi chạy hỏng đã được gỡ: không rò `_lane_counts`/`_runs`
+        assert boom and w.running_count() == 0 and a not in w._runs
+        assert await w.cancel(a) is False  # job đã xong; không vấp run.task None
+    finally:
+        await w.stop()
+
+
+async def test_claim_skips_marked_job_even_without_flag_step(svc, monkeypatch):
+    monkeypatch.setattr(jobs, "flag_marked_queued", lambda s: [])
+    marked = insert_job(svc, "test.sleep", status="queued", external_state=MARKER)
+    plain = insert_job(svc, "test.sleep", status="queued", external_state={"other": 1})
+    empty = insert_job(svc, "test.sleep", status="queued")
     await svc.worker.start()
     try:
-        await asyncio.sleep(0.2)
-        assert status(svc, a) == "queued"
-        jobs_dir.unlink()
-        await wait_until(lambda: status(svc, a) == "succeeded")
+        await wait_until(lambda: status(svc, plain) == "succeeded" and status(svc, empty) == "succeeded")
+        await asyncio.sleep(0.15)
     finally:
         await svc.worker.stop()
-    assert "Vòng điều phối" in caplog.text
+    assert status(svc, marked) == "queued" and marked not in svc.worker_probe.order
+
+
+async def test_success_drops_marker_and_succeeded_job_can_be_retried(svc, op_ctx):
+    a = enqueue_job(svc, "test.sync_submit", {})
+    await run_until_idle(svc)
+    job = load(svc, a)
+    assert job.status == "succeeded" and job.external_state == {"note": "đồng bộ"}
+    out = await ops.invoke("job.retry", {"ids": [a]}, op_ctx)
+    assert out["items"][0]["status"] == "queued"
+    # dòng cũ (trước bản sửa) còn sót dấu trên job succeeded: vẫn chạy lại được
+    legacy = insert_job(svc, "test.sleep", status="succeeded", external_state=MARKER)
+    out = await ops.invoke("job.retry", {"ids": [legacy]}, op_ctx)
+    assert out["items"][0]["status"] == "queued" and out["items"][0]["external_state"] == {}
 
 
 async def test_cancel_wait_is_bounded(svc, monkeypatch):

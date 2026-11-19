@@ -60,6 +60,24 @@ def job_unknown_values(detail: str) -> dict[str, Any]:
     }
 
 
+def submit_marked() -> Any:
+    """Biểu thức SQL: dòng job mang dấu `submitting` mà chưa có `external_id`.
+
+    Luôn TRUE/FALSE, không bao giờ NULL (coalesce) — để `~submit_marked()` không loại nhầm dòng không có khoá `state`.
+    """
+    return Job.external_id.is_(None) & (
+        func.coalesce(func.json_extract(Job.external_state, f"$.{SUBMIT_MARKER_KEY}"), "") == SUBMIT_MARKER
+    )
+
+
+def drop_submit_marker(external_state: dict | None) -> dict:
+    """`external_state` bỏ dấu `submitting` (gửi đã có kết quả rõ ràng)."""
+    state = dict(external_state or {})
+    if state.get(SUBMIT_MARKER_KEY) == SUBMIT_MARKER:
+        del state[SUBMIT_MARKER_KEY]
+    return state
+
+
 def has_submit_marker(external_id: str | None, external_state: dict | None) -> bool:
     """Đã đánh dấu `submitting` mà chưa có `external_id` → không biết provider đã nhận job hay chưa."""
     return not external_id and (external_state or {}).get(SUBMIT_MARKER_KEY) == SUBMIT_MARKER
@@ -343,7 +361,9 @@ def retry_job(session: Session, job_id: int, params_patch: dict | None = None) -
             f"Job #{job_id} đang ở trạng thái '{job.status}', không chạy lại được.",
             hint="Chỉ chạy lại job đã xong, thất bại, đã huỷ hoặc bị gián đoạn; job cần xử lý dùng job.clear_attention.",
         )
-    if has_submit_marker(job.external_id, job.external_state):  # gửi dở, không rõ kết quả → không được gửi lại mù
+    # Gửi dở, không rõ kết quả → không được gửi lại mù. Job `succeeded` thì việc gửi đã có kết quả rõ (dấu sót lại
+    # từ handler đồng bộ không lưu external_id) → chạy lại được.
+    if job.status != "succeeded" and has_submit_marker(job.external_id, job.external_state):
         raise Conflict(
             f"Job #{job_id} có thể đã được gửi tới provider (đánh dấu submitting, chưa có external_id).",
             hint=JOB_UNKNOWN_HINT,
@@ -429,12 +449,7 @@ def flag_marked_queued(session: Session) -> list[Job]:
 
     Worker gọi trước mỗi lần giành job và khi khôi phục; người gọi commit rồi phát `job.updated`.
     """
-    marked = (
-        (Job.status == "queued")
-        & Job.external_id.is_(None)
-        & (func.json_extract(Job.external_state, f"$.{SUBMIT_MARKER_KEY}") == SUBMIT_MARKER)
-    )
-    rows = list(session.scalars(select(Job).where(marked).order_by(Job.id)))
+    rows = list(session.scalars(select(Job).where(Job.status == "queued", submit_marked()).order_by(Job.id)))
     for job in rows:
         for k, v in job_unknown_values("Job đang chờ chạy lại nhưng còn đánh dấu đang gửi tới provider.").items():
             setattr(job, k, v)
