@@ -405,7 +405,8 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
                 p = projects[q.project_id]
                 info[c.id] = {"id": c.id, "key": c.key, "sequence_id": q.id, "project_id": p.id,
                               "seed": seed_for(p.key, q.key, c.key), "duration_ms": c.duration_ms,
-                              "aspect": p.aspect, "motion_preset": c.motion_preset}
+                              "aspect": p.aspect, "motion_preset": c.motion_preset,
+                              "connection": c.connection or "", "model": c.model or ""}
             plain_steps = [{**{k: v for k, v in st.items() if k != "clip"}, "clip_id": st["clip"].id}
                            for st in steps]
             return {"steps": plain_steps, "skipped": skipped, "info": info}
@@ -413,60 +414,89 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
     loaded = await anyio.to_thread.run_sync(load)
     steps, skipped, info = loaded["steps"], loaded["skipped"], loaded["info"]
     kinds = {st["type"] for st in steps}
-    targets: dict[str, tuple] = {}
     ps = po._ps(ctx)
+    # Kết nối theo bước: overrides > `clip.connection` (khi đúng loại; kèm `clip.model` cho ảnh) > mặc định cài đặt.
+    ov_ref = {"image": ov.get("connection") if part != "video" else None,
+              "video": ov.get("connection") if part == "video" else ov.get("video_connection")}
 
-    def prepare() -> dict[str, Any]:
-        out: dict[str, Any] = {}
-        if GEN_IMAGE in kinds:
-            conn, enabled, adapter = po._target(ctx, "image", ov.get("connection") if part != "video" else None)
-            resolution = ps.setting("image.resolution")
-            po._require_capability(adapter, "resolutions", resolution, "độ phân giải")
-            out["image"] = (conn, enabled, adapter, resolution)
-        if GEN_VIDEO in kinds:
-            vconn = ov.get("connection") if part == "video" else ov.get("video_connection")
-            conn, enabled, adapter = po._target(ctx, "video", vconn)
-            resolution = ps.setting("video.resolution")
-            po._require_capability(adapter, "resolutions", resolution, "độ phân giải")
-            out["video"] = (conn, enabled, adapter, resolution)
-        return out
+    def prepare() -> tuple[dict[tuple[str, str], tuple], dict[int, dict[str, str]]]:
+        kind_of: dict[str, str | None] = {}
 
-    targets = await anyio.to_thread.run_sync(prepare)
+        def clip_kind(ref: str) -> str | None:
+            if ref not in kind_of:
+                try:
+                    kind_of[ref] = ps.find(int(ref) if ref.isdigit() else ref)[0].kind
+                except AppError:
+                    raise AppError("clip_connection_invalid", f"Kết nối riêng của clip '{ref}' không tồn tại.",
+                                   hint="Sửa clip.connection (để trống = theo cài đặt) hoặc truyền "
+                                        "overrides.connection.", status=422) from None
+            return kind_of[ref]
+
+        refs: dict[int, dict[str, str]] = {}
+        out: dict[tuple[str, str], tuple] = {}
+        for st in steps:
+            kind = {GEN_IMAGE: "image", GEN_VIDEO: "video"}.get(st["type"])
+            if kind is None:
+                continue
+            ci = info[st["clip_id"]]
+            ref, model = ov_ref[kind], ""
+            if ref is None and ci["connection"] and clip_kind(ci["connection"]) == kind:
+                ref, model = ci["connection"], ci["model"]
+            key = (kind, "" if ref is None else str(ref))
+            refs.setdefault(st["clip_id"], {})[kind] = key[1]
+            if kind == "image" and model and not ov.get("model"):
+                refs[st["clip_id"]]["model"] = model
+            if key not in out:
+                conn, enabled, adapter = po._target(ctx, kind, ref)
+                resolution = ps.setting(f"{kind}.resolution")
+                po._require_capability(adapter, "resolutions", resolution, "độ phân giải")
+                out[key] = (conn, enabled, adapter, resolution)
+        return out, refs
+
+    targets, clip_refs = await anyio.to_thread.run_sync(prepare)
+
+    def target_of(st: dict) -> tuple:
+        kind = "image" if st["type"] == GEN_IMAGE else "video"
+        return targets[(kind, clip_refs[st["clip_id"]][kind])]
+
     estimate: dict[str, Any] = {"jobs": len(steps), "takes": len(steps), "parts": {}}
     units: dict[str, float] = {}
-    if "image" in targets:
-        conn, enabled, adapter, resolution = targets["image"]
-        aspect = next(iter(info.values()))["aspect"]
-        req = ImageRequest(prompt="", refs=[], aspect=aspect, resolution=resolution,
-                           model=ov.get("model") or conn.default_model or None, quality=None, out_dir=po._DRY_DIR)
-        est = await adapter.estimate(req)
-        k = sum(1 for st in steps if st["type"] == GEN_IMAGE)
-        units["image"] = float(est.get("units", 1)) * k
-        estimate["parts"]["image"] = {"jobs": k, "units": units["image"], "cost": (est.get("cost") or 0) * k,
-                                      "connection": conn.name, "connection_id": conn.id, "enabled": enabled,
-                                      "adapter": adapter.adapter_id}
+    paid_units: dict[str, float] = {}  # không tính kết nối giả (fake_*)
     durations: dict[int, tuple[int, str | None]] = {}
-    if "video" in targets:
-        conn, enabled, adapter, resolution = targets["video"]
-        allowed = adapter.capabilities().get("durations")
-        k = 0
-        total_units = 0.0
-        total_cost = 0.0
+    for kind, typ in (("image", GEN_IMAGE), ("video", GEN_VIDEO)):
+        if typ not in kinds:
+            continue
+        groups: dict[tuple[str, str], dict[str, Any]] = {}
         for st in steps:
-            if st["type"] != GEN_VIDEO:
+            if st["type"] != typ:
                 continue
-            k += 1
-            want = int(ov["duration"]) if ov.get("duration") else _ceil_s(info[st["clip_id"]]["duration_ms"])
-            durations[st["clip_id"]] = _pick_duration(want, allowed)
-            req = VideoRequest(image=po._DRY_DIR / "image", prompt="", duration_s=durations[st["clip_id"]][0],
-                               resolution=resolution, aspect=info[st["clip_id"]]["aspect"],
-                               out_path=po._DRY_DIR / "video.mp4")
+            conn, enabled, adapter, resolution = target_of(st)
+            ci = info[st["clip_id"]]
+            if kind == "image":
+                model = ov.get("model") or clip_refs[st["clip_id"]].get("model") or conn.default_model or None
+                req: Any = ImageRequest(prompt="", refs=[], aspect=ci["aspect"], resolution=resolution, model=model,
+                                        quality=None, out_dir=po._DRY_DIR)
+            else:
+                want = int(ov["duration"]) if ov.get("duration") else _ceil_s(ci["duration_ms"])
+                durations[st["clip_id"]] = _pick_duration(want, adapter.capabilities().get("durations"))
+                req = VideoRequest(image=po._DRY_DIR / "image", prompt="", duration_s=durations[st["clip_id"]][0],
+                                   resolution=resolution, aspect=ci["aspect"], out_path=po._DRY_DIR / "video.mp4")
             est = await adapter.estimate(req)
-            total_units += float(est.get("units", 1))
-            total_cost += float(est.get("cost") or 0)
-        units["video"] = total_units
-        estimate["parts"]["video"] = {"jobs": k, "units": total_units, "cost": total_cost, "connection": conn.name,
-                                      "connection_id": conn.id, "enabled": enabled, "adapter": adapter.adapter_id}
+            g = groups.setdefault((kind, clip_refs[st["clip_id"]][kind]), {
+                "jobs": 0, "units": 0.0, "cost": 0.0, "connection": conn.name, "connection_id": conn.id,
+                "enabled": enabled, "adapter": adapter.adapter_id})
+            g["jobs"] += 1
+            g["units"] += float(est.get("units", 1))
+            g["cost"] += float(est.get("cost") or 0)
+            if not adapter.adapter_id.startswith(budget.FAKE_PREFIX):
+                paid_units[kind] = paid_units.get(kind, 0.0) + float(est.get("units", 1))
+        gl = list(groups.values())
+        units[kind] = sum(g["units"] for g in gl)
+        estimate["parts"][kind] = {**gl[0], "jobs": sum(g["jobs"] for g in gl), "units": units[kind],
+                                   "cost": sum(g["cost"] for g in gl)}
+        if len(gl) > 1:  # clip dùng kết nối riêng → nhiều nhóm
+            estimate["parts"][kind]["connection"] = ", ".join(dict.fromkeys(g["connection"] for g in gl))
+            estimate["parts"][kind]["connections"] = gl
     if GEN_STILL in kinds:
         estimate["parts"]["still_motion"] = {"jobs": sum(1 for st in steps if st["type"] == GEN_STILL), "units": 0,
                                              "cost": 0}
@@ -476,13 +506,13 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
 
     def check_budget(dry: bool) -> None:
         with ctx.services.db.session() as s:
-            for kind, u in units.items():
-                conn = targets[kind][0]
+            for kind in units:
                 if dry:
                     estimate["parts"][kind]["budget"] = budget.status(s, kind, resolver=ctx.services.resolver,
                                                                       project_id=project_id)
                 else:
-                    budget.check(s, kind, u, conn.id, resolver=ctx.services.resolver, project_id=project_id)
+                    budget.check(s, kind, paid_units.get(kind, 0.0), None, resolver=ctx.services.resolver,
+                                 project_id=project_id)
 
     await anyio.to_thread.run_sync(check_budget, dry_run)
     warnings = sorted({w for _, w in durations.values() if w})
@@ -528,11 +558,13 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
                     params["source_take_id"] = take_rows[st["after"]].id
                 lane = FFMPEG_LANE
                 if st["type"] == GEN_IMAGE:
-                    conn, _, _, resolution = targets["image"]
+                    conn, _, _, resolution = target_of(st)
                     params.update(connection_id=conn.id, resolution=resolution)
+                    if clip_refs[st["clip_id"]].get("model"):
+                        params["model"] = clip_refs[st["clip_id"]]["model"]  # clip.model (kèm clip.connection)
                     lane = ProviderService.lane(conn)
                 elif st["type"] == GEN_VIDEO:
-                    conn, _, _, resolution = targets["video"]
+                    conn, _, _, resolution = target_of(st)
                     params.update(connection_id=conn.id, resolution=resolution,
                                   duration=durations[st["clip_id"]][0])
                     lane = ProviderService.lane(conn)

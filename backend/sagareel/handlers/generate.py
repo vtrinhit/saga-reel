@@ -302,7 +302,7 @@ async def generate_image(run) -> dict:
         ref_ids = [int(i) for i in ov["refs"]] if ov.get("refs") is not None else [r["media_id"] for r in
                                                                                      compiled["refs"]]
         ref_paths = [await anyio.to_thread.run_sync(_media_file, run.services, i, "image") for i in ref_ids]
-        model = ov.get("model") or adapter.conn.default_model or None
+        model = ov.get("model") or p.get("model") or adapter.conn.default_model or None
         req = ImageRequest(prompt=prompt, refs=ref_paths, aspect=p["aspect"], resolution=p["resolution"], model=model,
                            quality=None, out_dir=run.workdir / "out")
         est = await adapter.estimate(req)
