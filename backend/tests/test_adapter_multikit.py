@@ -73,8 +73,8 @@ def sample_mp4(tmp_path_factory) -> Path:
     for args in (
         ["-f", "lavfi", "-i", "color=red:size=64x64", "-frames:v", "1", str(cover)],
         ["-f", "lavfi", "-i", "testsrc=size=320x240:rate=24",
-         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-i", str(cover), "-map", "0:v", "-map", "1:a", "-map", "2:v", "-t", "1", "-c:v:0", "libx264",
-         "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-c:v:1", "mjpeg",
+         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-i", str(cover),
+         "-map", "0:v", "-map", "1:a", "-map", "2:v", "-t", "1", "-c:v:0", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-c:v:1", "mjpeg",
          "-disposition:v:1", "attached_pic", str(out)],
     ):
         subprocess.run([ff, "-v", "error", "-y", *args], check=True, stdin=subprocess.DEVNULL, capture_output=True)
