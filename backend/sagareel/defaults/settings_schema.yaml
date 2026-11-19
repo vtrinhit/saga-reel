@@ -1,0 +1,99 @@
+# Schema cài đặt (spec §5.4) — dữ liệu, mở rộng được: thêm khoá ở đây là resolver, settings.schema/explain và UI có.
+#
+# Mỗi khoá: type (str | int | float | bool | enum | json), default, description (tiếng Việt), tuỳ chọn choices
+# (bắt buộc với enum), secret (true → giá trị bị che khi trả ra). Khoá bắt đầu bằng "_" dành cho dữ liệu nội bộ của
+# global_settings, không được khai báo ở đây.
+# Tầng ghi đè: default → global → preset → project → sequence → scene → clip → run (tầng sau thắng).
+
+image.connection:
+  type: str
+  default: maivideo
+  description: Kết nối provider dùng để tạo ảnh.
+image.model:
+  type: str
+  default: gpt-image-2.0
+  description: Model tạo ảnh.
+image.resolution:
+  type: enum
+  default: 1440p
+  choices: [1080p, 1440p, 2160p]
+  description: Độ phân giải ảnh tạo ra.
+image.aspect:
+  type: enum
+  default: "9:16"
+  choices: ["9:16", "16:9", "1:1", "4:5", "3:4"]
+  description: Tỉ lệ khung hình ảnh.
+
+video.connection:
+  type: str
+  default: groktele
+  description: Kết nối provider dùng để tạo video.
+video.engine:
+  type: enum
+  default: ai_video
+  choices: [ai_video, still_motion]
+  description: Cách dựng clip — video AI hay ảnh tĩnh có chuyển động.
+video.duration:
+  type: enum
+  default: 6
+  choices: [6, 10, 15]
+  description: Thời lượng mỗi clip video (giây).
+video.resolution:
+  type: enum
+  default: 720p
+  choices: [480p, 720p, 1080p]
+  description: Độ phân giải video tạo ra.
+
+tts.connection:
+  type: str
+  default: edge-tts
+  description: Kết nối provider đọc lời thoại (TTS).
+tts.voice:
+  type: str
+  default: vi-VN-HoaiMyNeural
+  description: Giọng đọc TTS.
+
+prompt.mode:
+  type: enum
+  default: synced
+  choices: [verbatim, synced]
+  description: Gửi prompt nguyên văn (verbatim) hay đồng bộ theo nhân vật/bối cảnh (synced).
+
+budget.enabled:
+  type: bool
+  default: true
+  description: Bật giới hạn ngân sách tạo ảnh/video.
+budget.images_total:
+  type: int
+  default: 60
+  description: Số ảnh tối đa được tạo trong ngân sách; 0 = không giới hạn. Kết nối giả (fake_*) không tính.
+budget.videos_total:
+  type: int
+  default: 20
+  description: Số video tối đa được tạo trong ngân sách; 0 = không giới hạn (vd. video GrokTele). Kết nối giả (fake_*) không tính.
+
+jobs.ffmpeg_concurrency:
+  type: int
+  default: 2
+  description: Số job ffmpeg chạy song song tối đa.
+
+remote.public_hosts:
+  type: json
+  default: []
+  description: Danh sách host công khai được phép truy cập từ xa.
+remote.require_login_local:
+  type: bool
+  default: true
+  description: >-
+    Bắt đăng nhập cả khi truy cập từ máy cục bộ (mặc định bật: reverse proxy kiểu nginx `proxy_pass` không gắn header
+    chuyển tiếp trông giống hệt máy cục bộ). Chỉ có hiệu lực khi đã đặt mật khẩu chủ sở hữu.
+remote.allow_viewer:
+  type: bool
+  default: false
+  description: Cho phép tài khoản chỉ xem truy cập từ xa.
+remote.client_ip_header:
+  type: str
+  default: cf-connecting-ip
+  description: >-
+    Header (do tunnel/proxy ghi đè) chứa IP thật của client, dùng để giới hạn đăng nhập sai theo IP. Để trống = chỉ
+    dùng IP kết nối.

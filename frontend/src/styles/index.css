@@ -1,0 +1,254 @@
+@import './tokens.css';
+@import './contrast.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-bg-0 font-sans text-md text-fg-1 antialiased md:text-base;
+    min-height: 100dvh;
+  }
+  /* Luật tiếng Việt: line-height ≥ 1,4 và chừa 1px cho dấu chồng khi cắt dòng. */
+  .truncate {
+    padding-block: 1px;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 600;
+  }
+  /* Focus = outline accent 2px cách 2px, hiện tức thì, không animate. */
+  :focus-visible {
+    outline: var(--focus-w) solid rgb(var(--c-accent));
+    outline-offset: var(--focus-offset);
+    transition: none;
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+  ::selection {
+    background: rgb(var(--c-accent) / 0.35);
+  }
+}
+
+@layer components {
+  /* Biểu tượng: 16px desktop, 20px khi chạm (DESIGN §5). */
+  .sr-ico {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    stroke-width: 1.75;
+  }
+  @media (pointer: coarse) {
+    .sr-ico {
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  /* Pill trạng thái: nền màu trạng thái 16% trộn đục trên bg-2 (không phải alpha). */
+  .sr-pill {
+    --pc: var(--c-fg-2);
+    background: color-mix(in srgb, rgb(var(--pc)) 16%, rgb(var(--c-bg-2)));
+    color: rgb(var(--pc));
+  }
+  .sr-pill-on-media {
+    background: rgb(var(--c-bg-0) / 0.85);
+  }
+  .sr-pill[data-status='queued'] { --pc: var(--c-queued); }
+  .sr-pill[data-status='running'] { --pc: var(--c-running); }
+  .sr-pill[data-status='done'] { --pc: var(--c-done); }
+  .sr-pill[data-status='failed'] { --pc: var(--c-failed); }
+  .sr-pill[data-status='stale'] { --pc: var(--c-stale); }
+  .sr-pill[data-status='drifted'] { --pc: var(--c-drifted); }
+  .sr-pill[data-status='approved'] { --pc: var(--c-approved); }
+  .sr-pill[data-status='warn'] { --pc: var(--c-warn); }
+  .sr-pill[data-status='ok'] { --pc: var(--c-ok); }
+
+  /* Nút danger: nền đục failed 12% trộn bg-2 (≥ 4,9:1 kể cả trên modal bg-4). */
+  .sr-btn-danger {
+    background: color-mix(in srgb, rgb(var(--c-failed)) 12%, rgb(var(--c-bg-2)));
+    border-color: color-mix(in srgb, rgb(var(--c-failed)) 40%, rgb(var(--c-bg-2)));
+    color: rgb(var(--c-failed));
+  }
+  .sr-btn-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, rgb(var(--c-failed)) 18%, rgb(var(--c-bg-2)));
+  }
+  .sr-btn-danger[data-armed='true'] {
+    background: rgb(var(--c-failed));
+    border-color: rgb(var(--c-failed));
+    color: rgb(var(--c-on-accent));
+  }
+
+  /* Banner mất kết nối: nền đục theo trạng thái trên bg-1. */
+  .sr-banner-offline { background: color-mix(in srgb, rgb(var(--c-failed)) 14%, rgb(var(--c-bg-1))); }
+  .sr-banner-reconnecting { background: color-mix(in srgb, rgb(var(--c-running)) 14%, rgb(var(--c-bg-1))); }
+  .sr-banner-ok { background: color-mix(in srgb, rgb(var(--c-ok)) 12%, rgb(var(--c-bg-1))); }
+  .sr-warnbox { background: color-mix(in srgb, rgb(var(--c-warn)) 12%, rgb(var(--c-bg-4))); }
+
+  /* Vùng chạm ≥ 44px cho phần tử nhỏ khi cảm ứng: mở rộng vùng bắt, không phóng to hình. */
+  @media (pointer: coarse) {
+    .sr-hit {
+      position: relative;
+    }
+    .sr-hit::before {
+      content: '';
+      position: absolute;
+      inset: -12px -4px;
+    }
+  }
+
+  /* Tooltip cho nút chỉ có icon: trễ 600ms khi hover, hiện ngay khi focus bàn phím. */
+  .sr-tip {
+    position: relative;
+  }
+  .sr-tip::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 6px);
+    transform: translateX(-50%);
+    z-index: var(--z-tooltip);
+    white-space: nowrap;
+    pointer-events: none;
+    padding: 2px 8px;
+    border-radius: var(--r-sm);
+    background: rgb(var(--c-bg-4));
+    border: 1px solid rgb(var(--c-line-2));
+    color: rgb(var(--c-fg-1));
+    font: 400 var(--text-xs) / var(--lh-xs) var(--font-ui);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out) 0ms;
+  }
+  .sr-tip:hover::after {
+    opacity: 1;
+    transition-delay: 600ms;
+  }
+  .sr-tip:focus-visible::after {
+    opacity: 1;
+    transition-delay: 0ms;
+  }
+  @media (pointer: coarse) {
+    .sr-tip::after {
+      display: none;
+    }
+  }
+
+  /* Thanh phân đoạn (xong / đang chạy / lỗi). */
+  .sr-segbar {
+    display: flex;
+    overflow: hidden;
+    border-radius: var(--r-xs);
+    background: rgb(var(--c-bg-3));
+  }
+
+  /* Shell có thanh dưới (điện thoại, trong dự án): toast và thanh lô nổi đứng trên nó. */
+  [data-bottom-nav='true'] {
+    --sr-bottom-offset: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 768px) {
+    [data-bottom-nav='true'] {
+      --sr-bottom-offset: 0px;
+    }
+  }
+
+  /* Đáy an toàn cho thanh dưới điện thoại. */
+  .sr-safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+@layer utilities {
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ---- Chuyển động (keyframes không đi theo token thời lượng nên phải tắt riêng khi giảm chuyển động) ---- */
+@keyframes sr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes sr-breathe {
+  from {
+    opacity: 0.6;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes sr-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sr-slide-from-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes sr-slide-from-bottom {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes sr-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.sr-spin {
+  animation: sr-spin 1s linear infinite;
+}
+.sr-breathe {
+  animation: sr-breathe 1.6s var(--ease-inout) infinite alternate;
+}
+.sr-enter-fade {
+  animation: sr-fade-in var(--dur-slow) var(--ease-out);
+}
+.sr-enter-right {
+  animation: sr-slide-from-right var(--dur-slow) var(--ease-out);
+}
+.sr-enter-bottom {
+  animation: sr-slide-from-bottom var(--dur-slow) var(--ease-out);
+}
+.sr-enter-rise {
+  animation: sr-rise var(--dur-base) var(--ease-out);
+}
+/* Drawer: điện thoại trượt từ đáy (sheet), ≥ md trượt từ phải. */
+.sr-drawer-enter {
+  animation: sr-slide-from-bottom var(--dur-slow) var(--ease-out);
+}
+@media (min-width: 768px) {
+  .sr-drawer-enter {
+    animation-name: sr-slide-from-right;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sr-spin,
+  .sr-breathe,
+  .sr-enter-fade,
+  .sr-enter-right,
+  .sr-enter-bottom,
+  .sr-enter-rise,
+  .sr-drawer-enter {
+    animation: none;
+  }
+}

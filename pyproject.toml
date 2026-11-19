@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sagareel"
+version = "0.1.0"
+description = "SagaReel Studio — studio dựng video AI chạy cục bộ"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14",
+    "httpx>=0.27",
+    "pillow>=10.4",
+    "pyyaml>=6",
+    "jinja2>=3.1.6",
+    "openpyxl>=3.1",
+    "sse-starlette>=2.1",
+    "edge-tts>=7.3",
+    "python-multipart>=0.0.9",
+    "pydantic>=2.8",
+    "anyio>=4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+]
+
+[project.scripts]
+sagareel = "sagareel.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+
+[tool.setuptools.package-data]
+sagareel = ["defaults/**/*", "db/migrations/**/*", "assets/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    # fastapi.testclient → starlette.testclient vẫn dùng httpx (khuyên chuyển httpx2); chỉ bỏ qua đúng cảnh báo này.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]

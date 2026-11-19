@@ -1,0 +1,144 @@
+import { useEffect, useId, useRef, useState } from 'react';
+import { cn, focusRing } from '../../lib/cn';
+import { Button } from './Button';
+
+/** Thang 6 cấp giá trị (DESIGN §5.1). */
+export const SOURCE_LEVELS = ['global', 'preset', 'project', 'sequence', 'scene', 'clip'] as const;
+export type SourceLevel = (typeof SOURCE_LEVELS)[number];
+
+export const SOURCE_LABEL: Record<SourceLevel, string> = {
+  global: 'Global',
+  preset: 'Preset',
+  project: 'Dự án',
+  sequence: 'Tập',
+  scene: 'Cảnh',
+  clip: 'Clip',
+};
+
+export interface SourceBadgeProps {
+  /** Cấp đang cấp giá trị; `default` = chưa cấp nào đè, dùng mặc định của app (không vạch nào tô). */
+  source: SourceLevel | 'default';
+  /** Cấp đang sửa: trùng `source` → "đè ở đây" (vạch accent). */
+  editing: SourceLevel;
+  /** Giá trị ở từng cấp (đã định dạng sẵn) cho popover. */
+  values?: Partial<Record<SourceLevel, string>>;
+  /** Giá trị mặc định của app (dưới cấp Global) cho popover; có thì "đè ở đây" ở Global xoá được về mặc định. */
+  defaultValue?: string;
+  /** Xoá giá trị đè ở cấp đang sửa → dùng giá trị của cấp trên. */
+  onClearOverride?: () => void;
+  className?: string;
+}
+
+/** Cấp gần nhất phía trên `level` có giá trị (để ghi "Dùng giá trị của Tập"). */
+function parentWithValue(level: SourceLevel, values: Partial<Record<SourceLevel, string>>): SourceLevel | null {
+  for (let i = SOURCE_LEVELS.indexOf(level) - 1; i >= 0; i--) {
+    const l = SOURCE_LEVELS[i];
+    if (values[l] != null) return l;
+  }
+  return null;
+}
+
+/** Chip 20px: thang 6 vạch, vạch tô ở cấp nguồn + chữ "từ Preset"; bấm → popover liệt kê giá trị từng cấp. */
+export function SourceBadge({ source, editing, values = {}, defaultValue, onClearOverride, className }: SourceBadgeProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popId = useId();
+  const here = source === editing;
+  const idx = source === 'default' ? -1 : SOURCE_LEVELS.indexOf(source);
+  const parent = here ? parentWithValue(editing, values) : null;
+  const clearLabel = parent ? `Dùng giá trị của ${SOURCE_LABEL[parent]}` : here && defaultValue != null ? 'Dùng giá trị mặc định' : null;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [open]);
+
+  const text = here ? 'đè ở đây' : source === 'default' ? 'mặc định' : `từ ${SOURCE_LABEL[source]}`;
+
+  return (
+    <span
+      ref={rootRef}
+      className={cn('relative inline-flex', className)}
+      onKeyDown={(e) => {
+        // Esc đóng popover trước; preventDefault báo cho Modal/Drawer bên ngoài là đã xử lý.
+        if (e.key === 'Escape' && open) {
+          e.preventDefault();
+          setOpen(false);
+          btnRef.current?.focus();
+        }
+      }}
+    >
+      <button
+        ref={btnRef}
+        type="button"
+        aria-expanded={open}
+        aria-controls={popId}
+        aria-label={`Nguồn giá trị: ${
+          source === 'default' ? 'mặc định' : here ? `đè ở cấp ${SOURCE_LABEL[source]}` : SOURCE_LABEL[source]
+        }`}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'sr-hit inline-flex h-5 items-center gap-1.5 whitespace-nowrap rounded-sm border bg-bg-1 px-1.5 text-xs text-fg-2',
+          here ? 'border-accent/50 text-fg-1' : 'border-line-2',
+          focusRing,
+        )}
+      >
+        <span className="inline-flex items-end gap-0.5" aria-hidden>
+          {SOURCE_LEVELS.map((l, i) => (
+            <i
+              key={l}
+              className={cn(
+                'block h-2.5 w-[3px] rounded-[1px]',
+                i === idx ? (here ? 'bg-accent' : 'bg-fg-1') : 'bg-line-2',
+              )}
+            />
+          ))}
+        </span>
+        {text}
+      </button>
+      {open ? (
+        <div
+          id={popId}
+          role="dialog"
+          aria-label="Giá trị theo từng cấp"
+          className="absolute left-0 top-[calc(100%+4px)] z-dropdown grid w-64 gap-1 rounded-md border border-line-2 bg-bg-3 p-2 shadow-pop"
+        >
+          <dl className="grid gap-0.5 text-xs">
+            {defaultValue != null ? (
+              <div className={cn('flex justify-between gap-3 rounded-sm px-1.5 py-1', source === 'default' && 'bg-bg-4 text-fg-1')}>
+                <dt className="text-fg-2">Mặc định</dt>
+                <dd className="min-w-0 truncate text-right">{defaultValue}</dd>
+              </div>
+            ) : null}
+            {SOURCE_LEVELS.map((l) => (
+              <div
+                key={l}
+                className={cn('flex justify-between gap-3 rounded-sm px-1.5 py-1', l === source && 'bg-bg-4 text-fg-1')}
+              >
+                <dt className="text-fg-2">{SOURCE_LABEL[l]}</dt>
+                <dd className="min-w-0 truncate text-right">{values[l] ?? '—'}</dd>
+              </div>
+            ))}
+          </dl>
+          {here && clearLabel && onClearOverride ? (
+            <Button
+              variant="ghost"
+              className="justify-start"
+              onClick={() => {
+                onClearOverride();
+                setOpen(false);
+              }}
+            >
+              {clearLabel}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </span>
+  );
+}

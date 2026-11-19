@@ -1,0 +1,105 @@
+# Công việc LLM mặc định (spec §7.3) — dữ liệu: seed vào bảng `llm_task` (Task 15), người dùng thêm/sửa được.
+#
+# Mỗi công việc: key (snake_case, duy nhất), label + description (tiếng Việt, hiện trên UI), template_key (template
+# prompt trong defaults/templates/<template_key>.md), needs_vision (gửi kèm ảnh → chỉ dùng kết nối có vision),
+# json_mode (yêu cầu LLM trả JSON; kết quả được parse thành `data`).
+# Định tuyến (kết nối + model + tham số + chuỗi dự phòng) KHÔNG nằm ở đây: mặc định dùng kết nối LLM đang bật đầu tiên,
+# người dùng chọn riêng cho từng công việc trong Cài đặt → LLM (op llm.task_update).
+
+- key: analyze_channel
+  label: Phân tích kênh mẫu
+  description: Đọc ảnh bìa/khung hình và tiêu đề của kênh mẫu, rút ra phong cách hình ảnh, giọng kể, nhịp và công thức nội dung.
+  template_key: analyze_channel
+  needs_vision: true
+  json_mode: true
+
+- key: write_bible
+  label: Viết series bible
+  description: Từ ý tưởng, viết bible của series — thế giới, nhân vật, bối cảnh, đạo cụ, giọng văn và luật lệ.
+  template_key: write_bible
+  needs_vision: false
+  json_mode: true
+
+- key: outline
+  label: Lập dàn ý tập
+  description: Lập dàn ý một tập theo bible — các hồi, nhịp, điểm ngoặt và móc câu cuối.
+  template_key: outline
+  needs_vision: false
+  json_mode: true
+
+- key: write_script
+  label: Viết kịch bản
+  description: Viết kịch bản hoàn chỉnh (lời dẫn + thoại) cho một tập từ dàn ý.
+  template_key: write_script
+  needs_vision: false
+  json_mode: false
+
+- key: split_clips
+  label: Chia kịch bản thành clip
+  description: Chia kịch bản thành các clip ngắn theo thời lượng video, mỗi clip một hành động và một câu đọc.
+  template_key: split_clips
+  needs_vision: false
+  json_mode: true
+
+- key: image_prompts
+  label: Viết prompt ảnh
+  description: Viết prompt tạo ảnh khung đầu cho từng clip, giữ đúng nhân vật, bối cảnh và phong cách.
+  template_key: image_prompts
+  needs_vision: false
+  json_mode: true
+
+- key: motion_prompts
+  label: Viết prompt chuyển động
+  description: Viết prompt chuyển động (camera + hành động) để biến ảnh khung đầu thành video cho từng clip.
+  template_key: motion_prompts
+  needs_vision: false
+  json_mode: true
+
+- key: dialogue
+  label: Viết lời thoại
+  description: Viết hoặc chỉnh lời thoại/lời dẫn theo nhân vật, vừa thời lượng clip, kèm giọng và cảm xúc.
+  template_key: dialogue
+  needs_vision: false
+  json_mode: true
+
+- key: drift_check
+  label: Kiểm tra lệch nhân vật
+  description: So ảnh/khung hình với sheet nhân vật và bối cảnh để phát hiện lệch ngoại hình, trang phục, đạo cụ.
+  template_key: drift_check
+  needs_vision: true
+  json_mode: true
+
+- key: memory_summarize
+  label: Tóm tắt trí nhớ series
+  description: Tóm tắt các tập đã làm thành trí nhớ ngắn gọn (sự kiện, trạng thái nhân vật, tuyến truyện còn mở).
+  template_key: memory_summarize
+  needs_vision: false
+  json_mode: true
+
+- key: caption
+  label: Viết caption đăng bài
+  description: Viết tiêu đề, caption và hashtag để đăng video lên mạng xã hội.
+  template_key: caption
+  needs_vision: false
+  json_mode: true
+
+- key: translate
+  label: Dịch
+  description: Dịch lời thoại, phụ đề hoặc caption sang ngôn ngữ khác, giữ giọng văn và độ dài phù hợp.
+  template_key: translate
+  needs_vision: false
+  json_mode: true
+
+- key: rewrite_prompt
+  label: Nhờ AI sửa prompt
+  description: Viết lại một prompt ảnh/video theo góp ý của người dùng (chỉ khi người dùng yêu cầu).
+  template_key: rewrite_prompt
+  needs_vision: false
+  json_mode: false
+
+- key: score_take
+  label: Chấm điểm bản tạo
+  description: Xem ảnh/khung hình của một bản tạo và chấm điểm theo prompt, nhân vật và lỗi hình ảnh.
+  template_key: score_take
+  needs_vision: true
+  json_mode: true

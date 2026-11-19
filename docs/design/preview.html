@@ -6,7 +6,7 @@
 <title>SagaReel Studio · Take Khoanh</title>
 <meta name="description" content="Bản minh hoạ hệ thiết kế SagaReel Studio: token, component và màn hình chính.">
 <style>
-/* Hallmark · component-system preview · identity: Take Khoanh · tone: utilitarian-calm · anchor hue: grease-pencil yellow ~95°
+/* Hallmark · component-system preview · identity: Take Khoanh · tone: utilitarian-calm · anchor hue: grease-pencil yellow #F2D24B
  * pre-emit critique: P5 H4 E4 S5 R5 V4 · no external requests · fonts declared, system fallbacks render
  */
 
@@ -65,7 +65,7 @@
   --r-xs: 2px; --r-sm: 4px; --r-md: 6px; --r-lg: 10px;
   --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.45);
   --shadow-modal: 0 16px 48px rgb(0 0 0 / 0.6);
-  --ring: 0 0 0 2px rgb(var(--c-bg-0)), 0 0 0 4px rgb(var(--c-accent));
+  --focus-w: 2px; --focus-offset: 2px; /* focus = outline accent, không dùng box-shadow */
   /* kích thước */
   --h-control: 32px; --h-touch: 44px; --h-row: 40px; --h-track: 48px;
   --w-rail: 64px; --w-inspector: 360px; --h-topbar: 48px; --h-meta: 52px;
@@ -130,7 +130,7 @@ svg.i-12 { width: 12px; height: 12px; }
 svg.i-20 { width: 20px; height: 20px; }
 svg.i-24 { width: 24px; height: 24px; }
 svg.i-32 { width: 32px; height: 32px; }
-:focus-visible { outline: none; box-shadow: var(--ring); }
+:focus-visible { outline: var(--focus-w) solid rgb(var(--c-accent)); outline-offset: var(--focus-offset); }
 
 .wrap { width: 100%; max-width: 1280px; margin: 0 auto; padding: 0 16px; }
 @media (min-width: 768px) { .wrap { padding: 0 24px; } }
@@ -179,7 +179,7 @@ section.block > .wrap > .lead { color: rgb(var(--c-fg-2)); max-width: 72ch; marg
 }
 .btn:hover, .btn.is-hover { background: rgb(var(--c-bg-3)); border-color: rgb(var(--c-line-3)); }
 .btn:active, .btn.is-active { background: rgb(var(--c-bg-4)); }
-.btn.is-focus { box-shadow: var(--ring); }
+.btn.is-focus { outline: var(--focus-w) solid rgb(var(--c-accent)); outline-offset: var(--focus-offset); }
 .btn[disabled], .btn[aria-disabled="true"] { color: rgb(var(--c-fg-4)); background: rgb(var(--c-bg-1)); border-color: rgb(var(--c-line-1)); cursor: not-allowed; }
 .btn.primary { background: rgb(var(--c-accent)); border-color: rgb(var(--c-accent)); color: rgb(var(--c-on-accent)); }
 .btn.primary:hover, .btn.primary.is-hover { background: rgb(var(--c-accent-hi)); border-color: rgb(var(--c-accent-hi)); }
@@ -187,8 +187,9 @@ section.block > .wrap > .lead { color: rgb(var(--c-fg-2)); max-width: 72ch; marg
 .btn.primary[disabled] { background: rgb(var(--c-bg-3)); border-color: rgb(var(--c-bg-3)); color: rgb(var(--c-fg-4)); }
 .btn.ghost { background: transparent; border-color: transparent; }
 .btn.ghost:hover { background: rgb(var(--c-bg-3)); }
-.btn.danger { background: rgb(var(--c-failed) / 0.12); border-color: rgb(var(--c-failed) / 0.4); color: rgb(var(--c-failed)); }
-.btn.danger:hover { background: rgb(var(--c-failed) / 0.2); }
+.btn.danger { background: color-mix(in srgb, rgb(var(--c-failed)) 12%, rgb(var(--c-bg-2))); border-color: color-mix(in srgb, rgb(var(--c-failed)) 40%, rgb(var(--c-bg-2))); color: rgb(var(--c-failed)); }
+.btn.danger:hover { background: color-mix(in srgb, rgb(var(--c-failed)) 18%, rgb(var(--c-bg-2))); }
+.btn.danger[disabled] { background: rgb(var(--c-bg-1)); border-color: rgb(var(--c-line-1)); color: rgb(var(--c-fg-4)); cursor: not-allowed; }
 .btn.danger.armed { background: rgb(var(--c-failed)); color: rgb(var(--c-on-accent)); border-color: rgb(var(--c-failed)); }
 .btn.is-error { border-color: rgb(var(--c-failed)); color: rgb(var(--c-failed)); }
 .btn.is-success { border-color: rgb(var(--c-ok) / 0.6); color: rgb(var(--c-ok)); }
@@ -232,6 +233,7 @@ section.block > .wrap > .lead { color: rgb(var(--c-fg-2)); max-width: 72ch; marg
   color: rgb(var(--c-fg-2)); font: 500 var(--text-sm)/var(--lh-sm) var(--font-ui); cursor: pointer; white-space: nowrap;
 }
 .seg button:hover { color: rgb(var(--c-fg-1)); }
+@media (pointer: coarse) { .seg button { height: var(--h-touch); } .src { position: relative; } .src::before { content: ""; position: absolute; inset: -12px -4px; } }
 .seg button[aria-checked="true"] { background: rgb(var(--c-bg-4)); color: rgb(var(--c-fg-1)); }
 
 /* ===== Pill ===== */
@@ -280,7 +282,7 @@ section.block > .wrap > .lead { color: rgb(var(--c-fg-2)); max-width: 72ch; marg
   cursor: pointer; text-align: left; color: inherit; padding: 0; font: inherit;
 }
 .card:hover { border-color: rgb(var(--c-line-3)); }
-.card.selected { box-shadow: var(--ring); }
+.card.selected::after { content: ""; position: absolute; inset: 0; border: 2px solid rgb(var(--c-accent)); border-radius: inherit; pointer-events: none; }
 .card .media { position: relative; aspect-ratio: 9 / 16; background: rgb(var(--c-stage)); overflow: hidden; }
 .card.landscape .media { aspect-ratio: 16 / 9; }
 .card .media .img { position: absolute; inset: 0; opacity: 1; transition: opacity var(--dur-image) var(--ease-out); }
@@ -466,7 +468,7 @@ section.block > .wrap > .lead { color: rgb(var(--c-fg-2)); max-width: 72ch; marg
 .banner.re svg { color: rgb(var(--c-running)); }
 .banner.ok { background: color-mix(in srgb, rgb(var(--c-ok)) 12%, rgb(var(--c-bg-1))); }
 .banner.ok svg { color: rgb(var(--c-ok)); }
-.banner .btn { height: 28px; }
+.banner .btn { height: var(--h-control); }
 .toast { display: flex; align-items: center; gap: 12px; background: rgb(var(--c-bg-4)); border: 1px solid rgb(var(--c-line-2)); border-radius: var(--r-md); box-shadow: var(--shadow-pop); padding: 8px 8px 8px 12px; font-size: var(--text-sm); max-width: 420px; }
 .toast p { flex: 1; min-width: 0; }
 .dialog { background: rgb(var(--c-bg-4)); border: 1px solid rgb(var(--c-line-2)); border-radius: var(--r-lg); box-shadow: var(--shadow-modal); padding: 20px; display: grid; gap: 14px; min-width: 0; }
@@ -474,7 +476,7 @@ section.block > .wrap > .lead { color: rgb(var(--c-fg-2)); max-width: 72ch; marg
 .est { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 .est th, .est td { padding: 6px 0; border-bottom: 1px solid rgb(var(--c-line-1)); text-align: left; font-weight: 400; }
 .est td.n { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.est th { color: rgb(var(--c-fg-3)); font-size: var(--text-xs); }
+.est th { color: rgb(var(--c-fg-2)); font-size: var(--text-xs); }
 .est .total td { border-bottom: 0; padding-top: 10px; }
 .est .total .n { font-size: var(--text-xl); line-height: var(--lh-xl); color: rgb(var(--c-fg-1)); }
 .warnbox { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: var(--r-sm); background: color-mix(in srgb, rgb(var(--c-warn)) 12%, rgb(var(--c-bg-4))); font-size: var(--text-sm); line-height: var(--lh-sm); }
@@ -672,7 +674,7 @@ footer.doc { padding: 32px 0; color: rgb(var(--c-fg-3)); font-size: var(--text-x
     <p class="pangram-caps">ỄNH ƯƠNG · Ộ Ữ Ẩ Ẫ Ặ Ỗ Ờ Ỹ Ẻ Ậ</p>
     <div class="type-row"><span class="k">3xl 36/44</span><span class="v" style="font-size:var(--text-3xl);line-height:var(--lh-3xl);font-weight:600">Ễnh ương kêu ộp oạp</span></div>
     <div class="type-row"><span class="k">2xl 28/36</span><span class="v" style="font-size:var(--text-2xl);line-height:var(--lh-2xl);font-weight:600">Tập 12 · Hồ Ly Tinh</span></div>
-    <div class="type-row"><span class="k">xl 22/30</span><span class="v" style="font-size:var(--text-xl);line-height:var(--lh-xl);font-weight:600">Phân cảnh mùa một</span></div>
+    <div class="type-row"><span class="k">xl 22/30</span><span class="v" style="font-size:var(--text-xl);line-height:var(--lh-xl);font-weight:600">Danh sách tập mùa một</span></div>
     <div class="type-row"><span class="k">lg 18/26</span><span class="v" style="font-size:var(--text-lg);line-height:var(--lh-lg);font-weight:600">Inspector · Prompt</span></div>
     <div class="type-row"><span class="k">md 16/24</span><span class="v" style="font-size:var(--text-md);line-height:var(--lh-md)">Ễnh ương kêu ộp oạp, bé Thủy lắc đầu quậy phá giữa đêm rực rỡ; chú Đức dựng phim, ghé xem ván cờ, khẽ hỏi: ẩn số nào vậy?</span></div>
     <div class="type-row"><span class="k">base 14/22</span><span class="v">Ễnh ương kêu ộp oạp, bé Thủy lắc đầu quậy phá giữa đêm rực rỡ; chú Đức dựng phim, ghé xem ván cờ, khẽ hỏi: ẩn số nào vậy?</span></div>
@@ -723,7 +725,7 @@ footer.doc { padding: 32px 0; color: rgb(var(--c-fg-3)); font-size: var(--text-x
       </div>
       <div class="field">
         <span class="label"><label for="f-voice">Giọng</label>
-          <button class="src" type="button" title="Global → Preset → Dự án → Phân cảnh → Cảnh → Clip"><span class="ladder" aria-hidden="true"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></span>từ Preset</button>
+          <button class="src" type="button" title="Global → Preset → Dự án → Tập → Cảnh → Clip"><span class="ladder" aria-hidden="true"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></span>từ Preset</button>
         </span>
         <select class="select" id="f-voice"><option>Hồ Ly · nữ trầm (VieNeu)</option><option>Người kể · nam ấm</option></select>
       </div>
@@ -915,7 +917,7 @@ footer.doc { padding: 32px 0; color: rgb(var(--c-fg-3)); font-size: var(--text-x
       <div class="studio-body">
         <nav class="rail" aria-label="Trong dự án">
           <a href="#studio"><svg class="i i-20"><use href="#i-book"/></svg>Thư viện</a>
-          <a href="#studio"><svg class="i i-20"><use href="#i-rows"/></svg>Phân cảnh</a>
+          <a href="#studio"><svg class="i i-20"><use href="#i-rows"/></svg>Tập</a>
           <a href="#studio" aria-current="page"><svg class="i i-20"><use href="#i-film"/></svg>Studio</a>
           <a href="#studio"><svg class="i i-20"><use href="#i-layers"/></svg>Việc</a>
           <a href="#studio"><svg class="i i-20"><use href="#i-share"/></svg>Xuất</a>
@@ -1133,7 +1135,7 @@ footer.doc { padding: 32px 0; color: rgb(var(--c-fg-3)); font-size: var(--text-x
         </div>
         <nav class="ph-nav" aria-label="Điều hướng chính">
           <a href="#phone" aria-current="page"><svg class="i i-20"><use href="#i-circlecheck"/></svg>Duyệt</a>
-          <a href="#phone"><svg class="i i-20"><use href="#i-rows"/></svg>Cảnh</a>
+          <a href="#phone"><svg class="i i-20"><use href="#i-rows"/></svg>Tập</a>
           <a href="#phone"><svg class="i i-20"><use href="#i-layers"/></svg>Việc<span class="badge">3</span></a>
           <a href="#phone"><svg class="i i-20"><use href="#i-play"/></svg>Xem</a>
           <a href="#phone"><svg class="i i-20"><use href="#i-plus"/></svg>Thêm</a>
@@ -1149,7 +1151,7 @@ footer.doc { padding: 32px 0; color: rgb(var(--c-fg-3)); font-size: var(--text-x
 
 <div class="floatbar" role="status" aria-label="Tiến độ lô">
   <span class="t"><strong>Tập 12</strong> · 37/120 · <span style="color:rgb(var(--c-failed))">3 lỗi</span> · còn ~18 phút</span>
-  <button class="btn ghost" type="button" style="height:32px">Mở</button>
+  <button class="btn ghost" type="button">Mở</button>
   <div class="segbar"><i style="width:30.8%;background:rgb(var(--c-done))"></i><i style="width:5%;background:rgb(var(--c-running))"></i><i style="width:2.5%;background:rgb(var(--c-failed))"></i></div>
 </div>
 
