@@ -1,0 +1,19 @@
+{#- motion.synced — prompt chuyển động image-to-video (craft-and-prompts §7.2). Thoại chèn nguyên văn trong ngoặc kép. -#}
+Start from the provided image; keep identity, outfit, lighting and background unchanged.
+{%- if camera %}
+Camera: {{ camera }}.
+{%- endif %}
+{%- if prompt %}
+{{ prompt }}
+{%- endif %}
+{%- for b in beats %}
+{% if b.stamp %}[{{ b.stamp }}] {% endif %}{{ b.text }}
+{%- endfor %}
+{%- for d in dialogue %}
+Dialogue: {{ d.name }} says in {{ language }}{% if d.emotion %}, {{ d.emotion }}{% endif %}: "{{ d.text }}"
+{%- endfor %}
+{%- if sfx %}
+SFX: {{ sfx }}.
+{%- endif %}
+Ambient noise: {{ ambient }}. No background music.
+The camera then holds. Stable face, consistent outfit, natural hand movement, single continuous shot, no scene cut, no morphing, no text, no subtitles, no watermark.

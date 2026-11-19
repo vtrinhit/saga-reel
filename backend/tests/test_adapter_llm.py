@@ -321,6 +321,7 @@ EXPECTED_TASKS = {
     "motion_prompts": (False, True), "dialogue": (False, True), "drift_check": (True, True),
     "memory_summarize": (False, True), "caption": (False, True), "translate": (False, True),
     "rewrite_prompt": (False, False), "score_take": (True, True),
+    "describe_asset": (True, True),  # Task A
 }
 
 

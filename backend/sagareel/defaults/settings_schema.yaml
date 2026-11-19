@@ -97,3 +97,21 @@ remote.client_ip_header:
   description: >-
     Header (do tunnel/proxy ghi đè) chứa IP thật của client, dùng để giới hạn đăng nhập sai theo IP. Để trống = chỉ
     dùng IP kết nối.
+
+# --- task a ---
+prompt.negative_default:
+  type: str
+  default: "text, subtitles, watermark, extra people, deformed hands, morphing, scene cut"
+  description: Danh sách cần tránh mặc định cho prompt synced khi project chưa có negative_block.
+prompt.max_refs_image:
+  type: int
+  default: 9
+  description: Số ảnh tham chiếu tối đa khi kết nối ảnh không khai báo max_refs.
+library.look_max_refs:
+  type: int
+  default: 6
+  description: Cảnh báo khi một look có nhiều hơn số ảnh tham chiếu này (mỏ neo + sheet + ảnh thêm).
+library.drift_threshold:
+  type: int
+  default: 70
+  description: Điểm drift check (0–100) dưới ngưỡng này thì clip bị gắn cờ drift.

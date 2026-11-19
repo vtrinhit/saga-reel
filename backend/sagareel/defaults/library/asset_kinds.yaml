@@ -1,0 +1,76 @@
+# Cách compiler + sheet dùng từng loại tài sản (Task A, phụ lục film-craft §1). Dữ liệu — sửa được.
+#
+# Dòng `asset_kind` toàn cục (character/location/prop) đã được migration 0004 seed sẵn; file này KHÔNG tạo dòng DB,
+# chỉ mô tả hành vi theo `key` của loại:
+# - order: thứ tự ảnh ref trong prompt synced (nhân vật → bối cảnh → đạo cụ → loại khác → khung cuối clip trước).
+# - ref_role: vai trò ảnh ref mặc định (appearance/outfit/spatial_layout/composition/scale/effect/start_frame/
+#   end_frame/style/subject); `clip.assets[].role` ghi đè được.
+# - refs_per_asset: số ảnh tối đa mỗi tài sản (nhân vật 1–2: mỏ neo + một góc gần nhất).
+# - section: khối nào của template image.synced (characters/location/props).
+# - sheet_template: key template trong bảng `template`.
+# - views: góc nhìn của sheet (thứ tự mặc định) → mô tả tiếng Anh chèn vào template sheet. `anchor` luôn đứng đầu,
+#   sinh chỉ từ chữ; mọi góc khác chỉ tham chiếu ảnh mỏ neo.
+# - default_views: góc mặc định của `sheet.generate`.
+
+kinds:
+  character:
+    order: 0
+    ref_role: appearance
+    refs_per_asset: 2
+    section: characters
+    sheet_template: sheet.character
+    default_views: [anchor, closeup, profile, back, three_quarter]
+    views:
+      anchor: "Full-body front view, standing straight and facing the camera, arms relaxed at the sides, empty hands, neutral expression"
+      three_quarter: "Full-body three-quarter view, body turned 45 degrees to the left, same standing pose"
+      profile: "Full-body side profile view facing right, same standing pose"
+      back: "Full-body back view, same standing pose"
+      closeup: "Close-up portrait of the face, front view, head and shoulders, neutral expression"
+      closeup_three_quarter: "Close-up portrait of the face, three-quarter view, head and shoulders"
+      detail: "Detail close-up of the signature accessory and outfit details"
+  location:
+    order: 1
+    ref_role: spatial_layout
+    refs_per_asset: 1
+    section: location
+    sheet_template: sheet.location
+    default_views: [anchor, reverse, wide, detail]
+    views:
+      anchor: "Establishing wide view at eye level, the whole space visible, empty of people"
+      reverse: "Reverse angle of the same space from the opposite side, empty of people"
+      wide: "High wide view showing the layout and the entrances, empty of people"
+      detail: "Detail view of the most characteristic corner and materials, empty of people"
+  prop:
+    order: 2
+    ref_role: subject
+    refs_per_asset: 1
+    section: props
+    sheet_template: sheet.prop
+    default_views: [anchor, three_quarter, back, detail]
+    views:
+      anchor: "Product-style front view of the object alone, centered, whole object visible"
+      three_quarter: "Three-quarter view of the object alone, whole object visible"
+      back: "Back view of the object alone, whole object visible"
+      detail: "Macro detail of the object's material, marks and texture"
+
+# Loại người dùng tự thêm (không có ở trên).
+default:
+  order: 3
+  ref_role: subject
+  refs_per_asset: 1
+  section: props
+  sheet_template: sheet.prop
+  default_views: [anchor, three_quarter, back, detail]
+  views:
+    anchor: "Front view of the subject alone, centered, whole subject visible"
+    three_quarter: "Three-quarter view of the subject alone"
+    back: "Back view of the subject alone"
+    detail: "Detail close-up of the subject's material and texture"
+
+# Góc sheet ưu tiên làm ảnh ref thứ hai của nhân vật theo cỡ cảnh của clip (ưu tiên khung gần nhất cùng góc máy).
+view_for_shot:
+  ecu: [closeup, closeup_three_quarter, three_quarter]
+  cu: [closeup, closeup_three_quarter, three_quarter]
+  mcu: [closeup, closeup_three_quarter, three_quarter]
+  insert: [detail, closeup]
+  default: [three_quarter, closeup, profile, back]
