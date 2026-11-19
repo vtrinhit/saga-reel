@@ -13,7 +13,7 @@ import { ErrorState } from '../../components/ui/ErrorState';
 import { SkeletonBar } from '../../components/ui/Skeleton';
 import { Textarea } from '../../components/ui/Textarea';
 import { formatCount, formatCredits } from '../../lib/format';
-import { CANCELLABLE, hasProviderId, jobTitle, laneLabel, RETRYABLE } from '../../lib/jobText';
+import { CANCELLABLE, errorCodeText, hasProviderId, jobTitle, laneLabel, RETRYABLE } from '../../lib/jobText';
 import { formatDateTime, parseServerTime } from '../../lib/time';
 import { useConnection } from '../../stores/connection';
 import { toast } from '../../stores/toast';
@@ -108,7 +108,18 @@ function Meta({ job }: { job: Job }) {
  * Chi tiết job (drawer): trạng thái/tiến độ/ETA/lỗi + gợi ý sống, kết quả, log realtime; Huỷ việc, Thử lại (sửa
  * params), xử lý job cần chú ý (gửi lại / cho thất bại).
  */
-export function JobDrawer({ jobId, onClose, startRetry = false }: { jobId: number | null; onClose: () => void; startRetry?: boolean }) {
+export function JobDrawer({
+  jobId,
+  onClose,
+  startRetry = false,
+  readOnly = false,
+}: {
+  jobId: number | null;
+  onClose: () => void;
+  startRetry?: boolean;
+  /** Người xem: chỉ xem, không có Huỷ/Thử lại/Xử lý. */
+  readOnly?: boolean;
+}) {
   const qc = useQueryClient();
   const q = useJob(jobId);
   const job = q.data;
@@ -133,7 +144,7 @@ export function JobDrawer({ jobId, onClose, startRetry = false }: { jobId: numbe
   // Mở từ nút "Thử lại"/"Xử lý" của hàng: vào thẳng bước đó khi đã có dữ liệu job.
   const jobStatus = job?.status;
   useEffect(() => {
-    if (!startRetry || !jobStatus) return;
+    if (!startRetry || !jobStatus || readOnly) return;
     if (jobStatus === 'needs_attention') setMode('attention');
     else if (RETRYABLE.has(jobStatus)) setMode('retry');
   }, [startRetry, jobId, jobStatus != null]);
@@ -188,18 +199,25 @@ export function JobDrawer({ jobId, onClose, startRetry = false }: { jobId: numbe
     fn(r.patch);
   };
 
-  const paidRetry = job ? hasProviderId(job) : false;
-  const footer = !job ? null : mode === 'retry' ? (
+  // Provider đã nhận việc (có id phía provider):
+  // - backend có `force_new`: mặc định NỐI LẠI đúng việc cũ (không tốn thêm, không sửa được tham số, việc đã xong thì
+  //   không có gì để nối); bật "tạo việc trả phí mới" mới gửi lại từ đầu (sửa được prompt).
+  // - backend chưa có `force_new`: mọi lần thử lại đều là gửi mới → luôn ghi rõ trả phí.
+  const holds = job ? hasProviderId(job) : false;
+  const resume = holds && forceNewSupported && !forceNew;
+  const paidRetry = holds && (!forceNewSupported || forceNew);
+  const resumeBlocked = resume && job?.status === 'succeeded';
+  const footer = !job || readOnly ? null : mode === 'retry' ? (
     <>
       <Button onClick={() => setMode('view')}>Quay lại</Button>
       <Button
         variant="primary"
         icon={RotateCw}
         loading={retry.isPending}
-        disabled={offline || (paidRetry && forceNewSupported && !forceNew)}
-        onClick={() => submitPatch((p) => retry.mutate(p))}
+        disabled={offline || resumeBlocked}
+        onClick={() => (resume ? retry.mutate(null) : submitPatch((p) => retry.mutate(p)))}
       >
-        {paidRetry ? 'Thử lại · tạo job trả phí mới' : 'Thử lại'}
+        {paidRetry ? 'Thử lại · tạo việc trả phí mới' : resume ? 'Thử lại · nối lại việc cũ' : 'Thử lại'}
       </Button>
     </>
   ) : mode === 'attention' ? (
@@ -215,7 +233,7 @@ export function JobDrawer({ jobId, onClose, startRetry = false }: { jobId: numbe
         loading={clear.isPending && clear.variables?.action === 'resubmit'}
         onClick={() => submitPatch((p) => clear.mutate({ action: 'resubmit', patch: p }))}
       >
-        Gửi lại · tạo job trả phí mới
+        Gửi lại · tạo việc trả phí mới
       </Button>
     </>
   ) : (
@@ -258,19 +276,33 @@ export function JobDrawer({ jobId, onClose, startRetry = false }: { jobId: numbe
           {mode === 'retry' ? (
             <section className="grid gap-3 border-t border-line-1 pt-4">
               <h3 className="text-sm font-semibold">Thử lại việc này</h3>
+              {holds && forceNewSupported ? (
+                <>
+                  <p className="text-sm text-fg-2">
+                    Provider đã nhận việc này (id <span className="break-all font-mono text-xs">{job.external_id}</span>).
+                    Thử lại mặc định nối lại đúng việc đó — không tốn thêm, nhưng không đổi được prompt.
+                  </p>
+                  <Checkbox
+                    label="Tạo việc trả phí mới (gửi lại từ đầu, sửa được prompt)"
+                    checked={forceNew}
+                    onChange={(e) => setForceNew(e.target.checked)}
+                  />
+                </>
+              ) : null}
               {paidRetry ? (
                 <div className="sr-warnbox flex items-start gap-2 rounded-sm px-2.5 py-2 text-sm">
                   <CircleAlert className="sr-ico mt-0.5 text-warn" aria-hidden />
                   <span className="min-w-0">
-                    Việc này đã được gửi tới provider (id <span className="break-all font-mono text-xs">{job.external_id}</span>).
-                    Thử lại sẽ gửi yêu cầu mới — tạo job trả phí mới, kết quả cũ bị bỏ.
+                    {forceNewSupported ? 'Gửi yêu cầu mới tới provider' : <>Việc này đã được gửi tới provider (id{' '}
+                      <span className="break-all font-mono text-xs">{job.external_id}</span>). Thử lại sẽ gửi yêu cầu mới</>}
+                    {' '}— tạo việc trả phí mới, kết quả cũ bị bỏ.
                   </span>
                 </div>
               ) : null}
-              {paidRetry && forceNewSupported ? (
-                <Checkbox label="Tôi hiểu: tạo job trả phí mới" checked={forceNew} onChange={(e) => setForceNew(e.target.checked)} />
+              {resumeBlocked ? (
+                <p className="text-sm text-warn">Việc đã xong — nối lại chỉ lấy lại đúng kết quả cũ. Muốn tạo lại thì chọn tạo việc trả phí mới.</p>
               ) : null}
-              <PatchEditor job={job} draft={draft} onChange={setDraft} error={patchError} />
+              {resume ? null : <PatchEditor job={job} draft={draft} onChange={setDraft} error={patchError} />}
             </section>
           ) : null}
 
@@ -278,7 +310,7 @@ export function JobDrawer({ jobId, onClose, startRetry = false }: { jobId: numbe
             <section className="grid gap-3 border-t border-line-1 pt-4">
               <h3 className="text-sm font-semibold">Việc cần bạn quyết định</h3>
               <p className="text-sm text-fg-2">
-                Không rõ provider đã nhận việc này hay chưa. Kiểm tra phía provider trước: nếu job đã được tạo ở đó, chọn
+                Không rõ provider đã nhận việc này hay chưa. Kiểm tra phía provider trước: nếu việc đã được tạo ở đó, chọn
                 <strong className="font-semibold text-fg-1"> Cho thất bại</strong> để không trả tiền hai lần; nếu chưa,
                 <strong className="font-semibold text-fg-1"> Gửi lại</strong> (có thể sửa prompt).
               </p>
@@ -288,8 +320,8 @@ export function JobDrawer({ jobId, onClose, startRetry = false }: { jobId: numbe
 
           {actionError ? (
             <p role="alert" className="text-sm text-state-failed">
-              {actionError.detail}
-              {actionError.hint ? ` ${actionError.hint}` : ''}
+              {errorCodeText(actionError.code) ??
+                `${actionError.detail}${actionError.hint ? ` ${actionError.hint}` : ''}`}
             </p>
           ) : null}
 
@@ -297,7 +329,7 @@ export function JobDrawer({ jobId, onClose, startRetry = false }: { jobId: numbe
           <Meta job={job} />
           {typeof job.params.prompt === 'string' && mode === 'view' ? (
             <div className="grid gap-1">
-              <h3 className="text-sm font-semibold">Prompt đã gửi</h3>
+              <h3 className="text-sm font-semibold">Prompt cuối</h3>
               <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-sm bg-bg-2 p-2.5 font-mono text-xs">{job.params.prompt}</pre>
             </div>
           ) : null}

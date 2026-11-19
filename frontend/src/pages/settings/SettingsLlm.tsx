@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, CircleAlert, Hourglass, Pencil, Plus, Save, Trash } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useIsViewer } from '../../api/auth';
 import { callOpLoose, hasOp, useOpsCatalog } from '../../api/catalog';
 import { toApiError, type ApiError } from '../../api/client';
 import { useConnections } from '../../api/hooks';
@@ -284,6 +285,7 @@ export function SettingsLlm() {
     enabled: available,
   });
   const [editing, setEditing] = useState<LlmTask | null>(null);
+  const viewer = useIsViewer();
   const llmConns = (conns.data ?? []).filter((c) => c.kind === 'llm');
   const noLlm = conns.data != null && !llmConns.some((c) => c.enabled);
 
@@ -378,7 +380,7 @@ export function SettingsLlm() {
                   )}
                 </span>
                 <span className="justify-self-start xl:justify-self-end">
-                  <IconButton icon={Pencil} label={`Sửa định tuyến ${t.label}`} onClick={() => setEditing(t)} />
+                  {viewer ? null : <IconButton icon={Pencil} label={`Sửa định tuyến ${t.label}`} onClick={() => setEditing(t)} />}
                 </span>
               </li>
             ))}

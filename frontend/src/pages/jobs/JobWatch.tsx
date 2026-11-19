@@ -31,7 +31,7 @@ export function JobStatusBlock({ job }: { job: Job }) {
       <ProgressBar
         value={job.status === 'succeeded' ? 100 : job.progress}
         tone={progressTone(job.status)}
-        label={`Tiến độ job #${job.id}`}
+        label={`Tiến độ việc #${job.id}`}
       />
       {err ? (
         <div role="alert" className="grid gap-0.5 text-sm">
@@ -90,7 +90,7 @@ export function JobResult({ job }: { job: Job }) {
 /** Theo dõi sống một job theo id (hộp Thử). */
 export function JobWatch({ jobId }: { jobId: number }) {
   const q = useJob(jobId);
-  if (q.isError) return <ErrorState what={`Không tải được job #${jobId}`} error={q.error} onRetry={() => void q.refetch()} />;
+  if (q.isError) return <ErrorState what={`Không tải được việc #${jobId}`} error={q.error} onRetry={() => void q.refetch()} />;
   if (!q.data) return <SkeletonBar className="w-2/3" />;
   return (
     <div className="grid gap-3">

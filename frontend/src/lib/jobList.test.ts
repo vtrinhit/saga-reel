@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Job, JobLog, JobPage } from '../api/types';
-import { flattenPages, matchesFilters, mergeJobUpdate, mergeLogs, toListParams } from './jobList';
+import { flattenPages, matchesFilters, mergeJobUpdate, mergeLogs, overlayKnown, pickJob, toListParams } from './jobList';
 
 const job = (id: number, over: Partial<Job> = {}): Job =>
   ({
@@ -114,5 +114,32 @@ describe('mergeLogs', () => {
   it('không có gì mới → trả lại mảng cũ (để React không vẽ lại)', () => {
     const a = [log(1)];
     expect(mergeLogs(a, [log(1)])).toBe(a);
+  });
+});
+
+describe('pickJob / overlayKnown (bản cũ về muộn không ghi đè trạng thái mới)', () => {
+  const T1 = '2026-11-19T12:00:00+00:00';
+  const T2 = '2026-11-19T12:00:05+00:00';
+  it('bản đến sau cũ hơn và khác trạng thái → giữ bản hiện có', () => {
+    const done = job(1, { status: 'succeeded', updated_at: T2, progress: 100 });
+    const stale = job(1, { status: 'running', updated_at: T1, progress: 40 });
+    expect(pickJob(done, stale)).toBe(done);
+    expect(pickJob(stale, done)).toBe(done);
+  });
+  it('cùng trạng thái → bản đến sau thắng (sự kiện tiến độ mang updated_at lúc giành job)', () => {
+    const fetched = job(1, { status: 'running', updated_at: T2, progress: 40 });
+    const progressEvent = job(1, { status: 'running', updated_at: T1, progress: 55 });
+    expect(pickJob(fetched, progressEvent)).toBe(progressEvent);
+  });
+  it('mergeJobUpdate bỏ qua sự kiện cũ khác trạng thái', () => {
+    const pages = [page([2, 1], null, { status: 'succeeded', updated_at: T2 })];
+    expect(mergeJobUpdate(pages, job(1, { status: 'running', updated_at: T1 }), {})).toBe(pages);
+  });
+  it('overlayKnown: trang tải về (cũ) bị phủ bằng bản kết thúc đã biết từ sự kiện', () => {
+    const known = new Map([[1, job(1, { status: 'failed', updated_at: T2 })]]);
+    const items = [job(2), job(1, { status: 'running', updated_at: T1 })];
+    const out = overlayKnown(items, known);
+    expect(out.map((j) => j.status)).toEqual(['queued', 'failed']);
+    expect(overlayKnown([job(3)], known)).toEqual([job(3)]);
   });
 });

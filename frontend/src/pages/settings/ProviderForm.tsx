@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Eye, EyeOff, Save } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toApiError, type ApiError } from '../../api/client';
 import { qk } from '../../api/hooks';
 import { callOp } from '../../api/ops';
@@ -38,9 +38,14 @@ export function ProviderForm({ open, onClose, adapters, conn, kind }: ProviderFo
   const [serverError, setServerError] = useState<ApiError | null>(null);
   const [shown, setShown] = useState<Record<string, boolean>>({});
 
-  // Mở lại / đổi kết nối đang sửa → nạp lại form.
+  // Mở lại / đổi kết nối đang sửa → nạp lại form. Đóng → xoá mọi giá trị đã gõ (kể cả khoá API) khỏi state.
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setValues(null);
+      setShown({});
+      setServerError(null);
+      return;
+    }
     setKindSel(conn?.kind ?? kind ?? 'image');
     setAdapterId(conn?.adapter ?? null);
     setErrors({});
@@ -57,9 +62,14 @@ export function ProviderForm({ open, onClose, adapters, conn, kind }: ProviderFo
 
   const kindAdapters = adapters.filter((a) => a.kind === kindSel);
 
+  // Khoá API không đi qua `variables` của mutation (cache mutation giữ chúng vài phút): mutationFn đọc giá trị
+  // hiện tại qua ref; kết quả trả về là kết nối đã che khoá.
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
   const save = useMutation({
-    mutationFn: async (v: FormValues) => {
-      if (!adapter) throw new Error('no adapter');
+    mutationFn: async () => {
+      const v = valuesRef.current;
+      if (!adapter || !v) return null;
       const r = buildSubmit(adapter, v, conn ?? undefined);
       setErrors(r.errors);
       if (r.update) return (await callOp('provider.update', r.update as never)) as Connection;
@@ -68,6 +78,7 @@ export function ProviderForm({ open, onClose, adapters, conn, kind }: ProviderFo
     },
     onSuccess: (saved) => {
       if (!saved) return;
+      setValues(null);
       void qc.invalidateQueries({ queryKey: qk.connections });
       toast({ tone: 'success', message: editing ? `Đã lưu kết nối ${saved.name}.` : `Đã thêm kết nối ${saved.name}.` });
       onClose();
@@ -182,7 +193,7 @@ export function ProviderForm({ open, onClose, adapters, conn, kind }: ProviderFo
             icon={Save}
             loading={save.isPending}
             disabled={!values}
-            onClick={() => values && save.mutate(values)}
+            onClick={() => save.mutate()}
           >
             {editing ? 'Lưu' : 'Thêm kết nối'}
           </Button>
@@ -194,7 +205,7 @@ export function ProviderForm({ open, onClose, adapters, conn, kind }: ProviderFo
         noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          if (values) save.mutate(values);
+          if (values) save.mutate();
         }}
       >
         {editing ? (
@@ -240,7 +251,7 @@ export function ProviderForm({ open, onClose, adapters, conn, kind }: ProviderFo
             <Input
               id="pf-concurrency"
               label="Số việc chạy song song"
-              hint="Số job cùng lúc trên kết nối này (1–32)."
+              hint="Số việc chạy cùng lúc trên kết nối này (1–32)."
               inputMode="numeric"
               value={values.concurrency}
               onChange={(e) => setValues({ ...values, concurrency: e.target.value })}

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FlaskConical, Pencil, Plug, Plus, RefreshCw, Trash } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useIsViewer } from '../../api/auth';
 import { toApiError } from '../../api/client';
 import { applyHealthEvent, qk, useAdapters, useConnections } from '../../api/hooks';
 import { callOp } from '../../api/ops';
@@ -37,7 +38,9 @@ function ConnectionRow({
   now,
   onEdit,
   onTry,
+  readOnly,
 }: {
+  readOnly?: boolean;
   conn: Connection;
   adapter?: Adapter;
   now: number;
@@ -121,7 +124,7 @@ function ConnectionRow({
           <p className="text-xs text-fg-2">{conn.health.detail}</p>
         ) : null}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      {readOnly ? null : <div className="flex flex-wrap items-center gap-2">
         <Button icon={RefreshCw} loading={check.isPending} onClick={() => check.mutate()}>
           Kiểm tra
         </Button>
@@ -130,7 +133,7 @@ function ConnectionRow({
         </Button>
         <IconButton icon={Pencil} label={`Sửa ${conn.name}`} onClick={onEdit} />
         <ConfirmDelete what={`kết nối ${conn.name}`} onConfirm={remove} />
-      </div>
+      </div>}
       <Modal
         open={impact != null}
         role="alertdialog"
@@ -177,6 +180,7 @@ export function SettingsProviders() {
   const [form, setForm] = useState<{ conn?: Connection; kind?: ProviderKind } | null>(null);
   const [trying, setTrying] = useState<Connection | null>(null);
   const qc = useQueryClient();
+  const viewer = useIsViewer();
 
   const checkAll = useMutation({
     mutationFn: async () => (await callOp('provider.check', {})) as { items: { id: number; name: string; health: Connection['health'] }[] },
@@ -193,7 +197,7 @@ export function SettingsProviders() {
       title="Kết nối"
       description="Provider tạo ảnh, video, giọng đọc và LLM. Khoá API chỉ hiện dạng che; app không tự gọi provider khi khởi động."
       actions={
-        <>
+        viewer ? undefined : <>
           <Button
             icon={RefreshCw}
             loading={checkAll.isPending}
@@ -241,9 +245,11 @@ export function SettingsProviders() {
             title="Chưa có kết nối nào."
             description="Thêm kết nối provider để tạo ảnh, video, giọng đọc. Muốn thử giao diện mà không tốn tiền: chọn provider giả (fake)."
             action={
-              <Button variant="primary" icon={Plus} onClick={() => setForm({})}>
-                Thêm kết nối
-              </Button>
+              viewer ? undefined : (
+                <Button variant="primary" icon={Plus} onClick={() => setForm({})}>
+                  Thêm kết nối
+                </Button>
+              )
             }
           />
         </div>
@@ -257,9 +263,11 @@ export function SettingsProviders() {
                   <h3 id={`kind-${kind}`} className="text-sm font-semibold text-fg-2">
                     {KIND_LABEL[kind]} <span className="font-normal text-fg-3 tnum">· {formatCount(items.length)}</span>
                   </h3>
-                  <Button variant="ghost" icon={Plus} onClick={() => setForm({ kind })}>
-                    Thêm
-                  </Button>
+                  {viewer ? null : (
+                    <Button variant="ghost" icon={Plus} onClick={() => setForm({ kind })}>
+                      Thêm
+                    </Button>
+                  )}
                 </div>
                 {items.length ? (
                   <ul className="overflow-hidden rounded-md border border-line-2 bg-bg-1">
@@ -271,6 +279,7 @@ export function SettingsProviders() {
                         now={now}
                         onEdit={() => setForm({ conn: c })}
                         onTry={() => setTrying(c)}
+                        readOnly={viewer}
                       />
                     ))}
                   </ul>

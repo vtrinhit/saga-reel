@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useIsViewer } from '../../api/auth';
 import { qk } from '../../api/hooks';
 import { callOp } from '../../api/ops';
 import { ErrorState } from '../../components/ui/ErrorState';
@@ -42,13 +43,15 @@ function SpendLine({ label, unit, s }: { label: string; unit: string; s: KindSta
 
 /** Settings › Ngân sách & song song: trần ảnh/video (0 = không giới hạn), đã dùng, số job ffmpeg song song. */
 export function SettingsBudget() {
+  const viewer = useIsViewer();
   const { explain, schema } = useGlobalSettings();
   const budget = useQuery({
     queryKey: qk.budget,
     queryFn: async () => (await callOp('budget.status', {})) as { image: KindStatus; video: KindStatus },
   });
 
-  const common = { resolved: explain.data, schema: schema.data };
+  // Người xem: chỉ xem (control khoá, không có "về mặc định").
+  const common = { resolved: explain.data, schema: schema.data, disabled: viewer };
   const loading = !explain.data || !schema.data;
 
   return (
@@ -100,7 +103,7 @@ export function SettingsBudget() {
             <GlobalSetting
               {...common}
               settingKey="jobs.ffmpeg_concurrency"
-              label="Số job ffmpeg song song"
+              label="Số việc ffmpeg chạy song song"
               hint="Dựng video, ghép âm thanh, xuất gói."
               validate={(v) => (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 16 ? null : 'Từ 1 đến 16.')}
             />

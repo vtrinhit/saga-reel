@@ -3,6 +3,35 @@
  * trang đã tải (react-query `useInfiniteQuery`). Thuần, không có React.
  */
 import type { Job, JobLog, JobPage } from '../api/types';
+import { parseServerTime } from './time';
+
+/**
+ * Bản nào của cùng một job được giữ khi gộp (sự kiện `job.updated` ↔ kết quả `job.list`/`job.get` về muộn):
+ * bản đến sau thắng, **trừ khi** nó cũ hơn theo `updated_at` **và** khác trạng thái — vd. response tải từ trước khi
+ * job xong ("running") về sau sự kiện "succeeded" thì không được ghi đè trạng thái kết thúc.
+ * Không so riêng `updated_at` khi cùng trạng thái: sự kiện tiến độ của worker mang `updated_at` của lúc giành job
+ * (ảnh chụp `_data`), nên tiến độ mới hơn có thể mang `updated_at` cũ hơn bản đã tải.
+ */
+export function pickJob(cur: Job | undefined, inc: Job): Job {
+  if (!cur) return inc;
+  const a = parseServerTime(cur.updated_at);
+  const b = parseServerTime(inc.updated_at);
+  if (a != null && b != null && b < a && inc.status !== cur.status) return cur;
+  return inc;
+}
+
+/** Áp các bản đã biết từ sự kiện (mới hơn theo `pickJob`) lên một trang vừa tải. Không đổi gì → trả lại mảng cũ. */
+export function overlayKnown(items: Job[], known: ReadonlyMap<number, Job>): Job[] {
+  let changed = false;
+  const out = items.map((j) => {
+    const k = known.get(j.id);
+    if (!k) return j;
+    const keep = pickJob(k, j); // trang tải về đến sau sự kiện
+    if (keep !== j) changed = true;
+    return keep;
+  });
+  return changed ? out : items;
+}
 
 export interface JobFilters {
   status?: string | null;
@@ -49,6 +78,8 @@ export function mergeJobUpdate(pages: JobPage[], j: Job, f: JobFilters): JobPage
   for (let pi = 0; pi < pages.length; pi++) {
     const idx = pages[pi].items.findIndex((x) => x.id === j.id);
     if (idx >= 0) {
+      const keep = pickJob(pages[pi].items[idx], j);
+      if (keep !== j) return pages; // bản cũ hơn (khác trạng thái): bỏ qua
       const items = pages[pi].items.slice();
       items[idx] = j;
       const next = pages.slice();

@@ -136,6 +136,39 @@ describe('shell (smoke)', () => {
     expect(container.textContent).toContain('mặc định');
   });
 
+  it('trang Việc: tải trang sau lỗi → giữ danh sách đã tải, báo lỗi ngay dưới danh sách', async () => {
+    const job = (id: number) => ({
+      id, type: 'provider.try_tts', status: 'succeeded', priority: 0, lane: 'conn:1', project_id: null, sequence_id: null,
+      clip_id: null, parent_id: null, params: {}, progress: 100, stage: '', eta_at: null, client_ref: null, external_id: null,
+      external_state: {}, attempt: 0, max_attempts: 3, next_attempt_at: null, error_code: null, error_message: null, hint: null,
+      result: {}, cost_estimate: {}, cost_actual: {}, created_at: null, started_at: null, finished_at: null, updated_at: null,
+    });
+    api.defaults.adapter = async (config) => {
+      const url = String(config.url);
+      if (url === '/api/ops/job.list') {
+        const body = JSON.parse(String(config.data));
+        if (body.cursor) {
+          const { AxiosError } = await import('axios');
+          throw new AxiosError('x', 'ERR_BAD_RESPONSE', config, {}, {
+            data: { ok: false, error_code: 'internal_error', detail: 'Lỗi máy chủ.', status: 500 }, status: 500, statusText: '', headers: {}, config,
+          });
+        }
+        return { data: { items: [job(9), job(8)], next_cursor: 8, paused: false }, status: 200, statusText: 'OK', headers: {}, config, request: {} };
+      }
+      const data = url === '/api/auth/status'
+        ? { authenticated: true, role: 'owner', via: 'local', local: true, password_set: { owner: true, viewer: false } }
+        : url === '/api/ops' ? [] : { items: [] };
+      return { data, status: 200, statusText: 'OK', headers: {}, config, request: {} };
+    };
+    await render('/jobs');
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(container.textContent).toContain('#9');
+    expect(container.textContent).toContain('Không tải được các việc cũ hơn');
+    expect(container.textContent).not.toContain('Không tải được danh sách việc');
+  });
+
   it('trang trong dự án hiện "Sắp có" và điều hướng dự án', async () => {
     api.defaults.adapter = reply(404, { detail: 'Not Found' });
     await render('/p/3/studio');

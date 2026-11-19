@@ -90,7 +90,7 @@ export function LogViewer({ jobId }: { jobId: number }) {
     const url = URL.createObjectURL(new Blob([all()], { type: 'text/plain;charset=utf-8' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `job-${jobId}.log`;
+    a.download = `viec-${jobId}.log`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
@@ -121,7 +121,7 @@ export function LogViewer({ jobId }: { jobId: number }) {
             onScroll={onScroll}
             tabIndex={0}
             role="log"
-            aria-label={`Log job #${jobId}`}
+            aria-label={`Log việc #${jobId}`}
             aria-live="off"
             className={cn('h-72 overflow-y-auto overflow-x-hidden rounded-sm bg-stage px-2 py-1.5 font-mono text-xs md:h-80', focusRing)}
           >

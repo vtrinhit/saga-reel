@@ -76,18 +76,34 @@ export function laneLabel(lane: string, connections: Pick<Connection, 'id' | 'na
 }
 
 /**
- * Câu lỗi cho người dùng. `error_message` từ `AppError` của backend là tiếng Việt; riêng lỗi không lường trước
- * (`internal_error`) chứa tên exception Python (tiếng Anh) → thay bằng câu cố định, chi tiết nằm trong log.
+ * Câu lỗi cho người dùng theo `error_code` (mã tiếng Anh ổn định). Chỉ khi mã chưa có trong bảng mới dùng
+ * `error_message` của server (AppError — tiếng Việt). Chi tiết thô (tên exception, URL…) nằm trong log; `hint` của
+ * server hiện riêng bên dưới.
  */
-const ERROR_TEXT: Record<string, string> = {
+export const ERROR_TEXT: Record<string, string> = {
   internal_error: 'Lỗi nội bộ không lường trước.',
-  workdir_unavailable: 'Không tạo được thư mục làm việc của job.',
+  workdir_unavailable: 'Không tạo được thư mục làm việc của việc này.',
+  provider_unavailable: 'Provider không dùng được (kết nối đang tắt, chưa cấu hình hoặc không phản hồi).',
+  provider_rejected: 'Provider từ chối yêu cầu.',
+  budget_exceeded: 'Vượt ngân sách.',
+  capability_mismatch: 'Provider không hỗ trợ yêu cầu này.',
+  job_unknown: 'Không rõ provider đã nhận việc này hay chưa.',
+  maivideo_job_unknown: 'Không rõ MaiVideo đã nhận việc này hay chưa.',
+  remote_cancelled: 'Việc đã bị huỷ ở phía provider.',
+  retries_exhausted: 'Đã thử lại hết số lần cho phép.',
+  interrupted: 'Việc bị gián đoạn (app tắt khi đang chạy).',
+  already_succeeded: 'Việc đã xong; chạy lại thường chỉ lấy lại đúng kết quả cũ.',
+  params_patch_requires_new_job: 'Provider đã nhận việc này — sửa tham số cần tạo việc trả phí mới.',
+  cleared_by_user: 'Bạn đã cho việc này thất bại.',
 };
+
+export function errorCodeText(code: string | null | undefined): string | null {
+  return code ? (ERROR_TEXT[code] ?? null) : null;
+}
 
 export function jobErrorText(j: Pick<Job, 'error_code' | 'error_message'>): string | null {
   if (!j.error_code && !j.error_message) return null;
-  if (j.error_code && ERROR_TEXT[j.error_code]) return ERROR_TEXT[j.error_code];
-  return j.error_message || `Lỗi (${j.error_code}).`;
+  return errorCodeText(j.error_code) ?? (j.error_message || `Lỗi (${j.error_code}).`);
 }
 
 /** Số giây còn lại theo `eta_at`; không có → null. */

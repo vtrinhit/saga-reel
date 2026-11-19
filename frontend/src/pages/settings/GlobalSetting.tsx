@@ -102,7 +102,7 @@ export function GlobalSetting({ settingKey, label, hint, resolved, schema, contr
       editing="global"
       values={r.source === 'global' ? { global: display(r.value) } : {}}
       defaultValue={display(def.default)}
-      onClearOverride={() => set.mutate({ key: settingKey, value: null, previous, label })}
+      onClearOverride={disabled ? undefined : () => set.mutate({ key: settingKey, value: null, previous, label })}
     />
   );
 

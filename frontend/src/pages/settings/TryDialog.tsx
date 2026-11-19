@@ -174,7 +174,7 @@ export function TryDialog({ conn, adapter, onClose }: TryDialogProps) {
         onClose={() => dispatch({ type: 'back' })}
         onRun={runNow}
         warnings={[
-          ...(e.enabled ? [] : ['Kết nối đang tắt — job sẽ thất bại với lỗi provider không dùng được. Bật kết nối trước khi thử.']),
+          ...(e.enabled ? [] : ['Kết nối đang tắt — việc sẽ thất bại với lỗi provider không dùng được. Bật kết nối trước khi thử.']),
           ...(e.adapter.startsWith('fake_') ? ['Kết nối giả: không tốn lượt thật, không tính vào ngân sách.'] : []),
           ...(state.error ? [`${state.error.detail}${state.error.hint ? ` ${state.error.hint}` : ''}`] : []),
         ]}
@@ -255,7 +255,7 @@ export function TryDialog({ conn, adapter, onClose }: TryDialogProps) {
       {state.step === 'job' && state.jobId != null ? (
         <div className="grid gap-3">
           <p className="text-sm text-fg-2">
-            Đã xếp job <span className="font-mono">#{state.jobId}</span>. Tiến độ cập nhật sống ở đây và trên trang Việc.
+            Đã xếp việc <span className="font-mono">#{state.jobId}</span>. Tiến độ cập nhật sống ở đây và trên trang Việc.
           </p>
           <JobWatch jobId={state.jobId} />
         </div>

@@ -4,7 +4,8 @@ import { Layers, MoreHorizontal, Pause, Play, RotateCw, ScrollText, XOctagon } f
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import { toApiError } from '../api/client';
-import { qk, useConnections } from '../api/hooks';
+import { useIsViewer } from '../api/auth';
+import { knownJobsMap, qk, useConnections } from '../api/hooks';
 import { callOp } from '../api/ops';
 import type { Job, JobPage } from '../api/types';
 import { SegBar } from '../components/ui/BatchProgressBar';
@@ -20,7 +21,7 @@ import { StatusPill } from '../components/ui/StatusPill';
 import { cn, focusRing } from '../lib/cn';
 import { useServerEvent } from '../lib/eventHub';
 import { formatCount, formatCredits, formatEta } from '../lib/format';
-import { flattenPages, mergeJobUpdate, toListParams, type JobFilters } from '../lib/jobList';
+import { flattenPages, mergeJobUpdate, overlayKnown, toListParams, type JobFilters } from '../lib/jobList';
 import {
   CANCELLABLE,
   jobErrorText,
@@ -94,10 +95,12 @@ function JobRow({
   onOpen,
   onCancel,
   onRetry,
+  readOnly,
 }: {
   job: Job;
   laneText: string;
   height: number;
+  readOnly?: boolean;
   onOpen: () => void;
   onCancel: () => void;
   onRetry: () => void;
@@ -107,8 +110,8 @@ function JobRow({
   const active = job.status === 'running' || job.status === 'queued';
   const pct = job.status === 'succeeded' ? 100 : job.progress;
   const units = typeof job.cost_estimate.units === 'number' ? job.cost_estimate.units : null;
-  const canCancel = CANCELLABLE.has(job.status);
-  const canRetry = RETRYABLE.has(job.status) || job.status === 'needs_attention';
+  const canCancel = !readOnly && CANCELLABLE.has(job.status);
+  const canRetry = !readOnly && (RETRYABLE.has(job.status) || job.status === 'needs_attention');
   const second = err ?? (job.stage || laneText);
   const onKey = (e: KeyboardEvent) => {
     if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
@@ -200,10 +203,16 @@ export function Jobs() {
   const listRef = useRef<HTMLDivElement>(null);
   /** Bấm "Thử lại"/"Xử lý" trên hàng → mở drawer thẳng ở bước đó. */
   const [retryFor, setRetryFor] = useState<number | null>(null);
+  const viewer = useIsViewer();
 
   const q = useInfiniteQuery({
     queryKey,
-    queryFn: async ({ pageParam }) => (await callOp('job.list', toListParams(filters, pageParam, PAGE_SIZE))) as JobPage,
+    queryFn: async ({ pageParam }) => {
+      const page = (await callOp('job.list', toListParams(filters, pageParam, PAGE_SIZE))) as JobPage;
+      // Response có thể đã cũ hơn sự kiện vừa nhận (job xong trong lúc đang tải): phủ bằng bản đã biết.
+      const items = overlayKnown(page.items, knownJobsMap());
+      return items === page.items ? page : { ...page, items };
+    },
     initialPageParam: undefined as number | undefined,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
@@ -243,8 +252,9 @@ export function Jobs() {
   const items = v.getVirtualItems();
   const lastIndex = items.length ? items[items.length - 1].index : -1;
   useEffect(() => {
-    if (lastIndex >= jobs.length - 10 && q.hasNextPage && !q.isFetchingNextPage) void q.fetchNextPage();
-  }, [lastIndex, jobs.length, q.hasNextPage, q.isFetchingNextPage]);
+    // Lỗi tải trang sau: không tự thử lặp, chờ người dùng bấm Thử lại (dưới danh sách).
+    if (lastIndex >= jobs.length - 10 && q.hasNextPage && !q.isFetchingNextPage && !q.isFetchNextPageError) void q.fetchNextPage();
+  }, [lastIndex, jobs.length, q.hasNextPage, q.isFetchingNextPage, q.isFetchNextPageError]);
 
   const setFilter = (k: keyof JobFilters, value: string) => {
     const next = new URLSearchParams(params);
@@ -291,9 +301,11 @@ export function Jobs() {
       <PageHeader
         title="Việc"
         actions={
-          <Button icon={paused ? Play : Pause} loading={pause.isPending} onClick={() => pause.mutate(!paused)}>
-            {paused ? 'Tiếp tục nhận việc' : 'Tạm dừng nhận việc'}
-          </Button>
+          viewer ? undefined : (
+            <Button icon={paused ? Play : Pause} loading={pause.isPending} onClick={() => pause.mutate(!paused)}>
+              {paused ? 'Tiếp tục nhận việc' : 'Tạm dừng nhận việc'}
+            </Button>
+          )
         }
       />
       {paused ? (
@@ -309,7 +321,7 @@ export function Jobs() {
         <Select id="jobs-lane" label="Lane" value={filters.lane ?? ''} onChange={(v) => setFilter('lane', v)} options={laneOptions} />
       </div>
 
-      {q.isError ? (
+      {q.isError && !q.data ? (
         <ErrorState what="Không tải được danh sách việc" error={q.error} onRetry={() => void q.refetch()} retrying={q.isFetching} />
       ) : !q.data ? (
         <SkeletonZone label="Đang tải việc">
@@ -353,6 +365,7 @@ export function Jobs() {
                     job={j}
                     laneText={laneLabel(j.lane, conns.data)}
                     height={rowH}
+                    readOnly={viewer}
                     onOpen={() => openJob(j.id)}
                     onCancel={() => cancel.mutate(j.id)}
                     onRetry={() => {
@@ -365,10 +378,16 @@ export function Jobs() {
             })}
           </div>
           {q.isFetchingNextPage ? <p className="px-3 py-2 text-xs text-fg-3">Đang tải thêm…</p> : null}
+          {q.isFetchNextPageError && !q.isFetchingNextPage ? (
+            <div className="border-t border-line-1 px-3 py-3">
+              <ErrorState what="Không tải được các việc cũ hơn" error={q.error} onRetry={() => void q.fetchNextPage()} />
+            </div>
+          ) : null}
         </div>
       )}
       <JobDrawer
         jobId={openId}
+        readOnly={viewer}
         startRetry={retryFor != null && retryFor === openId}
         onClose={() => {
           setRetryFor(null);

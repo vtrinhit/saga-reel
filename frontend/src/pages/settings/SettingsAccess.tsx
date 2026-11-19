@@ -207,7 +207,7 @@ function CreatedTokenModal({ token, onClose }: { token: TokenCreated; onClose: (
   );
 }
 
-function TokensSection() {
+export function TokensSection() {
   const qc = useQueryClient();
   const tokens = useQuery({ queryKey: qk.tokens, queryFn: async () => (await callOp('token.list', {})) as TokenInfo[] });
   const [name, setName] = useState('');
@@ -217,11 +217,18 @@ function TokensSection() {
   // Token thô chỉ sống trong state của component này (không vào cache query, không lưu đâu khác).
   const [created, setCreated] = useState<TokenCreated | null>(null);
 
+  // Token thô không được nằm trong `data` của mutation (cache mutation giữ vài phút sau khi xong): mutationFn đặt
+  // thẳng vào state cục bộ và không trả gì; đóng hộp là xoá.
   const create = useMutation({
-    mutationFn: async () =>
-      (await callOp('token.create', { name: name.trim(), role, expires_days: days.trim() ? Number(days) : null })) as TokenCreated,
-    onSuccess: (t) => {
+    mutationFn: async () => {
+      const t = (await callOp('token.create', {
+        name: name.trim(),
+        role,
+        expires_days: days.trim() ? Number(days) : null,
+      })) as TokenCreated;
       setCreated(t);
+    },
+    onSuccess: () => {
       setName('');
       setDays('');
       void qc.invalidateQueries({ queryKey: qk.tokens });
