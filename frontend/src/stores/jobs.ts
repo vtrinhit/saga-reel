@@ -1,12 +1,14 @@
 /**
  * Theo dõi job từ sự kiện `job.updated` để dựng thanh tiến độ lô nổi và chip "n đang chạy".
  *
- * HÌNH DỮ LIỆU GIẢ ĐỊNH (Task 7 chưa chốt payload): `{id, status, progress?, stage?, eta_s?|eta_at?, parent_id?,
- * project_id?, type?, label?}`. Mọi chỗ đọc payload nằm trong `normalizeJobEvent` — đổi hình thì chỉ sửa hàm này.
- * - `progress`: chấp nhận 0–1 (phân số) hoặc 0–100; giá trị ≤ 1 coi là phân số.
- * - Lô = `batch_id` ?? `parent_id`; job không có thì gộp vào lô chung.
+ * Payload = `job_dict` của backend (`services/jobs.py`; worker phát cả khi cập nhật tiến độ): `{id, type, status,
+ * progress (0–100), stage, eta_at (ISO UTC), parent_id, project_id, …}`. Mọi chỗ đọc payload nằm trong
+ * `normalizeJobEvent`.
+ * - `progress` luôn là phần trăm 0–100 (`JobRun.progress`), không phải phân số.
+ * - Lô = `parent_id` (job con của một job cha); job không có cha gộp vào lô chung `all`.
  */
 import { create } from 'zustand';
+import { parseServerTime } from '../lib/time';
 
 export const TERMINAL = new Set(['succeeded', 'failed', 'cancelled']);
 /** Trạng thái cần người xử lý: tính là lỗi trên thanh lô. */
@@ -16,6 +18,7 @@ const ACTIVE = new Set(['queued', 'running', 'paused', 'waiting_review', 'waitin
 export interface JobSnapshot {
   id: number;
   status: string;
+  type: string | null;
   progress: number | null;
   stage: string | null;
   etaS: number | null;
@@ -33,23 +36,25 @@ const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : nul
 export function normalizeJobEvent(data: unknown, now: number = Date.now()): (Partial<JobSnapshot> & { id: number }) | null {
   if (!data || typeof data !== 'object') return null;
   const d = data as Record<string, unknown>;
-  const id = num(d.id ?? d.job_id);
+  const id = num(d.id);
   if (id == null) return null;
   const out: Partial<JobSnapshot> & { id: number } = { id };
   const status = str(d.status);
   if (status) out.status = status;
+  const type = str(d.type);
+  if (type) out.type = type;
   const p = num(d.progress);
-  if (p != null) out.progress = Math.max(0, Math.min(100, p <= 1 ? p * 100 : p));
+  if (p != null) out.progress = Math.max(0, Math.min(100, p));
   const stage = str(d.stage);
   if (stage) out.stage = stage;
-  const eta = num(d.eta_s);
-  const etaAt = str(d.eta_at);
-  if (eta != null) out.etaS = eta;
-  else if (etaAt && !Number.isNaN(Date.parse(etaAt))) out.etaS = Math.max(0, (Date.parse(etaAt) - now) / 1000);
-  const batch = d.batch_id ?? d.parent_id;
-  if (batch != null) out.batch = String(batch);
-  const label = str(d.batch_label) ?? str(d.label);
-  if (label) out.label = label;
+  const etaAt = parseServerTime(d.eta_at);
+  if (etaAt != null) out.etaS = Math.max(0, (etaAt - now) / 1000);
+  else if ('eta_at' in d && d.eta_at == null) out.etaS = null;
+  const parent = num(d.parent_id);
+  if (parent != null) {
+    out.batch = `p${parent}`;
+    out.label = `Lô #${parent}`;
+  }
   return out;
 }
 
@@ -106,9 +111,15 @@ export const useJobs = create<JobsState>((set) => ({
       const next: JobSnapshot = {
         id: patch.id,
         status: patch.status ?? prev!.status,
+        type: patch.type ?? prev?.type ?? null,
         progress: patch.progress ?? prev?.progress ?? null,
         stage: patch.stage ?? prev?.stage ?? null,
-        etaS: patch.etaS ?? (patch.status && TERMINAL.has(patch.status) ? null : prev?.etaS ?? null),
+        etaS:
+          patch.status && TERMINAL.has(patch.status)
+            ? null
+            : 'etaS' in patch
+              ? (patch.etaS ?? null)
+              : (prev?.etaS ?? null),
         batch: patch.batch ?? prev?.batch ?? 'all',
         label: patch.label ?? prev?.label ?? null,
       };

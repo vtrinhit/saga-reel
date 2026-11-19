@@ -63,7 +63,7 @@ export function BatchProgressBar({ batches, onOpen, onDismiss, className }: Batc
   const t = totals(batches);
   const finished = t.active === 0;
   const head =
-    batches.length > 1 ? `${formatCount(batches.length)} lô` : (batches[0].label ?? 'Việc đang chạy');
+    batches.length > 1 ? `${formatCount(batches.length)} lô` : (batches[0].label ?? 'Việc');
   const count = `${formatCount(t.done)}/${formatCount(t.total)}`;
 
   const pos =

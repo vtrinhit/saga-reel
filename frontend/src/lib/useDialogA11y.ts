@@ -16,11 +16,13 @@ interface Entry {
   id: symbol;
   depth: number;
   seq: number;
+  /** Dialog ưu tiên ("Phiên đã hết hạn") luôn ở trên mọi dialog khác, dù mở trước hay nông hơn. */
+  priority: boolean;
 }
 
 /**
- * Các dialog đang mở. Dialog "trên cùng" = sâu nhất, nếu bằng nhau thì mở sau cùng. (Không dựa vào thứ tự effect:
- * React chạy effect của con trước cha, nên dialog lồng mở cùng lúc sẽ đăng ký ngược thứ tự.)
+ * Các dialog đang mở. Dialog "trên cùng" = ưu tiên trước; rồi sâu nhất; nếu bằng nhau thì mở sau cùng. (Không dựa vào
+ * thứ tự effect: React chạy effect của con trước cha, nên dialog lồng mở cùng lúc sẽ đăng ký ngược thứ tự.)
  */
 const stack: Entry[] = [];
 let seqCounter = 0;
@@ -30,7 +32,12 @@ let savedOverflow = '';
 export function topDialog(): symbol | undefined {
   let top: Entry | undefined;
   for (const e of stack) {
-    if (!top || e.depth > top.depth || (e.depth === top.depth && e.seq > top.seq)) top = e;
+    if (
+      !top ||
+      (e.priority && !top.priority) ||
+      (e.priority === top.priority && (e.depth > top.depth || (e.depth === top.depth && e.seq > top.seq)))
+    )
+      top = e;
   }
   return top?.id;
 }
@@ -46,7 +53,9 @@ export function useDialogA11y(
   open: boolean,
   panelRef: RefObject<HTMLElement | null>,
   onClose: (() => void) | undefined,
+  opts: { priority?: boolean } = {},
 ): number {
+  const priority = !!opts.priority;
   const depth = useContext(DialogDepthContext) + 1;
   const closeRef = useRef(onClose);
   useLayoutEffect(() => {
@@ -56,7 +65,7 @@ export function useDialogA11y(
   useEffect(() => {
     if (!open) return;
     const id = Symbol('dialog');
-    stack.push({ id, depth, seq: ++seqCounter });
+    stack.push({ id, depth, seq: ++seqCounter, priority });
     const panel = panelRef.current;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (stack.length === 1) savedOverflow = document.body.style.overflow;
@@ -103,6 +112,6 @@ export function useDialogA11y(
       if (stack.length === 0) document.body.style.overflow = savedOverflow;
       if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
     };
-  }, [open, panelRef, depth]);
+  }, [open, panelRef, depth, priority]);
   return depth;
 }

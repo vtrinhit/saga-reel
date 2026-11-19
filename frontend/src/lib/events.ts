@@ -5,8 +5,9 @@
  * - Lỗi khi `readyState === CONNECTING`: trình duyệt tự nối lại và tự gửi `Last-Event-ID` → để yên, server phát lại
  *   phần còn thiếu (hoặc `resync` nếu khoảng trống quá dài).
  * - Lỗi khi `readyState === CLOSED` (HTTP khác 200, proxy trả 502…) hoặc bấm "Thử ngay": tự tạo EventSource mới với
- *   backoff 1 → 2 → 4 → 8 → 15 giây. EventSource mới **không** gửi được `Last-Event-ID`, nên khi mở lại coi như có
- *   khoảng trống: tải lại mọi query.
+ *   backoff 1 → 2 → 4 → 8 → 15 giây. EventSource mới **không** gửi được header `Last-Event-ID`, nên id cuối cùng đã
+ *   nhận đi theo query `?last_event_id=` (server phát lại phần thiếu, hoặc `resync` nếu khoảng trống quá dài). Chưa
+ *   nhận id nào (hoặc vừa đổi project) → coi như có khoảng trống: tải lại mọi query.
  * - `server.hello` có `boot_id` khác lần trước → phát `server.restarted` và tải lại mọi query.
  */
 
@@ -27,6 +28,8 @@ export interface ConnectEventsOptions {
   project?: number;
   onEvent: (e: ServerEvent) => void;
   onState: (s: EventsState) => void;
+  /** Mỗi lần luồng lỗi (kể cả khi đang nối lại) — để kiểm tra phiên đăng nhập còn không. */
+  onFailure?: () => void;
   /** Thời gian (ms) tới lần tự nối lại kế tiếp; `null` khi không có lần chờ nào. */
   onRetryIn?: (ms: number | null) => void;
   /** Dùng cho `resync`, `server.restarted` và khoảng trống sau khi tự nối lại. */
@@ -83,10 +86,15 @@ function bootIdOf(data: unknown): string | null {
 export function connectEvents(opts: ConnectEventsOptions): EventsConnection {
   const ES = opts.EventSourceImpl ?? globalThis.EventSource;
   const base = opts.url ?? '/api/events';
-  const urlFor = (project?: number) =>
-    project != null ? `${base}?project=${encodeURIComponent(String(project))}` : base;
   let project = opts.project;
-  let url = urlFor(project);
+  /** id SSE cuối cùng đã nhận (để EventSource mới yêu cầu phát lại); đổi project thì bỏ. */
+  let lastId: string | null = null;
+  const urlFor = (withLastId: boolean) => {
+    const q: string[] = [];
+    if (project != null) q.push(`project=${encodeURIComponent(String(project))}`);
+    if (withLastId && lastId) q.push(`last_event_id=${encodeURIComponent(lastId)}`);
+    return q.length ? `${base}?${q.join('&')}` : base;
+  };
   const offlineAfter = opts.offlineAfter ?? 3;
 
   let es: EventSource | null = null;
@@ -112,6 +120,7 @@ export function connectEvents(opts: ConnectEventsOptions): EventsConnection {
     const type = ev.type === 'message' ? 'message' : ev.type;
     const data = parseData(ev.data);
     const id = ev.lastEventId ?? '';
+    if (id) lastId = id;
 
     if (type === 'server.hello') {
       const next = bootIdOf(data);
@@ -135,6 +144,7 @@ export function connectEvents(opts: ConnectEventsOptions): EventsConnection {
 
   const markFailure = () => {
     failures += 1;
+    opts.onFailure?.();
     setState(failures >= offlineAfter ? 'offline' : 'reconnecting');
   };
 
@@ -167,8 +177,10 @@ export function connectEvents(opts: ConnectEventsOptions): EventsConnection {
       setState('offline');
       return;
     }
-    gap = gap || fresh;
-    const source = new ES(url, { withCredentials: true });
+    // EventSource mới: gửi id cuối qua query để server phát lại; chưa có id → khoảng trống.
+    const resume = fresh && lastId != null;
+    gap = gap || (fresh && !resume);
+    const source = new ES(urlFor(resume), { withCredentials: true });
     es = source;
     source.onopen = () => {
       failures = 0;
@@ -213,7 +225,8 @@ export function connectEvents(opts: ConnectEventsOptions): EventsConnection {
     setProject: (next?: number) => {
       if (stopped || next === project) return;
       project = next;
-      url = urlFor(next);
+      lastId = null; // luồng khác: không phát lại theo id cũ, tải lại toàn bộ
+      gap = true;
       clearTimer();
       attempt = 0;
       opts.onRetryIn?.(null);

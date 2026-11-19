@@ -52,7 +52,7 @@ export function SessionExpiredModal() {
   };
 
   return (
-    <Modal open={expired} title="Phiên đã hết hạn" role="alertdialog">
+    <Modal open={expired} title="Phiên đã hết hạn" role="alertdialog" priority>
       <form onSubmit={onSubmit} noValidate className="grid gap-4">
         <p className="text-sm text-fg-2">
           Đăng nhập lại để tiếp tục — thay đổi chưa lưu vẫn ở trên trình duyệt này.

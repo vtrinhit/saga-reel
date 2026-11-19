@@ -813,3 +813,28 @@ async def test_try_image_maivideo_success_after_429(client, run_jobs):
         m = s.get(Media, job["result"]["media_ids"][0])
         assert m.kind == "image" and m.origin == "generated" and (m.width, m.height) == (48, 64)
         assert [(x.kind, x.connection_id) for x in s.scalars(select(Spend)).all()] == [("image", cid)]
+
+
+# --- budget.status ----------------------------------------------------------------------------------------------
+
+
+def test_budget_status_op_reports_totals_and_spend_excluding_fakes(client):
+    real = create(client, {"kind": "image", "adapter": "openai_images", "name": "real-img"})
+    fake = create(client, FAKE_IMG)
+    r = call(client, "settings.set_global", {"values": {"budget.images_total": 10, "budget.videos_total": 0}})
+    assert r.status_code == 200, r.text
+    with client.app.state.services.db.session() as s:
+        budget.record(s, "image", 3, None, real["id"])
+        budget.record(s, "image", 5, None, fake["id"])  # kết nối giả: không tính
+        s.commit()
+
+    r = call(client, "budget.status")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["image"] == {"enabled": True, "total": 10, "spent": 3.0, "remaining": 7.0}
+    # 0 = không giới hạn → total/remaining null
+    assert body["video"] == {"enabled": True, "total": None, "spent": 0.0, "remaining": None}
+
+    call(client, "settings.set_global", {"values": {"budget.enabled": False}})
+    body = call(client, "budget.status").json()
+    assert body["image"]["enabled"] is False and body["image"]["total"] is None and body["image"]["spent"] == 3.0

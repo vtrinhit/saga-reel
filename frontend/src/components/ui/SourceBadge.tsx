@@ -16,12 +16,14 @@ export const SOURCE_LABEL: Record<SourceLevel, string> = {
 };
 
 export interface SourceBadgeProps {
-  /** Cấp đang cấp giá trị. */
-  source: SourceLevel;
+  /** Cấp đang cấp giá trị; `default` = chưa cấp nào đè, dùng mặc định của app (không vạch nào tô). */
+  source: SourceLevel | 'default';
   /** Cấp đang sửa: trùng `source` → "đè ở đây" (vạch accent). */
   editing: SourceLevel;
   /** Giá trị ở từng cấp (đã định dạng sẵn) cho popover. */
   values?: Partial<Record<SourceLevel, string>>;
+  /** Giá trị mặc định của app (dưới cấp Global) cho popover; có thì "đè ở đây" ở Global xoá được về mặc định. */
+  defaultValue?: string;
   /** Xoá giá trị đè ở cấp đang sửa → dùng giá trị của cấp trên. */
   onClearOverride?: () => void;
   className?: string;
@@ -37,14 +39,15 @@ function parentWithValue(level: SourceLevel, values: Partial<Record<SourceLevel,
 }
 
 /** Chip 20px: thang 6 vạch, vạch tô ở cấp nguồn + chữ "từ Preset"; bấm → popover liệt kê giá trị từng cấp. */
-export function SourceBadge({ source, editing, values = {}, onClearOverride, className }: SourceBadgeProps) {
+export function SourceBadge({ source, editing, values = {}, defaultValue, onClearOverride, className }: SourceBadgeProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const popId = useId();
   const here = source === editing;
-  const idx = SOURCE_LEVELS.indexOf(source);
+  const idx = source === 'default' ? -1 : SOURCE_LEVELS.indexOf(source);
   const parent = here ? parentWithValue(editing, values) : null;
+  const clearLabel = parent ? `Dùng giá trị của ${SOURCE_LABEL[parent]}` : here && defaultValue != null ? 'Dùng giá trị mặc định' : null;
 
   useEffect(() => {
     if (!open) return;
@@ -55,7 +58,7 @@ export function SourceBadge({ source, editing, values = {}, onClearOverride, cla
     return () => document.removeEventListener('pointerdown', onDown);
   }, [open]);
 
-  const text = here ? 'đè ở đây' : `từ ${SOURCE_LABEL[source]}`;
+  const text = here ? 'đè ở đây' : source === 'default' ? 'mặc định' : `từ ${SOURCE_LABEL[source]}`;
 
   return (
     <span
@@ -75,7 +78,9 @@ export function SourceBadge({ source, editing, values = {}, onClearOverride, cla
         type="button"
         aria-expanded={open}
         aria-controls={popId}
-        aria-label={`Nguồn giá trị: ${here ? `đè ở cấp ${SOURCE_LABEL[source]}` : SOURCE_LABEL[source]}`}
+        aria-label={`Nguồn giá trị: ${
+          source === 'default' ? 'mặc định' : here ? `đè ở cấp ${SOURCE_LABEL[source]}` : SOURCE_LABEL[source]
+        }`}
         onClick={() => setOpen((v) => !v)}
         className={cn(
           'sr-hit inline-flex h-5 items-center gap-1.5 whitespace-nowrap rounded-sm border bg-bg-1 px-1.5 text-xs text-fg-2',
@@ -104,6 +109,12 @@ export function SourceBadge({ source, editing, values = {}, onClearOverride, cla
           className="absolute left-0 top-[calc(100%+4px)] z-dropdown grid w-64 gap-1 rounded-md border border-line-2 bg-bg-3 p-2 shadow-pop"
         >
           <dl className="grid gap-0.5 text-xs">
+            {defaultValue != null ? (
+              <div className={cn('flex justify-between gap-3 rounded-sm px-1.5 py-1', source === 'default' && 'bg-bg-4 text-fg-1')}>
+                <dt className="text-fg-2">Mặc định</dt>
+                <dd className="min-w-0 truncate text-right">{defaultValue}</dd>
+              </div>
+            ) : null}
             {SOURCE_LEVELS.map((l) => (
               <div
                 key={l}
@@ -114,7 +125,7 @@ export function SourceBadge({ source, editing, values = {}, onClearOverride, cla
               </div>
             ))}
           </dl>
-          {here && parent && onClearOverride ? (
+          {here && clearLabel && onClearOverride ? (
             <Button
               variant="ghost"
               className="justify-start"
@@ -123,7 +134,7 @@ export function SourceBadge({ source, editing, values = {}, onClearOverride, cla
                 setOpen(false);
               }}
             >
-              Dùng giá trị của {SOURCE_LABEL[parent]}
+              {clearLabel}
             </Button>
           ) : null}
         </div>

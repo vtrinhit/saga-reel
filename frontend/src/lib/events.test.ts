@@ -213,6 +213,58 @@ describe('connectEvents', () => {
     stop();
   });
 
+  it('đã nhận sự kiện có id → EventSource mới gửi ?last_event_id=, server phát lại nên không coi là khoảng trống', () => {
+    const { events, invalidateQueries, stop } = setup({ project: 3 });
+    last().open();
+    last().emit('job.updated', { id: 1, status: 'running' }, '12');
+    last().emit('server.hello', { boot_id: 'a' }); // hello không có id: không làm mất id đã giữ
+    last().fail();
+    vi.advanceTimersByTime(1000);
+    expect(last().url).toBe('/api/events?project=3&last_event_id=12');
+    last().open();
+    expect(invalidateQueries).not.toHaveBeenCalled();
+    expect(events.filter((e) => e.type === 'resync')).toHaveLength(0);
+    // id mới nhất được dùng ở lần mở kế tiếp (kể cả bấm "Thử ngay")
+    last().emit('job.updated', { id: 1, status: 'succeeded' }, '15');
+    stop.reconnectNow();
+    expect(last().url).toBe('/api/events?project=3&last_event_id=15');
+    stop();
+  });
+
+  it('không có project: last_event_id là tham số đầu tiên', () => {
+    const { stop } = setup();
+    last().open();
+    last().emit('job.updated', { id: 1 }, '7');
+    stop.reconnectNow();
+    expect(last().url).toBe('/api/events?last_event_id=7');
+    stop();
+  });
+
+  it('đổi project không gửi last_event_id (luồng khác) và vẫn coi như khoảng trống', () => {
+    const { invalidateQueries, stop } = setup({ project: 1 });
+    last().open();
+    last().emit('job.updated', { id: 1 }, '9');
+    stop.setProject(2);
+    expect(last().url).toBe('/api/events?project=2');
+    last().open();
+    expect(invalidateQueries).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('onFailure được gọi ở MỖI lần lỗi, kể cả khi đang nối lại (để kiểm tra phiên)', () => {
+    const onFailure = vi.fn();
+    const { stop } = setup({ onFailure });
+    last().fail();
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1000);
+    last().fail();
+    expect(onFailure).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(2000);
+    last().dropAndRetry();
+    expect(onFailure).toHaveBeenCalledTimes(3);
+    stop();
+  });
+
   it('reconnectNow nối lại ngay, không chờ backoff', () => {
     const { stop } = setup();
     last().fail();

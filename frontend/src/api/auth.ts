@@ -9,6 +9,8 @@ export interface AuthStatus {
   via: string | null;
   local: boolean;
   password_set: { owner: boolean; viewer: boolean };
+  /** Chưa có mật khẩu chủ: ai tới được cổng cục bộ cũng là chủ → cảnh báo "đừng mở ra Internet". */
+  password_required_warning?: boolean;
 }
 
 export const authKeys = { status: ['auth', 'status'] as const };

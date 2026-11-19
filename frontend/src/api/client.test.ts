@@ -230,4 +230,86 @@ describe('phiên hết hạn khi đang làm dở', () => {
     expect(err).toBeInstanceOf(ApiError);
     expect(useSession.getState().expired).toBe(false);
   });
+
+  it('appReady thành false (rời shell, đăng xuất) → huỷ hàng chờ: request cũ bị từ chối, không gửi lại sau này', async () => {
+    setAppReady(true);
+    window.history.replaceState(null, '', '/jobs');
+    let authed = false;
+    const { adapter, seen } = fakeAdapter(() => (authed ? { status: 200, data: {} } : { status: 401, data: AUTH_401 }));
+    api.defaults.adapter = adapter;
+    const pendingCall = api.post('/api/ops/job.retry', { ids: [1] }).catch((e: unknown) => e);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(useSession.getState()).toMatchObject({ expired: true, waiting: 1 });
+
+    setAppReady(false);
+    const err = (await pendingCall) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.code).toBe('auth_required');
+    expect(useSession.getState()).toMatchObject({ expired: false, waiting: 0 });
+
+    // đăng nhập lại sau đó không phát lại POST cũ
+    authed = true;
+    resumeSession();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(seen).toHaveLength(1);
+  });
+
+  it('401 về sau khi đã đăng nhập lại (request gửi trước đó) → gửi lại ngay, không mở modal lần nữa', async () => {
+    setAppReady(true);
+    window.history.replaceState(null, '', '/jobs');
+    let release401: (() => void) | null = null;
+    let n = 0;
+    const seen: string[] = [];
+    api.defaults.adapter = async (config) => {
+      seen.push(String(config.url));
+      n += 1;
+      if (n === 1) {
+        // request đầu: server trả 401 nhưng tới chậm (sau khi người dùng đã đăng nhập lại)
+        await new Promise<void>((r) => (release401 = r));
+        throw new AxiosError('401', 'ERR_BAD_RESPONSE', config, {}, {
+          data: AUTH_401, status: 401, statusText: '401', headers: {}, config,
+        });
+      }
+      if (n === 2) {
+        throw new AxiosError('401', 'ERR_BAD_RESPONSE', config, {}, {
+          data: AUTH_401, status: 401, statusText: '401', headers: {}, config,
+        });
+      }
+      return { data: { ok: n }, status: 200, statusText: 'OK', headers: {}, config, request: {} };
+    };
+    const slow = api.get('/api/ops/slow');
+    const fast = api.get('/api/ops/fast');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(useSession.getState()).toMatchObject({ expired: true, waiting: 1 });
+    resumeSession(); // đăng nhập lại: /fast được gửi lại (n = 3)
+    expect((await fast).data).toEqual({ ok: 3 });
+    release401!(); // 401 cũ của /slow về muộn
+    const res = await slow;
+    expect(res.data).toEqual({ ok: 4 });
+    expect(seen).toEqual(['/api/ops/slow', '/api/ops/fast', '/api/ops/fast', '/api/ops/slow']);
+    expect(useSession.getState().expired).toBe(false);
+  });
+
+  it('gửi lại ngay mà vẫn 401 → vào hàng chờ, mở modal (không lặp vô hạn)', async () => {
+    setAppReady(true);
+    window.history.replaceState(null, '', '/jobs');
+    let release: (() => void) | null = null;
+    let n = 0;
+    api.defaults.adapter = async (config) => {
+      n += 1;
+      if (n === 1) await new Promise<void>((r) => (release = r));
+      throw new AxiosError('401', 'ERR_BAD_RESPONSE', config, {}, {
+        data: AUTH_401, status: 401, statusText: '401', headers: {}, config,
+      });
+    };
+    const call = api.get('/api/ops/x').catch((e: unknown) => e);
+    await new Promise((r) => setTimeout(r, 0));
+    resumeSession(); // phiên mới (không có gì trong hàng chờ)
+    release!();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(n).toBe(2);
+    expect(useSession.getState()).toMatchObject({ expired: true, waiting: 1 });
+    setAppReady(false);
+    expect(((await call) as ApiError).code).toBe('auth_required');
+  });
 });
