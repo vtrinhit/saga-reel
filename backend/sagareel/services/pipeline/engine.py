@@ -952,8 +952,12 @@ async def cancel(ctx: OpContext, sequence_id: int) -> dict[str, Any]:
             "cancelled_followers": followers}
 
 
-def status(ctx: OpContext, *, sequence_ids: list[int] | None = None, project_id: int | None = None) -> dict:
+def status(ctx: OpContext, *, sequence_ids: list[int] | None = None, project_id: int | None = None,
+           cursor: int | None = None, limit: int = 200, active_only: bool = False) -> dict:
+    """Trạng thái quy trình: theo `sequence_ids`, theo `project_id`, hoặc toàn cục (mọi dự án, phân trang theo id
+    tập; `active_only` = chỉ tập có quy trình chưa xong). Gate đang chờ kèm `preview` (media dựng gần nhất)."""
     with ctx.services.db.session() as s:
+        next_cursor = None
         if sequence_ids:
             rows = [entities.get(s, "sequence", i) for i in dict.fromkeys(sequence_ids)]
         elif project_id is not None:
@@ -962,8 +966,41 @@ def status(ctx: OpContext, *, sequence_ids: list[int] | None = None, project_id:
                                                          Sequence.deleted_at.is_(None))
                                   .order_by(Sequence.number, Sequence.id)))
         else:
-            raise ValidationFailed("Cần sequence_ids hoặc project_id.")
-        return {"items": [_summary(s, q) for q in rows]}
+            from sagareel.db.models import Project
+
+            limit = max(1, min(int(limit), 500))
+            q = (select(Sequence).join(Project, Project.id == Sequence.project_id)
+                 .where(Sequence.deleted_at.is_(None), Project.deleted_at.is_(None)))
+            if active_only:
+                q = q.where(text("json_extract(sequence.pipeline, '$.run.status') IN "
+                                 "('queued','running','waiting_review','waiting_input','pending_release','failed')"))
+            if cursor is not None:
+                q = q.where(Sequence.id > cursor)
+            rows = list(s.scalars(q.order_by(Sequence.id).limit(limit + 1)))
+            if len(rows) > limit:
+                rows = rows[:limit]
+                next_cursor = rows[-1].id
+        items = []
+        for q in rows:
+            d = _summary(s, q)
+            d["project_id"] = q.project_id
+            if d.get("status") == "waiting_review":
+                d["preview"] = gate_preview(s, q.id)
+            items.append(d)
+        return {"items": items, "next_cursor": next_cursor}
+
+
+def gate_preview(s: Session, sequence_id: int) -> dict[str, Any] | None:
+    """Media xem trước cho gate đang chờ: bản dựng (animatic/final) mới nhất của tập, hoặc None."""
+    from sagareel.db.models import Render
+
+    r = s.scalars(select(Render).where(Render.sequence_id == sequence_id, Render.media_id.is_not(None),
+                                       Render.status == "succeeded")
+                  .order_by(Render.id.desc()).limit(1)).first()
+    if r is None:
+        return None
+    return {"render_id": r.id, "variant": r.variant, "media_id": r.media_id,
+            "url": f"/media/{r.media_id}"}
 
 
 def sequence_status(ctx: OpContext, sequence_id: int) -> dict[str, Any]:
