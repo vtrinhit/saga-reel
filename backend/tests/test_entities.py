@@ -212,3 +212,26 @@ async def test_entity_ops(ctx, project):
         await ops.invoke("entity.patch", {"type": "sequence", "id": sid, "values": {"title": "x"}}, viewer)
     spec = ops.get_spec("entity.patch")
     assert spec.mcp == "tool"
+
+
+def test_stale_write_detected_within_same_clock_tick(ctx, project, monkeypatch):
+    """Đồng hồ đứng yên (Windows ~15 ms/tích tắc): lần sửa sau vẫn làm `updated_at` tăng → `stale_write` chắc chắn."""
+    from datetime import UTC, datetime
+
+    from sagareel.db import base
+
+    sid = _seq(ctx, project)
+    frozen = datetime(2030, 1, 1, tzinfo=UTC)
+    monkeypatch.setattr(base, "utcnow", lambda: frozen)
+    first = entities.patch(ctx, "sequence", sid, {"title": "A"})
+    second = entities.patch(ctx, "sequence", sid, {"title": "B"}, expected_updated_at=_dt(first["updated_at"]))
+    assert _dt(second["updated_at"]) > _dt(first["updated_at"])
+    with pytest.raises(AppError) as ei:
+        entities.patch(ctx, "sequence", sid, {"title": "C"}, expected_updated_at=_dt(first["updated_at"]))
+    assert ei.value.code == "stale_write"
+
+
+def _dt(v):
+    from datetime import datetime
+
+    return v if isinstance(v, datetime) else datetime.fromisoformat(v)

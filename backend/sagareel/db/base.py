@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import DateTime, MetaData, Text
+from sqlalchemy import DateTime, MetaData, Text, event, inspect
 from sqlalchemy.ext.mutable import MutableDict, MutableList
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
@@ -127,3 +127,25 @@ class Tracked:
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
     deleted_at: Mapped[datetime | None]
+
+
+_TICK = timedelta(microseconds=1)
+
+
+@event.listens_for(Tracked, "before_update", propagate=True)
+def _monotonic_updated_at(mapper, _conn, target: Tracked) -> None:
+    """`updated_at` luôn tăng sau mỗi lần sửa — kể cả khi đồng hồ hệ thống thô (Windows ~15 ms) hay hai lần sửa trong
+    cùng một tích tắc — để kiểm `expected_updated_at` (`stale_write`) không bỏ sót."""
+    attrs = inspect(target).attrs
+    if attrs.updated_at.history.added:
+        return  # người gọi tự đặt
+    if not any(attrs[c.key].history.has_changes() for c in mapper.column_attrs):
+        return  # chỉ bị đánh dấu dirty, không đổi cột nào → không có UPDATE
+    now = utcnow()
+    old = target.updated_at
+    if old is not None:
+        if old.tzinfo is None:
+            old = old.replace(tzinfo=UTC)
+        if now <= old:
+            now = old + _TICK
+    target.updated_at = now

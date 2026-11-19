@@ -108,7 +108,7 @@ def test_seed_idempotent_and_lazy(services):
     presets.seed_builtins(services.db)  # gọi thẳng lần nữa: không nhân đôi
     with services.db.session() as s:
         rows = s.query(Preset).all()
-        assert len(rows) == 10 and all(r.builtin and r.builtin_hash and r.project_id is None for r in rows)
+        assert len(rows) == len(presets.builtin_definitions()) >= 10 and all(r.builtin and r.builtin_hash and r.project_id is None for r in rows)
 
 
 def test_seed_upgrades_unedited_keeps_edited(services, owner_ctx, monkeypatch):

@@ -324,6 +324,8 @@ def builtin_definitions() -> list[dict[str, Any]]:
             logger.warning("Thư mục preset '%s' không phải loại hợp lệ; bỏ qua", folder.name)
             continue
         for path in sorted(folder.glob("*.y*ml")):
+            if path.stem.startswith("_"):  # tham số chung (vd. motion/_common.yaml), không phải preset
+                continue
             try:
                 out.append(_read_file(path, folder.name))
             except Exception as e:  # noqa: BLE001 — một file hỏng không được chặn khởi động
