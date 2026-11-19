@@ -26,15 +26,19 @@ from typing import Any
 
 from sqlalchemy import event, inspect, select
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Mapper, Session
 
 from sagareel.core import secrets
+from sagareel.core.errors import AppError
 from sagareel.core.ops import current_op
 from sagareel.db.models import ChangeSet, Revision
 from sagareel.db.session import Database
 
 EntityKey = tuple[str, int]  # (entity_type = tên bảng, entity_id)
 CommitHook = Callable[[Session, ChangeSet | None], None]
+# Cột chỉ để sổ sách: không tính là "thay đổi" khi so before/after (vẫn được lưu trong snapshot).
+BOOKKEEPING_COLUMNS = frozenset({"updated_at"})
 
 
 def entity_type_of(mapper: Mapper) -> str:
@@ -47,6 +51,31 @@ def read_snapshot(conn: Connection, mapper: Mapper, entity_id: int) -> dict[str,
     if row is None:
         return None
     return secrets.snapshot_with(mapper, lambda attr: row[secrets.column_of(attr)])
+
+
+def meaningful(snap: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Phần snapshot có nghĩa khi so sánh: bỏ cột dấu thời gian sổ sách (`BOOKKEEPING_COLUMNS`).
+
+    Lần lưu chỉ làm đổi `updated_at` (vd. ghi lại cùng giá trị) không sinh revision/change set.
+    """
+    if snap is None:
+        return None
+    return {k: v for k, v in snap.items() if k not in BOOKKEEPING_COLUMNS}
+
+
+def db_busy() -> AppError:
+    return AppError(
+        "db_busy",
+        "Cơ sở dữ liệu đang bận, thử lại sau",
+        hint="Một thao tác ghi khác đang giữ khoá cơ sở dữ liệu; thử lại sau giây lát.",
+        status=503,
+    )
+
+
+def _raise_if_busy(exc: BaseException | None) -> None:
+    """Đổi lỗi SQLite "database is locked" (hết busy_timeout) thành `AppError("db_busy", status=503)`."""
+    if isinstance(exc, OperationalError) and "database is locked" in str(exc.orig):
+        raise db_busy() from exc
 
 
 @dataclass
@@ -110,8 +139,14 @@ class UnitOfWork(AbstractContextManager):
             raise RuntimeError("UnitOfWork chỉ dùng được một lần.")
         # Khoá ghi ngay: chọn đích, kiểm xung đột và snapshot "trước" đều nằm trong khoá ghi (không có tranh chấp
         # giữa lúc đọc và lúc ghi).
-        self._cm = self.db.session(immediate=True)
-        s = self._session = self._cm.__enter__()
+        self._cm = cm = self.db.session(immediate=True)
+        s = self._session = cm.__enter__()
+        try:
+            s.connection()  # BEGIN IMMEDIATE ngay: hết busy_timeout mà chưa có khoá → db_busy trước khi chạy khối
+        except BaseException as e:
+            cm.__exit__(type(e), e, e.__traceback__)
+            _raise_if_busy(e)
+            raise
         event.listen(s, "before_flush", self._before_flush)
         event.listen(s, "after_flush", self._after_flush)
         return s
@@ -121,18 +156,21 @@ class UnitOfWork(AbstractContextManager):
         assert s is not None and cm is not None, "UnitOfWork chưa được mở"
         try:
             if exc_type is not None:
-                return bool(cm.__exit__(exc_type, exc, tb))  # rollback, ném lại lỗi gốc
+                cm.__exit__(exc_type, exc, tb)  # rollback (không nuốt lỗi)
+                _raise_if_busy(exc)
+                return False  # ném lại lỗi gốc
             try:
                 self._finalize(s)
             except BaseException as e:
                 self._reset_result()
-                if not cm.__exit__(type(e), e, e.__traceback__):
-                    raise
-                return False
+                cm.__exit__(type(e), e, e.__traceback__)
+                _raise_if_busy(e)
+                raise
             try:
                 cm.__exit__(None, None, None)  # commit
-            except BaseException:
+            except BaseException as e:
                 self._reset_result()
+                _raise_if_busy(e)
                 raise
             return False
         finally:
@@ -147,7 +185,9 @@ class UnitOfWork(AbstractContextManager):
     def _before_flush(self, session: Session, flush_context, instances) -> None:
         if self._finalizing:
             return
-        dirty = [o for o in session.dirty if self._is_tracked(o) and session.is_modified(o)]
+        # Không lọc bằng session.is_modified(): nó có thể trả False trong khi ORM vẫn phát UPDATE (vd. ghi cùng giá trị
+        # vào JSON tại chỗ). Ghi nhận mọi object dirty; `_finalize` so snapshot để quyết định có revision hay không.
+        dirty = [o for o in session.dirty if self._is_tracked(o)]
         deleted = [o for o in session.deleted if self._is_tracked(o)]
         if not dirty and not deleted:
             return
@@ -177,7 +217,7 @@ class UnitOfWork(AbstractContextManager):
         diffs: list[tuple[EntityKey, dict | None, dict | None]] = []
         for key, rec in self._records.items():
             after = read_snapshot(conn, rec.mapper, rec.entity_id)
-            if after != rec.before:
+            if meaningful(after) != meaningful(rec.before):
                 diffs.append((key, rec.before, after))
         cs: ChangeSet | None = None
         if diffs:

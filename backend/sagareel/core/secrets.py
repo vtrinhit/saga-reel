@@ -17,10 +17,15 @@ from sqlalchemy.orm import ColumnProperty, Mapper
 SECRET_KEY = "__secret__"
 
 
+MASK_REVEAL_MIN_LEN = 12  # chỉ lộ 4 ký tự cuối khi bí mật đủ dài để 4 ký tự đó không đáng kể
+
+
 def mask(value: str) -> str:
-    """Dạng hiển thị của bí mật: `""` → `""`, còn lại `"••••" + 4 ký tự cuối`."""
+    """Dạng hiển thị của bí mật: `""` → `""`; ≥ 12 ký tự → `"••••" + 4 ký tự cuối`; ngắn hơn → `"••••"`."""
     if not value:
         return ""
+    if len(value) < MASK_REVEAL_MIN_LEN:
+        return "••••"
     return "••••" + value[-4:]
 
 

@@ -1,5 +1,6 @@
 import dataclasses
 import json
+import time
 from datetime import datetime, timezone
 
 import pytest
@@ -135,7 +136,10 @@ def test_mask():
     from sagareel.core import secrets
 
     assert secrets.mask("") == ""
-    assert secrets.mask("sk-abcdef1234") == "••••1234"
+    assert secrets.mask("sk-abcdef1234") == "••••1234"  # ≥ 12 ký tự: lộ 4 ký tự cuối
+    assert secrets.mask("abcdefghijkl") == "••••ijkl"  # đúng 12
+    assert secrets.mask("abcdefghijk") == "••••"  # 11 ký tự: không lộ gì
+    assert secrets.mask("k1") == "••••"
 
 
 def test_snapshot_encodes_datetime_and_secret(ctx):
@@ -525,3 +529,81 @@ def test_concurrent_undo_of_same_change_set_applies_once(ctx, monkeypatch):
     assert isinstance(errs[0], AppError) and errs[0].code == "already_undone"
     assert [c.op_name for c in all_change_sets(ctx)].count("history.undo") == 1
     assert get_template(ctx, tid).body == "a"
+
+
+# --- Fix round 1 --------------------------------------------------------------------------------------------------
+
+
+def test_save_changing_only_updated_at_records_nothing_and_does_not_block(ctx, ctx_agent):
+    with ctx.uow(op_name="test.create") as s:
+        c = ProviderConnection(kind="llm", adapter="openai", name="gốc", api_key="k", options={"a": 1})
+        s.add(c)
+        s.flush()
+        cid = c.id
+    update_connection(ctx, cid, name="đổi tên")
+    before_updated = get_connection(ctx, cid).updated_at
+    time.sleep(0.05)  # đồng hồ Windows (Python 3.11) nhảy ~15,6 ms: chờ để updated_at mới khác hẳn
+    u = ctx_agent.uow(op_name="test.touch")
+    with u as s:
+        conn = s.get(ProviderConnection, cid)
+        conn.options["a"] = 1  # cùng giá trị, sửa tại chỗ → UPDATE chỉ đổi updated_at
+    assert get_connection(ctx, cid).updated_at != before_updated  # thật sự có UPDATE
+    assert u.change_set_id is None and u.changed == []
+    assert [c.op_name for c in all_change_sets(ctx)] == ["test.create", "test.update"]
+    cs = history.undo(ctx, None)  # không bị change set "rỗng" của agent chặn
+    assert cs.op_name == "test.update" and get_connection(ctx, cid).name == "gốc"
+
+
+def test_undo_reinsert_never_silently_loses_secret(ctx):
+    cid = create_connection(ctx, api_key="sk-REALSECRET-9999")
+    with ctx.uow(op_name="test.delete") as s:
+        s.delete(s.get(ProviderConnection, cid))
+    with pytest.raises(AppError) as e:
+        history.undo(ctx, None)
+    assert e.value.code == "secret_lost" and e.value.hint
+    assert get_connection(ctx, cid) is None
+    assert all(c.undone_at is None for c in all_change_sets(ctx))
+    assert [c.op_name for c in all_change_sets(ctx)].count("history.undo") == 0
+    # Khoá rỗng thì không có gì để mất → chèn lại được.
+    empty = create_connection(ctx, api_key="")
+    with ctx.uow(op_name="test.delete") as s:
+        s.delete(s.get(ProviderConnection, empty))
+    history.undo(ctx, None)
+    assert get_connection(ctx, empty).api_key == ""
+
+
+def test_uow_lock_timeout_is_db_busy(settings, tmp_path, monkeypatch):
+    import threading
+
+    from sagareel.db import session as session_mod
+    from sagareel.db.session import Database
+
+    monkeypatch.setattr(session_mod, "_PRAGMAS", tuple(
+        "PRAGMA busy_timeout=200" if p.startswith("PRAGMA busy_timeout") else p for p in session_mod._PRAGMAS))
+    db = Database(tmp_path / "busy.db")
+    db.migrate()
+    try:
+        ctx = OpContext(services=Services(settings=settings, boot_id="b" * 32, db=db), actor="user:owner",
+                        role="owner")
+        locked, release = threading.Event(), threading.Event()
+
+        def holder():
+            with db.session(immediate=True) as s:
+                s.scalars(select(Template)).all()  # giữ khoá ghi
+                locked.set()
+                release.wait(10)
+
+        t = threading.Thread(target=holder)
+        t.start()
+        try:
+            assert locked.wait(5)
+            with pytest.raises(AppError) as e:
+                with ctx.uow(op_name="test.create") as s:
+                    s.add(Template(key="busy", kind="prompt", body="x"))
+            assert e.value.code == "db_busy" and e.value.status == 503
+        finally:
+            release.set()
+            t.join(10)
+        create_template(ctx, body="sau khi nhả khoá")  # khoá nhả → ghi bình thường
+    finally:
+        db.dispose()

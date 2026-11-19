@@ -29,7 +29,7 @@ from sqlalchemy.types import TypeDecorator
 from sagareel.core import secrets
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, Conflict, NotFound
-from sagareel.core.uow import UnitOfWork, entity_type_of, read_snapshot
+from sagareel.core.uow import BOOKKEEPING_COLUMNS, UnitOfWork, entity_type_of, read_snapshot
 from sagareel.db.base import Base, utcnow
 from sagareel.db.models import ChangeSet, Revision
 
@@ -39,7 +39,7 @@ OP_RESTORE = "history.restore"
 # Change set sinh ra bởi hoàn tác/làm lại: không phải đích của Ctrl+Z, không tự chặn hoàn tác change set khác.
 TRANSPARENT_OPS = (OP_UNDO, OP_REDO)
 # Không bao giờ áp ngược giá trị cột này: để onupdate đóng dấu thời điểm hoàn tác/khôi phục.
-_SKIP_ON_APPLY = frozenset({"updated_at"})
+_SKIP_ON_APPLY = BOOKKEEPING_COLUMNS
 
 
 # --- Schema -----------------------------------------------------------------------------------------------------
@@ -315,6 +315,26 @@ def _decode(column, value: Any) -> Any:
     return value
 
 
+def _refuse_secret_loss(mapper: Mapper, entity_id: int, target: dict[str, Any]) -> None:
+    """Chèn lại dòng đã xoá cứng: snapshot không chứa bí mật nên không khôi phục được nó → từ chối thay vì lặng lẽ
+    để trống (bí mật rỗng thì không có gì để mất)."""
+    empty = {secrets.SECRET_KEY: secrets.digest("")}
+    lost = [
+        attr.key
+        for attr in mapper.column_attrs
+        if secrets.is_secret(secrets.column_of(attr)) and target.get(attr.key) not in (None, empty)
+    ]
+    if lost:
+        raise AppError(
+            "secret_lost",
+            f"Không thể khôi phục {entity_type_of(mapper)} #{entity_id}: thực thể đã bị xoá hẳn và lịch sử không lưu "
+            f"giá trị bí mật ({', '.join(lost)}).",
+            hint="Nhập lại khoá API cho kết nối này sau khi khôi phục",
+            status=409,
+            extra={"entity": {"type": entity_type_of(mapper), "id": entity_id}, "columns": lost},
+        )
+
+
 def _apply(s: Session, u: UnitOfWork, mapper: Mapper, entity_id: int, target: dict[str, Any] | None) -> None:
     """Đưa thực thể về snapshot `target` (None = không tồn tại). Không bao giờ ghi cột bí mật."""
     cls = mapper.class_
@@ -331,6 +351,7 @@ def _apply(s: Session, u: UnitOfWork, mapper: Mapper, entity_id: int, target: di
         return
     created = obj is None
     if created:
+        _refuse_secret_loss(mapper, entity_id, target)
         obj = cls()
         setattr(obj, mapper.get_property_by_column(mapper.primary_key[0]).key, entity_id)
     u.track(obj)
