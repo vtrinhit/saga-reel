@@ -37,6 +37,9 @@
   --c-track-music: 146 119 189;
   --c-track-sfx: 192 123 82;
   --scrim: rgb(0 0 0 / 0.6);
+  /* v2 — lớp phủ trên footage (safe-zone, phụ đề xem trước); chỉ dùng trên nền stage/footage */
+  --overlay-dim: rgb(0 0 0 / 0.35); --overlay-line: rgb(255 255 255 / 0.6); --overlay-label: rgb(0 0 0 / 0.6);
+  --sub-fg: rgb(255 255 255); --sub-halo: 0 0 3px rgb(0 0 0), 0 1px 2px rgb(0 0 0);
   /* chữ */
   --font-ui: "Be Vietnam Pro", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
@@ -56,7 +59,10 @@
   --focus-w: 2px; --focus-offset: 2px; /* focus = outline accent, không dùng box-shadow */
   /* kích thước */
   --h-control: 32px; --h-touch: 44px; --h-row: 40px; --h-track: 48px;
-  --w-rail: 64px; --w-inspector: 360px; --h-topbar: 48px; --h-meta: 52px;
+  --w-rail: 76px; --w-inspector: 360px; --h-topbar: 48px; --h-meta: 52px;
+  /* v2 */
+  --h-spine: 44px; --h-bottomnav: 56px; --w-activity: 360px; --w-queue: 280px;
+  --ring-w: 2px; --ring-dash: 3px 3px; /* vòng khoanh: đặc = đã quyết, đứt = chờ quyết */
   /* lớp */
   --z-sticky: 10; --z-playhead: 20; --z-dropdown: 30; --z-drawer: 40; --z-batchbar: 45;
   --z-modal: 50; --z-toast: 60; --z-palette: 70; --z-banner: 80; --z-tooltip: 90;

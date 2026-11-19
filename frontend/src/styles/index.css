@@ -71,6 +71,12 @@
   .sr-pill[data-status='approved'] { --pc: var(--c-approved); }
   .sr-pill[data-status='warn'] { --pc: var(--c-warn); }
   .sr-pill[data-status='ok'] { --pc: var(--c-ok); }
+  /* v2: "chờ bạn" — nền trong suốt, viền 1px đứt accent, chữ accent. */
+  .sr-pill[data-status='wait'] {
+    --pc: var(--c-accent);
+    background: transparent;
+    border: 1px dashed rgb(var(--c-accent));
+  }
 
   /* Nút danger: nền đục failed 12% trộn bg-2 (≥ 4,9:1 kể cả trên modal bg-4). */
   .sr-btn-danger {
@@ -151,7 +157,7 @@
 
   /* Shell có thanh dưới (điện thoại, trong dự án): toast và thanh lô nổi đứng trên nó. */
   [data-bottom-nav='true'] {
-    --sr-bottom-offset: calc(56px + env(safe-area-inset-bottom, 0px));
+    --sr-bottom-offset: calc(var(--h-bottomnav) + env(safe-area-inset-bottom, 0px));
   }
   @media (min-width: 768px) {
     [data-bottom-nav='true'] {
