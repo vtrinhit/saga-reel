@@ -21,6 +21,7 @@ import type { Clip, SuggestChange, Take, Verdict } from '../../lib/episodeTypes'
 import { formatClipSeconds, isFlagged, shotShort } from '../../lib/episodeView';
 import { reviewKeyAction, type ReviewAction } from '../../lib/reviewKeys';
 import { toast } from '../../stores/toast';
+import { cn } from '../../lib/cn';
 
 type FilterKey = 'pending' | 'drift' | 'stale' | 'failed' | 'skipped';
 const FILTERS: { value: FilterKey; label: string }[] = [
@@ -135,6 +136,13 @@ export function Review() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [inspOpen, setInspOpen] = useState(false);
   const undoStack = useRef<UndoEntry[]>([]);
+  // Lý do tạo lại (giữ trong phiên): cùng lý do lặp lại → server trả `suggest_change`.
+  const [reason, setReason] = useState('');
+  const [recentReasons, setRecentReasons] = useState<string[]>([]);
+  const rememberReason = (r: string) => {
+    const t = r.trim();
+    if (t) setRecentReasons((l) => [t, ...l.filter((x) => x !== t)].slice(0, 5));
+  };
   const compareRef = useRef<CompareHandle>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const verdictRef = useRef<HTMLDivElement>(null);
@@ -201,6 +209,7 @@ export function Review() {
       await callOp('take.verdict', { take_id: cell.take.id, verdict: 'keep' });
       await callOp('clip.update', { id: c.id, values: { review: 'approved' } });
       undoStack.current.push(entry);
+      toast({ message: `Đã chọn take ${cell.no} cho ${c.key}.`, undo: () => void undo() });
       void qc.invalidateQueries({ queryKey: ['episode', c.sequence_id] });
     } catch (e) {
       setDecisions((m) => {
@@ -250,13 +259,14 @@ export function Review() {
     }
   };
 
-  const regenerate = async (reason?: string) => {
+  const regenerate = async () => {
     if (!clip) return;
     const c = clip;
     const cell = cells[cursor];
+    rememberReason(reason);
     if (cell) {
       try {
-        const r = (await callOp('take.verdict', { take_id: cell.take.id, verdict: 'regenerate', reason: reason ?? null })) as unknown as {
+        const r = (await callOp('take.verdict', { take_id: cell.take.id, verdict: 'regenerate', reason: reason.trim() || null })) as unknown as {
           suggest_change: SuggestChange | null;
         };
         if (r.suggest_change) {
@@ -284,7 +294,8 @@ export function Review() {
     const cell = cells[cursor];
     if (!cell) return;
     try {
-      const r = (await callOp('take.verdict', { take_id: cell.take.id, verdict: v })) as unknown as { suggest_change: SuggestChange | null };
+      rememberReason(reason);
+      const r = (await callOp('take.verdict', { take_id: cell.take.id, verdict: v, reason: reason.trim() || null })) as unknown as { suggest_change: SuggestChange | null };
       void takesQ.refetch();
       if (r.suggest_change) setSuggest(r.suggest_change);
       toast({ message: `Take ${cell.no}: ${VERDICT_LABEL[v]}.` });
@@ -487,6 +498,9 @@ export function Review() {
       clipCost={clipCost ? { cost: clipCost.cost, takes: clipCost.takes } : null}
       seqCost={costQ.data?.total ?? null}
       onSaved={(p) => patchLocal(clip.id, p)}
+      reason={reason}
+      onReason={setReason}
+      recentReasons={recentReasons}
     />
   ) : null;
 
@@ -641,7 +655,13 @@ function ReviewInspector({
   clipCost,
   seqCost,
   onSaved,
+  reason,
+  onReason,
+  recentReasons,
 }: {
+  reason: string;
+  onReason: (r: string) => void;
+  recentReasons: string[];
   clip: Clip;
   part: 'image' | 'video';
   bare: boolean;
@@ -708,6 +728,32 @@ function ReviewInspector({
           <h3 className="text-sm font-semibold">Verdict</h3>
           <kbd className="rounded-xs border border-line-2 px-1 font-mono text-2xs text-fg-2">V</kbd>
         </div>
+        <label htmlFor="rv-reason" className="text-xs text-fg-2">Lý do (gửi kèm verdict và Tạo lại)</label>
+        <input
+          id="rv-reason"
+          value={reason}
+          onChange={(e) => onReason(e.target.value)}
+          placeholder="vd. tay lỗi, tóc ngắn hơn mỏ neo"
+          className={`${box} h-control py-0`}
+        />
+        {recentReasons.length ? (
+          <div className="flex flex-wrap gap-1" aria-label="Lý do gần đây">
+            {recentReasons.map((r) => (
+              <button
+                key={r}
+                type="button"
+                aria-pressed={r === reason.trim()}
+                onClick={() => onReason(r === reason.trim() ? '' : r)}
+                className={cn(
+                  'rounded-sm border px-1.5 py-0.5 text-xs focus-visible:outline focus-visible:outline-focus focus-visible:outline-accent',
+                  r === reason.trim() ? 'border-accent text-accent' : 'border-line-2 text-fg-2 hover:bg-bg-3',
+                )}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div role="group" aria-label="Verdict take đang xem" className="flex flex-wrap gap-1.5">
           {(Object.keys(VERDICT_LABEL) as Verdict[]).map((v) => (
             <Button key={v} variant={currentVerdict === v ? 'primary' : 'secondary'} aria-pressed={currentVerdict === v} onClick={() => onVerdict(v)}>

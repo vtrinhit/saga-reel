@@ -123,8 +123,8 @@ export const ClipGrid = forwardRef<BoardHandle, BoardViewProps>(function ClipGri
       style={{ height: '100%' }}
     >
       {stickyRow && stickyRow.kind === 'scene' ? (
-        <div aria-hidden className="sticky top-0 z-sticky -mx-3 h-0">
-          <SceneHeader row={stickyRow} sceneNo={sceneNo} className="bg-bg-0/95" />
+        <div aria-hidden className="pointer-events-none sticky top-0 z-sticky -mx-3 h-0">
+          <SceneHeader row={stickyRow} sceneNo={sceneNo} className="bg-bg-0/95" passive />
         </div>
       ) : null}
       <div style={{ height: v.getTotalSize(), position: 'relative' }}>
@@ -181,16 +181,19 @@ export function SceneHeader({
   sceneNo,
   className,
   dropActive,
+  passive,
 }: {
   row: { sceneId: number | null; title: string; count: number; firstIndex: number; durationMs: number };
   sceneNo: Map<number | null, string>;
   className?: string;
   dropActive?: boolean;
+  /** Bản dính (lớp phủ): không là đích thả. */
+  passive?: boolean;
 }) {
   return (
     <div
-      data-scene-first={row.firstIndex}
-      data-scene-id={row.sceneId ?? ''}
+      data-scene-first={passive ? undefined : row.firstIndex}
+      data-scene-id={passive ? undefined : (row.sceneId ?? '')}
       className={cn(
         'flex h-10 min-w-0 items-center gap-2 px-3 text-sm',
         dropActive && 'shadow-[inset_0_-2px_0_rgb(var(--c-accent))]',

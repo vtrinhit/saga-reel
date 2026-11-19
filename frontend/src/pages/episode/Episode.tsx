@@ -583,6 +583,8 @@ export function Episode() {
         <Button
           variant="primary"
           icon={RotateCcw}
+          disabled={selIds.length > 1000}
+          title={selIds.length > 1000 ? 'Mỗi lần tạo lại tối đa 1.000 clip' : undefined}
           onClick={() => void regen({ ids: selIds, part, label: `${selIds.length} clip` })}
         >
           Tạo lại

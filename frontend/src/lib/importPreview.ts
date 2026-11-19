@@ -118,7 +118,7 @@ export function fileKind(name: string): 'csv' | 'xlsx' | 'json' | 'yaml' | null 
 }
 
 export const isImageFile = (f: { name: string; type?: string }) =>
-  (f.type ?? '').startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(f.name);
+  /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name);
 
 /** Sắp file ảnh của thư mục theo tên tự nhiên (01.png < 2.png < 10.png). */
 export function sortImageFiles<T extends { name: string; webkitRelativePath?: string }>(files: T[]): T[] {
