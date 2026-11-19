@@ -533,18 +533,11 @@ def delete(ctx: OpContext, confirm_token: str | None) -> dict[str, Any]:
         projects = {entities.project_id_of(s, r) for r in rows}
         u.project_id = projects.pop() if len(projects) == 1 else None
         now = utcnow()
-        gone = set(ids)
-        for seq_id in {r.sequence_id for r in rows}:
-            alive = ordered(s, seq_id)
-            for i, c in enumerate(alive):
-                if c.id not in gone:
-                    continue
-                successor = next((x for x in alive[i + 1:] if x.id not in gone), None)
-                for item in s.scalars(select(TimelineItem).where(TimelineItem.anchor_clip_id == c.id,
-                                                                TimelineItem.deleted_at.is_(None))):
-                    item.anchor_clip_id = successor.id if successor is not None else None
-                    if successor is not None:
-                        item.offset_ms = 0
+        # Neo timeline (nhạc/SFX/title) do Task D quản lý: clip sau còn lại → clip trước (+ độ dài) → bỏ neo;
+        # `end_anchor` ưu tiên clip trước.
+        from sagareel.services.audio import timeline
+
+        timeline.reanchor_for_deleted_clips(s, ids)
         for r in rows:
             r.deleted_at = now
             for d in s.scalars(select(DialogueLine).where(DialogueLine.clip_id == r.id,

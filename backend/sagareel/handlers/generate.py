@@ -133,6 +133,16 @@ def _clip_ctx(services, clip_id: int) -> dict[str, Any]:
                 "project_id": p.id, "aspect": p.aspect, "resolution": p.resolution, "fps": p.fps}
 
 
+async def _prepare(run) -> None:
+    """Việc ngoài compile (Task A): trích khung cuối video clip trước khi `link=continue` để compiler gắn làm ref."""
+    from sagareel.compile import compiler
+
+    try:
+        await compiler.prepare_clip(run.services, run.params["clip_id"])
+    except AppError as e:
+        raise JobFailed(e.code, e.detail or str(e)) from None
+
+
 def _compile(services, clip_id: int, part: str, connection: str | None, assets: list | None) -> dict[str, Any]:
     """Gọi compiler của Task A (qua module: test thay được bằng monkeypatch). `assets` override chỉ áp trong phiên
     này rồi rollback — không ghi vào clip."""
@@ -285,6 +295,7 @@ async def generate_image(run) -> dict:
         started = time.monotonic()
         adapter = await pj._adapter(run, "image")
         ov = dict(p.get("overrides") or {})
+        await _prepare(run)
         compiled = await anyio.to_thread.run_sync(
             _compile, run.services, p["clip_id"], "image", adapter.conn.name, ov.get("assets"))
         prompt = ov["prompt"] if ov.get("prompt") is not None else compiled["text"]
@@ -332,6 +343,7 @@ async def generate_video(run) -> dict:
         if ov.get("prompt") is not None:
             compiled = {"text": ov["prompt"], "refs": [], "warnings": []}
         else:
+            await _prepare(run)
             compiled = await anyio.to_thread.run_sync(_compile, run.services, p["clip_id"], "video", None,
                                                       ov.get("assets"))
         prompt = compiled["text"]
@@ -390,7 +402,8 @@ async def generate_still_motion(run) -> dict:
         preset = clip["motion_preset"] or "slow_zoom_in"
         profile = _profile(clip)
         run.progress(0.0, stage="Đang dựng chuyển động từ ảnh")
-        out = still_motion.make_segment(image, preset, clip["duration_ms"], profile)
+        out = still_motion.make_segment(image, preset, clip["duration_ms"], profile,
+                                        cache_dir=run.services.settings.cache_dir, cancel=run.cancelled)
         if inspect.isawaitable(out):
             out = await out
         path = Path(out)

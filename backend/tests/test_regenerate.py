@@ -7,8 +7,6 @@ Compiler của Task A được thay bằng monkeypatch trên `sagareel.compile.c
 from __future__ import annotations
 
 import shutil
-import sys
-import types
 from pathlib import Path
 
 import anyio
@@ -202,8 +200,11 @@ async def test_part_all_chains_image_video_and_continue(client, conns, compiler,
         assert jobs[vid_a.job_id].parent_id == img_a.job_id and jobs[vid_b.job_id].parent_id == vid_a.job_id
 
 
-async def test_failure_marks_take_failed_and_cancels_chain(client, conns, wait_takes, owner_ctx, seq):
-    # không monkeypatch compiler → stub của W0 ném NotImplementedError → job thất bại rõ ràng
+async def test_failure_marks_take_failed_and_cancels_chain(client, conns, wait_takes, owner_ctx, seq, monkeypatch):
+    def not_ready(session, clip_id, *, connection=None):
+        raise NotImplementedError("compiler hỏng (test)")
+
+    monkeypatch.setattr(contracts, "compile_clip_image", not_ready)
     a = clips.create(owner_ctx, seq, {"image_prompt": "A"})
     out = regen(client, {"ids": [a["id"]], "part": "all",
                          "overrides": {"connection": "fake-img", "video_connection": "fake-vid"}})
@@ -232,7 +233,8 @@ async def test_still_motion_calls_render_module(client, conns, compiler, wait_ta
         tiny_path = media.file_path(client.app.state.services.settings, s.get(Media, tiny))
     calls = []
 
-    def make_segment(image_path, preset, duration_ms, profile):
+    def make_segment(image_path, preset, duration_ms, profile, **kw):
+        assert Path(kw["cache_dir"]) == client.app.state.services.settings.cache_dir
         calls.append((Path(image_path).suffix, preset, duration_ms, profile))
         out = tmp_path / f"seg_{len(calls)}.mp4"
         shutil.copy(tiny_path, out)
@@ -240,12 +242,9 @@ async def test_still_motion_calls_render_module(client, conns, compiler, wait_ta
             f.write(f"seg{len(calls)}".encode())
         return out
 
-    render = types.ModuleType("sagareel.render")
-    sm = types.ModuleType("sagareel.render.still_motion")
-    sm.make_segment = make_segment
-    render.still_motion = sm
-    monkeypatch.setitem(sys.modules, "sagareel.render", render)
-    monkeypatch.setitem(sys.modules, "sagareel.render.still_motion", sm)
+    from sagareel.render import still_motion
+
+    monkeypatch.setattr(still_motion, "make_segment", make_segment)
     a = clips.create(owner_ctx, seq, {"engine": "still_motion", "motion_preset": "ken_burns_diag",
                                       "duration_ms": 4000})
     out = regen(client, {"ids": [a["id"]], "part": "all", "overrides": {"connection": "fake-img"}})
@@ -259,14 +258,23 @@ async def test_still_motion_calls_render_module(client, conns, compiler, wait_ta
         assert s.get(Clip, a["id"]).video_take_id == vid.id
 
 
-async def test_still_motion_not_implemented_without_render(client, conns, compiler, wait_takes, owner_ctx, seq,
-                                                           monkeypatch):
-    monkeypatch.setitem(sys.modules, "sagareel.render.still_motion", None)  # import → ImportError
+async def test_still_motion_failure_marks_take_failed(client, conns, compiler, wait_takes, owner_ctx, seq,
+                                                      monkeypatch):
+    from sagareel.core.errors import AppError
+    from sagareel.render import still_motion
+
+    def boom(*a, **kw):
+        raise AppError("render_ffmpeg_failed", "ffmpeg lỗi (test)")
+
+    monkeypatch.setattr(still_motion, "make_segment", boom)
     a = clips.create(owner_ctx, seq, {"engine": "still_motion"})
     out = regen(client, {"ids": [a["id"]], "part": "all", "overrides": {"connection": "fake-img"}})
     rows = await wait_takes(out["take_ids"])
-    vid = rows[out["take_ids"][1]]
-    assert vid.status == "failed" and vid.inputs["error_code"] == "not_implemented"
+    img, vid = (rows[i] for i in out["take_ids"])
+    assert img.status == "succeeded"
+    assert vid.status == "failed" and vid.inputs["error_code"] == "render_ffmpeg_failed"
+    with _db(client).session() as s:
+        assert s.get(Clip, a["id"]).flags == {"failed": {"part": "video", "code": "render_ffmpeg_failed"}}
 
 
 def test_dry_run_creates_nothing(client, conns, owner_ctx, seq):
@@ -289,8 +297,8 @@ def test_selector_audio_skip_and_code_anim(client, conns, owner_ctx, seq):
     assert out["estimate"]["parts"]["video"]["jobs"] == 1
     assert out["skipped"] == [{"clip_id": c["id"], "part": "video", "code": "not_implemented",
                                "message": "Engine code_anim chưa được hỗ trợ."}]
-    out = regen(client, {"ids": [a["id"]], "part": "audio"})
-    assert out["job_ids"] == [] and out["skipped"][0]["code"] == "not_implemented"
+    out = regen(client, {"ids": [a["id"]], "part": "audio"})  # clip không có lời thoại → không có job âm thanh
+    assert out["job_ids"] == [] and out["take_ids"] == [] and out["estimate"]["parts"]["audio"]["lines"] == 0
     r = call(client, "clip.regenerate", {"part": "image"})
     assert r.status_code == 422
 
@@ -335,3 +343,21 @@ def test_rewrite_prompt_saves_llm_version(client, owner_ctx, seq):
     with _db(client).session() as s:
         cs = s.query(ChangeSet).order_by(ChangeSet.id.desc()).first()
         assert cs.actor.startswith("llm:") and cs.op_name == "clip.rewrite_prompt"
+
+
+async def test_regenerate_audio_calls_audio_generate(client, conns, owner_ctx, seq):
+    from _fixtures_d import setup_fake_tts, wait_jobs
+    from sagareel.services.audio import dialogue
+
+    setup_fake_tts(client)
+    a = clips.create(owner_ctx, seq, {})
+    line = dialogue.create(owner_ctx, a["id"], "Xin chào các bạn.")
+    dry = regen(client, {"ids": [a["id"]], "part": "audio", "dry_run": True})
+    assert dry["job_ids"] == [] and dry["estimate"]["parts"]["audio"]["lines"] == 1
+    out = regen(client, {"ids": [a["id"]], "part": "audio"})
+    assert len(out["job_ids"]) == 1 and out["take_ids"] == []
+    wait_jobs(client, out["job_ids"])
+    with _db(client).session() as s:
+        from sagareel.db.models import DialogueLine
+
+        assert s.get(DialogueLine, line["id"]).audio_take_id is not None

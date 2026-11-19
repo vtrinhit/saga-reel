@@ -12,6 +12,7 @@ video của clip trước nếu clip đó cũng đang được tạo lại — j
 
 from __future__ import annotations
 
+import functools
 import hashlib
 from typing import Any
 
@@ -296,9 +297,6 @@ def _plan(s: Session, rows: list[Clip], part: str, n: int) -> tuple[list[dict], 
                     after = img_idx[i] if img_idx else parent_video
                     steps.append({"clip": c, "part": "video", "type": typ, "variant": i, "after": after})
                     video_steps.setdefault(c.id, []).append(len(steps) - 1)
-        if part in ("audio", "subtitle"):
-            skipped.append({"clip_id": c.id, "part": part, "code": "not_implemented",
-                            "message": "Tạo lại âm thanh/phụ đề thuộc mô-đun âm thanh (audio.generate)."})
     return steps, skipped
 
 
@@ -423,10 +421,19 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
 
     await anyio.to_thread.run_sync(check_budget, dry_run)
     warnings = sorted({w for _, w in durations.values() if w})
+    audio_job_ids: list[int] = []
+    if part in ("audio", "subtitle", "all"):
+        # Âm thanh/phụ đề thuộc Task D: đọc lại TTS lời thoại (cache theo giọng); phụ đề dựng lúc render từ lời thoại
+        # + mốc từ của take âm thanh nên `subtitle` = bảo đảm âm thanh thoại mới nhất.
+        audio = await _regenerate_audio(ctx, list(info), part, ov, dry_run, skipped)
+        if audio is not None:
+            estimate["parts"]["audio"] = audio["estimate"]
+            audio_job_ids = list(audio.get("job_ids") or [])
     if dry_run:
         return {"job_ids": [], "take_ids": [], "estimate": estimate, "skipped": skipped, "warnings": warnings}
     if not steps:
-        return {"job_ids": [], "take_ids": [], "estimate": estimate, "skipped": skipped, "warnings": warnings}
+        return {"job_ids": audio_job_ids, "take_ids": [], "estimate": estimate, "skipped": skipped,
+                "warnings": warnings}
 
     common = {k: ov[k] for k in ("prompt", "feedback", "assets", "refs", "model") if ov.get(k) is not None}
     select_new = bool(ov.get("select", True))
@@ -485,8 +492,25 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
     res = await anyio.to_thread.run_sync(submit)
     for d in res["jobs"]:
         jobs.notify(ctx.services, d)
-    return {"job_ids": [d["id"] for d in res["jobs"]], "take_ids": res["take_ids"], "estimate": estimate,
-            "skipped": skipped, "warnings": warnings}
+    return {"job_ids": [d["id"] for d in res["jobs"]] + audio_job_ids, "take_ids": res["take_ids"],
+            "estimate": estimate, "skipped": skipped, "warnings": warnings}
+
+
+async def _regenerate_audio(ctx: OpContext, clip_ids: list[int], part: str, ov: dict[str, Any], dry_run: bool,
+                            skipped: list[dict]) -> dict[str, Any] | None:
+    """`audio.generate` (Task D) cho các clip. Với `part=all` lỗi âm thanh (vd. chưa cấu hình TTS) chỉ thành mục
+    `skipped`, không chặn tạo ảnh/video; `part=audio|subtitle` thì lỗi đi thẳng ra ngoài."""
+    from sagareel.services.audio import dialogue
+
+    try:
+        return await anyio.to_thread.run_sync(functools.partial(
+            dialogue.generate, ctx, clip_ids=clip_ids, lang=ov.get("lang"), dry_run=dry_run,
+            force=bool(ov.get("force_audio", part == "audio"))))
+    except AppError as e:
+        if part != "all":
+            raise
+        skipped.extend({"clip_id": cid, "part": "audio", "code": e.code, "message": e.detail} for cid in clip_ids)
+        return None
 
 
 async def regenerate_like(ctx: OpContext, take_id: int, changes: dict[str, Any] | None,
