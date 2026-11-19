@@ -619,6 +619,9 @@ async def _silence(cache_dir: Path, cancel: asyncio.Event | None) -> Path:
 
 
 def _prune(services, keep: set[Path]) -> dict:
+    """Dọn cache phái sinh LRU theo `render.cache_max_gb` / `render.min_free_gb` (tắt bằng `render.cache_auto_prune`)."""
+    if _setting(services, "render.cache_auto_prune") is False:
+        return {"files": 0, "bytes": 0, "skipped": True}
     gb = _setting(services, "render.cache_max_gb")
     free_gb = _setting(services, "render.min_free_gb")
     return cache.prune(services.settings.cache_dir, max_bytes=int(float(gb if gb is not None else 30) * 1024 ** 3),
