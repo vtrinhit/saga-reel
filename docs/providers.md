@@ -68,19 +68,21 @@ Thư mục `<kind>/` mới cần một `__init__.py` (có thể rỗng) để `d
 
 ## Vòng đời dấu gửi (`external_state.state`)
 
-Áp dụng cho mọi POST tốn tiền (MaiVideo, openai_images, multikit). `run.save_external(...)` đã ghi bền khi trả về.
+Áp dụng cho mọi POST tốn tiền (maivideo, openai_images, multikit, openai_tts, openai_stt). `run.save_external(...)`
+đã ghi bền khi trả về.
 
 | Bước | `external_id` | `state` | Ghi chú |
 |---|---|---|---|
 | Ngay trước POST | — | `"submitting"` | kèm `fingerprint` (ảnh) hoặc `client_ref` (multikit) |
-| Provider trả id | id | `"submitted"` | maivideo ghi log mã job **trước** khi lưu |
+| Provider trả id (maivideo, multikit) | id | `"submitted"` | maivideo ghi log mã job **trước** khi lưu |
+| API đồng bộ trả kết quả | — | `"completed"` (openai_images, kèm `result_file`) / `None` (openai_tts/stt) | lần chạy sau không POST lại |
 | Chắc chắn chưa nhận (từ chối kết nối, cổng 502/503/521/522/523/525/526/530, 429, 4xx) | — | `None` (xoá dấu) | rồi mới ném `TransientError` / `ProviderJobError` |
 | Mập mờ (đã gửi mà mất trả lời, 500/504/520/524, JSON hỏng/thiếu id) | — | giữ `"submitting"` | `JobUnknown` → `needs_attention` |
 
 Worker (`_final_values`): lần chạy không thành công (kể cả `TransientError`) khi còn `state == "submitting"` mà
 **chưa có** `external_id` → `needs_attention/job_unknown` (giữ dấu), **không bao giờ** tự chạy lại; chỉ
 `job.clear_attention(action=resubmit|fail)` xoá dấu (xoá cả `external_id`/`external_state`). Lần chạy sau có
-`external_id` → maivideo/openai_images chỉ poll/tải lại, không POST.
+`external_id` → maivideo chỉ poll/tải lại; openai_images thấy `state == "completed"` thì dùng lại file đã tải.
 
 ## Adapter thật
 
@@ -135,6 +137,61 @@ Worker (`_final_values`): lần chạy không thành công (kể cả `Transient
     `TransientError` → `queued`, chờ tiếp đúng job cũ.
 - **Sức khoẻ**: `GET /health` rồi `GET /grok/accounts`; ≥ 1 tài khoản dùng được → `alive`; không → `dead` kèm
   `label: status (reason)` (đã che số điện thoại/@username, không bao giờ đưa `telegramUser`).
+
+### `openai_compat` — LLM qua API tương thích OpenAI (proxy cục bộ, OpenRouter, vLLM…)
+
+- **Cấu hình**: `base_url` (gồm `/v1`, vd. `http://localhost:20128/v1`), `api_key` (tuỳ chọn, Bearer), `default_model`,
+  `vision` (bật), `json_mode` (bật), `timeout_s` (180 s), `stream_usage` (bật).
+- **Năng lực**: `vision`, `json_mode`, `stream`. `chat` gọi `POST /chat/completions`; có `on_delta` thì stream SSE. Ảnh
+  thu nhỏ cạnh dài ≤ 1568 px, JPEG q85, gửi dạng data URL (không bao giờ gửi đường dẫn file). `json_mode` hoặc
+  `stream_options` bị từ chối (400) → tự gửi lại một lần không có trường đó.
+- **Lỗi → trạng thái job**: không gửi POST tốn tiền có dấu (không có `submitting`). 408/429/5xx/timeout/mất kết nối →
+  `TransientError`; 401/403, thiếu `base_url`/model → `provider_unavailable`; ảnh mà kết nối tắt `vision` →
+  `capability_mismatch`; 4xx khác → `provider_rejected`; trả lời rỗng → `provider_empty_response`. Job `llm.run`
+  (`services/llm.py`) thử route kế trong chuỗi dự phòng với mọi lỗi phía provider; hết route thì job lỗi theo lỗi cuối.
+- **Sức khoẻ**: `GET /models`; thiếu `base_url` → `not_configured`; có model → `alive`; mọi lỗi (kể cả 429/5xx) hoặc
+  danh sách rỗng → `dead` (quy tắc 429/5xx → `unknown` chưa áp dụng cho adapter này).
+
+### `edge_tts` — Microsoft Edge TTS (miễn phí)
+
+- **Cấu hình**: không có trường nào (không URL, không khoá). `ProviderService.build()` truyền `cache_dir` cho adapter.
+- **Năng lực**: `word_timings` (sự kiện `WordBoundary`, 100 ns → ms, chữ NFC), `cost: 0`. Giọng từ `list_voices()`,
+  cache 1 ngày ở `cache_dir/edge_voices.json` (mất mạng thì dùng bản cũ).
+- **Cache âm thanh**: `cache_dir/tts/<sha256>.mp3 + .json` (khoá gồm chữ nguyên văn, giọng, rate, pitch, volume,
+  boundary); trúng cache thì chép ra `out_path`, không gọi dịch vụ. Chép từ cache lỗi (`OSError`) → coi như trượt
+  cache, đọc lại.
+- **Lỗi → trạng thái job**: miễn phí nên không có dấu `submitting`. `NoAudioReceived`, lỗi WebSocket/mạng, không có
+  byte âm thanh → `TransientError(retry_after = 20·2^attempt, tối đa 300 s)` → `queued`; job `provider.try_tts` có
+  `max_attempts=6` (thử lại khoảng 10 phút). Giọng/tham số sai định dạng → `failed/provider_invalid_request`. Âm thanh
+  không đọc được → `failed/provider_bad_audio`, file kết quả bị xoá, không ghi cache.
+- **Sức khoẻ**: `list_voices()` có giọng `vi-VN` → `alive`; không có hoặc lỗi mạng → `dead`.
+
+### `openai_tts` — đọc lời qua API tương thích OpenAI
+
+- **Cấu hình**: `base_url` (gồm `/v1`), `api_key` (tuỳ chọn, Bearer), `default_model` (`tts-1`), `speed` (1.0),
+  `voices` (mặc định `alloy, ash, coral, echo, fable, nova, onyx, sage, shimmer`), `health_speech` (bật).
+- **Năng lực**: `POST /audio/speech` (`model`, `input` nguyên văn, `voice`, `response_format=mp3`, `speed`); không có
+  thời điểm từng từ. Chờ đọc tối đa 300 s (kết nối 30 s).
+- **Lỗi → trạng thái job**: POST có dấu `submitting` (xem bảng vòng đời). Không kết nối được, 408/429/502/503/52x →
+  xoá dấu, `TransientError`; "No credentials" hoặc 401/403 → xoá dấu, `failed/provider_unavailable`; 4xx khác → xoá
+  dấu, `failed/provider_rejected`; mất kết nối sau khi gửi, 500/504 → giữ dấu,
+  `needs_attention/openai_tts_job_unknown`. Âm thanh không đọc được → `failed/provider_bad_audio`, file kết quả bị xoá.
+
+### `openai_stt` — nhận dạng lời qua API tương thích OpenAI
+
+- **Cấu hình**: `base_url` (gồm `/v1`), `api_key` (tuỳ chọn), `default_model` (`whisper-1`), `health_speech` (bật).
+- **Năng lực**: `word_timestamps`; `POST /audio/transcriptions` multipart (`file`, `model`,
+  `response_format=verbose_json`, `timestamp_granularities[]=word`, `language`); giây → ms, chữ NFC. Chờ tối đa 300 s.
+  Chưa có kết nối STT nào đang bật → op `provider.try_stt` trả 409 `stt_not_configured` (gợi ý thêm kết nối hoặc dán
+  lời thoại thủ công).
+- **Lỗi → trạng thái job**: như `openai_tts` (mã `openai_stt_job_unknown`); kết quả không đúng `verbose_json` →
+  `failed/provider_bad_response`.
+
+**Sức khoẻ chung của `openai_tts`/`openai_stt`** (`providers/openai_audio.py`): thiếu `base_url` → `not_configured`;
+`GET /models` 401/403 hoặc không kết nối được → `dead`; 429/5xx → `unknown`; 404 (máy chủ không có `/models`) vẫn đi
+tiếp. Khi `health_speech` bật (mặc định) gửi thêm một yêu cầu thật cực ngắn (TTS 1 ký tự, STT một WAV im lặng), vì
+`/models` của LLM proxy vẫn trả 200 khi chưa có backend TTS/STT: "No credentials" → `not_configured`; 429/5xx →
+`unknown`; lỗi khác → `dead`; thành công → `alive`. Tắt `health_speech` thì chỉ đọc `/models` (404 → `unknown`).
 
 ## Số liệu đo thực tế (2026-11-19)
 
@@ -295,23 +352,3 @@ cơ chế (`core.uow.bookkeeping_columns`).
 `provider.delete(confirm_token)` (xoá mềm, token hết hạn sau 10 phút), `provider.check(ids?)`, và chạy thử
 `provider.try_image | try_video | try_tts | try_stt | try_llm` — tạo job cùng tên trên lane của kết nối, trả
 `{"job_id"}`; `dry_run=true` (ảnh/video/TTS) chỉ trả `{"estimate": {...}}`.
-
-## Adapter TTS/STT (Task 14)
-
-| Adapter | File | Ghi chú |
-|---|---|---|
-| `edge_tts` | `providers/tts/edge.py` | Miễn phí, không cần URL/khoá. Thời điểm từng từ (`WordBoundary`, 100 ns → ms, chữ NFC). Giọng từ `list_voices()` cache 1 ngày ở `cache_dir/edge_voices.json`. Cache âm thanh `cache_dir/tts/<sha256>.mp3 + .json` (khoá gồm chữ nguyên văn, giọng, rate, pitch, volume, boundary). `NoAudioReceived`/lỗi WebSocket/mạng → `TransientError(retry_after=20·2^attempt ≤ 300)`. Sức khoẻ: có giọng `vi-VN` → `alive`. |
-| `openai_tts` | `providers/tts/openai_tts.py` | `POST {base}/audio/speech` (`model`, `input`, `voice`, `response_format=mp3`, `speed`). Không có thời điểm từng từ. |
-| `openai_stt` | `providers/stt/openai_stt.py` | `POST {base}/audio/transcriptions` multipart (`model`, `response_format=verbose_json`, `timestamp_granularities[]=word`, `language`). |
-
-Phần chung OpenAI (`providers/openai_audio.py`): sức khoẻ = `GET {base}/models` rồi, vì tuỳ chọn `health_speech`
-**mặc định bật**, một yêu cầu thật cực ngắn (TTS 1 ký tự, STT một WAV im lặng tự tạo); tắt tuỳ chọn thì chỉ đọc
-`/models`. Body lỗi "No credentials" → `not_configured`
-(sức khoẻ) / `provider_unavailable` (job). POST trong job có dấu `submitting`; mất kết nối sau khi gửi hoặc 500/504 →
-`JobUnknown` (`openai_tts_job_unknown` / `openai_stt_job_unknown`).
-
-Chưa có kết nối STT nào đang bật → `provider.try_stt` trả `stt_not_configured` (409) kèm gợi ý thêm kết nối STT hoặc
-dán lời thoại thủ công.
-
-Job `provider.try_tts` được tạo với `max_attempts=6` (`provider_jobs.MAX_ATTEMPTS`): lỗi tạm thời của edge-tts
-được thử lại khoảng 10 phút. `ProviderService.build()` truyền `cache_dir` cho adapter nhận tham số đó (edge_tts).
