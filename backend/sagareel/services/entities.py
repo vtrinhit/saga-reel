@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.types import TypeDecorator
 
-from sagareel.core import secrets
+from sagareel.core import rank, secrets
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, ConfirmRequired, Conflict, NotFound, ValidationFailed
 from sagareel.core.ops import current_op
@@ -216,6 +216,12 @@ def check_values(type_: str, values: dict[str, Any]) -> dict[str, Any]:
     errors = []
     for k, v in values.items():
         coerced, err = _coerce(k, cols[k], v)
+        if err is None and k == "rank":
+            try:
+                rank.validate(coerced)
+            except ValueError:
+                err = {"loc": ["values", k], "msg": "rank không phải khoá thứ tự hợp lệ (dùng core.rank).",
+                       "type": "rank_invalid"}
         if err:
             errors.append(err)
         else:

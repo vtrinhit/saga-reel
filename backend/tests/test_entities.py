@@ -5,14 +5,13 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
-
 from sagareel.core import ops
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, Forbidden
 from sagareel.db.base import Base
 from sagareel.db.models import ChangeSet, Clip, ProviderConnection, Revision, Sequence
 from sagareel.services import entities
+from sqlalchemy import select
 
 
 @pytest.fixture
@@ -107,6 +106,16 @@ def test_patch_rejects_bad_values(ctx, project, values, code):
     with pytest.raises(AppError) as ei:
         entities.patch(ctx, "sequence", sid, values)
     assert ei.value.code == code
+
+
+@pytest.mark.parametrize("bad", ["a00", "zzz", "!", "", "a"])
+def test_patch_rejects_malformed_rank(ctx, project, bad):
+    sid = _seq(ctx, project)
+    (cid,) = _clips(ctx, sid, 1)
+    with pytest.raises(AppError) as ei:
+        entities.patch(ctx, "clip", cid, {"rank": bad})
+    assert ei.value.code == "validation_failed"
+    assert entities.patch(ctx, "clip", cid, {"rank": "a0V"})["rank"] == "a0V"
 
 
 def test_patch_unique_violation_is_conflict(ctx, project):

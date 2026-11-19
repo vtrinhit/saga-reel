@@ -62,6 +62,11 @@ def _validate(key: str) -> None:
         raise ValueError(f"rank: khoá không hợp lệ {key!r}")
 
 
+def validate(key: str) -> None:
+    """Khoá rank hợp lệ? Không → `ValueError` (dùng trước khi ghi rank do client gửi)."""
+    _validate(key)
+
+
 def _increment(x: str) -> str | None:
     head, digs = x[0], list(x[1:])
     i = len(digs) - 1
