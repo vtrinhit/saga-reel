@@ -152,13 +152,10 @@ def test_spine_project_to_tiktok_package(client, settings):
     assert {r["variant"]: r["status"] for r in renders} == {"animatic": "succeeded", "final": "succeeded"}, renders
     final = next(r for r in renders if r["variant"] == "final")
     timeline_ms = final["meta"]["timeline_ms"]
-    # Nối cut/continue (không chồng): layout = tổng độ dài video đang chọn của các clip (ai_video dài theo provider:
-    # 6 s; still_motion = duration_ms của clip), làm tròn khung.
+    # Nối cut/continue (không chồng): layout = tổng `clip.duration_ms` (Task BF: video provider dài hơn bị cắt theo
+    # thời lượng clip, ngắn hơn thì chậm/giữ khung — spec §11), làm tròn khung.
     clips_now = ok(client, "clip.list", {"sequence_id": sid})["items"]
-    with svc.db.session() as s:
-        from sagareel.db.models import Media
-
-        src_ms = [s.get(Media, s.get(Take, c["video_take_id"]).media_id).duration_ms for c in clips_now]
+    src_ms = [c["duration_ms"] for c in clips_now]
     assert abs(timeline_ms - sum(src_ms)) <= 34 * len(src_ms), (timeline_ms, src_ms)
 
     # --- Xuất TikTok -----------------------------------------------------------------------------------------------

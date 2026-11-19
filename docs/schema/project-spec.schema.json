@@ -377,6 +377,21 @@
           "title": "Emotion",
           "type": "string"
         },
+        "key": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Khoá ổn định của câu (cột dialogue_line.key); bỏ trống = theo vị trí",
+          "title": "Key"
+        },
         "offset_ms": {
           "default": 0,
           "title": "Offset Ms",
@@ -1059,6 +1074,21 @@
           "default": null,
           "description": "{\"clip\": key} | {\"sequence_end\": true} | null",
           "title": "End Anchor"
+        },
+        "key": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Khoá ổn định của mục (cột timeline_item.key); bỏ trống = theo vị trí",
+          "title": "Key"
         },
         "media": {
           "anyOf": [
