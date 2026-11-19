@@ -164,17 +164,28 @@ class JobRetryParams(BaseModel):
     params_patch: dict[str, Any] | None = Field(
         default=None, description="Gộp vào params trước khi chạy lại (vd. sửa prompt)"
     )
+    force_new: bool = Field(
+        default=False,
+        description=(
+            "Job đã được provider nhận (có external_id): mặc định chạy lại nối tiếp đúng job đó (không tốn thêm); "
+            "true = xoá external_id/external_state để tạo job trả phí mới"
+        ),
+    )
 
 
 @op(
     "job.retry",
-    summary="Chạy lại job đã xong/thất bại/huỷ/gián đoạn (về queued, attempt=0, gộp params_patch)",
+    summary=(
+        "Chạy lại job đã xong/thất bại/huỷ/gián đoạn (về queued, attempt=0, gộp params_patch); job provider đã nhận "
+        "thì nối lại job cũ, force_new=true để tạo job trả phí mới"
+    ),
     params=JobRetryParams,
     costly=True,
 )
 def job_retry(ctx: OpContext, p: JobRetryParams) -> dict:
     with ctx.services.db.session(immediate=True) as s:
-        items = [jobs.job_dict(jobs.retry_job(s, i, p.params_patch)) for i in dict.fromkeys(p.ids)]
+        items = [jobs.job_dict(jobs.retry_job(s, i, p.params_patch, force_new=p.force_new))
+                 for i in dict.fromkeys(p.ids)]
     _notify_all(ctx, items)
     return {"items": items}
 

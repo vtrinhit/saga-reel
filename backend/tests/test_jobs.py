@@ -74,10 +74,10 @@ def extra_handlers(test_job_handlers):
 
     @jobs.job_handler("test.external", resumable=True)
     async def external_handler(run):
-        await run.save_external("ext-1", phase="submitting")
+        await run.save_external("ext-1", state="submitting")
         await probe.gate(run.job_id).wait()
         try:
-            await run.save_external(phase="submitted")
+            await run.save_external(state="submitted")
         except Exception as e:  # noqa: BLE001 — test ghi lại loại lỗi
             probe.errors[run.job_id] = e
             raise
@@ -405,13 +405,13 @@ async def test_unknown_job_type_fails(svc):
 
 def test_recover_marks_running(services):
     a = insert_job(services, "test.resumable", status="running", external_id="x-1",
-                   external_state={"phase": "submitted"}, attempt=1)
+                   external_state={"state": "submitted"}, attempt=1)
     b = insert_job(services, "test.sleep", status="running")
     c = insert_job(services, "test.sleep", status="queued")
     services.worker.recover()
     assert status(services, a) == "queued" and status(services, b) == "interrupted"
     ja, jb = load(services, a), load(services, b)
-    assert ja.external_id == "x-1" and ja.external_state == {"phase": "submitted"} and ja.attempt == 1
+    assert ja.external_id == "x-1" and ja.external_state == {"state": "submitted"} and ja.attempt == 1
     assert jb.error_code == "interrupted" and jb.error_message
     assert status(services, c) == "queued"
 
@@ -444,11 +444,11 @@ async def test_stop_while_submitting_goes_to_needs_attention(svc):
 
 
 async def test_resumed_job_sees_external_state(svc):
-    a = insert_job(svc, "test.resumable", status="running", external_id="x-9", external_state={"phase": "polling"})
+    a = insert_job(svc, "test.resumable", status="running", external_id="x-9", external_state={"state": "polling"})
     svc.worker.recover()
     await run_until_idle(svc)
     job = load(svc, a)
-    assert job.status == "succeeded" and job.result == {"external_id": "x-9", "external": {"phase": "polling"}}
+    assert job.status == "succeeded" and job.result == {"external_id": "x-9", "external": {"state": "polling"}}
 
 
 async def test_stop_while_running_requeues_resumable_and_interrupts_others(svc):
@@ -512,12 +512,12 @@ async def test_save_external_is_durable_before_returning(svc):
     try:
         # Phiên mới (độc lập với worker) thấy ngay "submitting" + external_id
         await wait_until(lambda: load(svc, a).external_id == "ext-1")
-        assert load(svc, a).external_state == {"phase": "submitting"}
+        assert load(svc, a).external_state == {"state": "submitting"}
         svc.worker_probe.gate(a).set()
         await wait_until(lambda: status(svc, a) == "succeeded")
     finally:
         await svc.worker.stop()
-    assert load(svc, a).external_state == {"phase": "submitted"}
+    assert load(svc, a).external_state == {"state": "submitted"}
 
 
 async def test_save_external_raises_when_job_no_longer_running(svc):
@@ -532,7 +532,7 @@ async def test_save_external_raises_when_job_no_longer_running(svc):
     finally:
         await svc.worker.stop()
     assert isinstance(svc.worker_probe.errors[a], jobs.JobStateLost)
-    assert load(svc, a).external_state == {"phase": "submitting"}
+    assert load(svc, a).external_state == {"state": "submitting"}
 
 
 # --- Huỷ ----------------------------------------------------------------------------------------------------------
@@ -872,6 +872,11 @@ async def test_retry_checks_status_first_and_allows_marker_with_external_id(svc,
     assert "trạng thái 'queued'" in ei.value.detail
     known = insert_job(svc, "test.sleep", status="failed", external_id="p-9", external_state=MARKER)
     out = await ops.invoke("job.retry", {"ids": [known]}, op_ctx)
+    # Provider đã nhận (có external_id): mặc định nối lại job cũ; force_new mới tạo job trả phí mới.
+    assert out["items"][0]["status"] == "queued" and out["items"][0]["external_id"] == "p-9"
+    with svc.db.session() as s:
+        s.get(Job, known).status = "failed"
+    out = await ops.invoke("job.retry", {"ids": [known], "force_new": True}, op_ctx)
     assert out["items"][0]["status"] == "queued" and out["items"][0]["external_id"] is None
 
 
@@ -979,22 +984,23 @@ async def test_job_retry_resets_and_merges_params(svc, op_ctx):
 
 async def test_job_retry_refuses_active_and_attention(svc, op_ctx):
     q = enqueue_job(svc, "test.sleep", {"s": 0})
-    att = insert_job(svc, "test.sleep", status="needs_attention", external_state={"phase": "submitting"})
+    att = insert_job(svc, "test.sleep", status="needs_attention", external_state={"state": "submitting"})
     for jid in (q, att):
         with pytest.raises(AppError) as ei:
             await ops.invoke("job.retry", {"ids": [jid]}, op_ctx)
         assert ei.value.code == "conflict"
-    assert load(svc, att).external_state == {"phase": "submitting"}
+    assert load(svc, att).external_state == {"state": "submitting"}
 
 
 async def test_job_retry_never_wipes_submitting_marker(svc, op_ctx):
     marker = {"state": "submitting"}
     for st in ("failed", "cancelled", "interrupted", "needs_attention"):
         jid = insert_job(svc, "test.sleep", status=st, external_state=marker)
-        with pytest.raises(AppError) as ei:
-            await ops.invoke("job.retry", {"ids": [jid]}, op_ctx)
-        assert ei.value.code == "conflict" and "job.clear_attention" in ei.value.hint
-        assert load(svc, jid).external_state == marker and status(svc, jid) == st
+        for extra in ({}, {"force_new": True}):  # force_new cũng không được xoá dấu
+            with pytest.raises(AppError) as ei:
+                await ops.invoke("job.retry", {"ids": [jid], **extra}, op_ctx)
+            assert ei.value.code == "conflict" and "job.clear_attention" in ei.value.hint
+            assert load(svc, jid).external_state == marker and status(svc, jid) == st
     # đường duy nhất: clear_attention(resubmit) — kể cả job đã dừng còn mang dấu
     cancelled = insert_job(svc, "test.sleep", status="cancelled", external_state=marker, attempt=2)
     out = await ops.invoke("job.clear_attention", {"id": cancelled, "action": "resubmit"}, op_ctx)
@@ -1005,10 +1011,34 @@ async def test_job_retry_never_wipes_submitting_marker(svc, op_ctx):
         await ops.invoke("job.clear_attention", {"id": plain, "action": "resubmit"}, op_ctx)
 
 
+@pytest.mark.parametrize("st", sorted(jobs.RETRYABLE))
+async def test_job_retry_keeps_accepted_provider_job_unless_force_new(svc, op_ctx, st):
+    """Provider đã nhận job (`external_id`): chạy lại giữ `external_*` để nối lại đúng job đó (không trả tiền lần
+    hai); `force_new` mới xoá để tạo job trả phí mới."""
+    ext = {"state": "submitted", "client_ref": "r-1"}
+    kept = insert_job(svc, "test.sleep", status=st, external_id="p-1", external_state=ext, attempt=2)
+    out = (await ops.invoke("job.retry", {"ids": [kept]}, op_ctx))["items"][0]
+    assert (out["status"], out["attempt"], out["external_id"], out["external_state"]) == ("queued", 0, "p-1", ext)
+    fresh = insert_job(svc, "test.sleep", status=st, external_id="p-2", external_state=ext)
+    out = (await ops.invoke("job.retry", {"ids": [fresh], "force_new": True}, op_ctx))["items"][0]
+    assert (out["status"], out["external_id"], out["external_state"]) == ("queued", None, {})
+    assert "trả phí mới" in logs(svc, fresh)
+    # Không có external_id: như cũ — trạng thái provider cũ bị xoá (dấu đã xoá, client_ref…)
+    plain = insert_job(svc, "test.sleep", status=st, external_state={"state": None, "client_ref": "r-3"})
+    out = (await ops.invoke("job.retry", {"ids": [plain]}, op_ctx))["items"][0]
+    assert (out["external_id"], out["external_state"]) == (None, {})
+
+
+def test_job_retry_force_new_param_documented():
+    ops_pkg.load_all()
+    field = ops.REGISTRY["job.retry"].params.model_fields["force_new"]
+    assert field.default is False and "trả phí mới" in field.description
+
+
 async def test_job_clear_attention(svc, op_ctx):
     a = insert_job(svc, "test.resumable", status="needs_attention", error_code="provider_job_unknown",
-                   external_state={"phase": "submitting"})
-    b = insert_job(svc, "test.resumable", status="needs_attention", external_state={"phase": "submitting"})
+                   external_state={"state": "submitting"})
+    b = insert_job(svc, "test.resumable", status="needs_attention", external_state={"state": "submitting"})
     await ops.invoke("job.clear_attention", {"id": a, "action": "resubmit"}, op_ctx)
     await ops.invoke("job.clear_attention", {"id": b, "action": "fail"}, op_ctx)
     ja, jb = load(svc, a), load(svc, b)

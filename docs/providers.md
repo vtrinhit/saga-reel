@@ -60,8 +60,16 @@ Thư mục `<kind>/` mới cần một `__init__.py` (có thể rỗng) để `d
 - **Không I/O trong `__init__`**: adapter được dựng rẻ, nhiều lần. Khởi động app không gọi provider nào.
 - **HTTP**: dùng `async with self.client() as c:` — trả `self.http` nếu người gọi đưa (test), ngược lại mở client tạm
   với `base_url` của kết nối.
-- **Job dài/tốn tiền** (ảnh, video): ngay khi provider trả id, gọi `await run.save_external(id, phase="submitted")`
-  trước khi poll, để khởi động lại nối tiếp đúng job thay vì gửi lại. `run` có thể là `None` khi gọi trực tiếp.
+- **Job dài/tốn tiền** (ảnh, video): khoá dấu là `state`. Ngay trước POST tốn tiền ghi
+  `await run.save_external(None, state="submitting")`; ngay khi provider trả id, gọi
+  `await run.save_external(id, state="submitted")` trước khi poll, để khởi động lại nối tiếp đúng job thay vì gửi lại;
+  provider chắc chắn không nhận → `await run.save_external(None, state=None)` rồi mới ném lỗi. `run` có thể là `None`
+  khi gọi trực tiếp. Handler `provider.try_image`/`provider.try_video` là `resumable` (`provider_job(..., resumable=True)`).
+- **Ngân sách**: handler giữ chỗ trước khi gọi `generate`; không giữ lại khi đã có `external_id`/`state` (nối lại),
+  chỉ trả chỗ khi chắc chắn provider không nhận (lỗi mà không có `external_id`/dấu `submitting`, hoặc người dùng huỷ
+  job chưa được nhận). Tắt app không trả chỗ và không gọi `cancel(external_id)` — chỉ người dùng huỷ mới báo provider.
+- **Chạy lại** (`job.retry`): job đã có `external_id` mặc định nối lại đúng job cũ (không gửi lại);
+  `force_new=true` tạo job trả phí mới.
 - Tôn trọng `run.cancelled` (asyncio.Event) trong vòng poll.
 
 ## Lỗi chuẩn (`providers.base`)

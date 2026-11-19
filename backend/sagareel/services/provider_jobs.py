@@ -3,7 +3,9 @@
 `params` của job chỉ chứa `connection_id` (không bao giờ có khoá API) và các trường của request. Thứ tự trong handler
 tạo media (ràng buộc UnitOfWork/khoá ghi SQLite):
 1. một phiên ngắn giữ khoá ghi: giữ chỗ ngân sách (`budget.reserve` — kiểm tra trần + chèn dòng `spend` của job);
-2. gọi provider — thất bại/huỷ thì `budget.release` trả chỗ;
+   bỏ qua khi provider có thể đã nhận job (`external_id`/`external_state.state`, vd. nối lại sau khi tắt app);
+2. gọi provider — chỉ trả chỗ (`budget.release`) khi chắc chắn provider không nhận (kể cả người dùng huỷ); tắt app
+   hoặc lỗi sau khi provider đã/có thể đã nhận → giữ chỗ (xem `_paid`);
 3. `media.prepare` (băm/probe/đặt file) — **ngoài** mọi transaction;
 4. một phiên ngắn giữ khoá ghi: `media.record` + `budget.finalize`;
 5. `media.reconcile` sau commit.
@@ -111,8 +113,13 @@ def _redacted(e: Exception, secret: str) -> Exception:
     return ProviderCrash(f"{type(e).__name__}: {r(str(e))}")
 
 
-def provider_job(type_: str) -> Callable[[Callable[[JobRun], Awaitable[dict]]], Callable[[JobRun], Awaitable[dict]]]:
-    """`job_handler(type_)` kèm che khoá API của kết nối (`params.connection_id`) trong mọi lỗi thoát ra."""
+def provider_job(
+    type_: str, *, resumable: bool = False
+) -> Callable[[Callable[[JobRun], Awaitable[dict]]], Callable[[JobRun], Awaitable[dict]]]:
+    """`job_handler(type_, resumable=...)` kèm che khoá API của kết nối (`params.connection_id`) trong mọi lỗi thoát ra.
+
+    `resumable=True` cho handler mà adapter nối lại được từ `external_id`/dấu `submitting` mà không POST lại.
+    """
 
     def decorator(fn: Callable[[JobRun], Awaitable[dict]]) -> Callable[[JobRun], Awaitable[dict]]:
         @functools.wraps(fn)
@@ -128,7 +135,7 @@ def provider_job(type_: str) -> Callable[[Callable[[JobRun], Awaitable[dict]]], 
                     raise
                 raise out from None
 
-        job_handler(type_)(wrapper)
+        job_handler(type_, resumable=resumable)(wrapper)
         return fn
 
     return decorator
@@ -144,14 +151,44 @@ def _release(services: Services, job_id: int) -> None:
         budget.release(s, job_id)
 
 
+def provider_may_hold_job(run: JobRun) -> bool:
+    """Provider có thể đã nhận (và tính tiền) job này: có `external_id` hoặc `external_state.state` khác rỗng
+    (`submitting` — không rõ; `submitted`). Dấu đã xoá (`state=None`) = lần gửi gần nhất chắc chắn không được nhận."""
+    return bool(run.external_id) or bool((run.external or {}).get("state"))
+
+
+async def _settle(fut: asyncio.Future) -> None:
+    """Chờ `fut` xong hẳn (kể cả khi bị huỷ thêm lần nữa); bỏ qua kết quả/lỗi của nó."""
+    while not fut.done():
+        with contextlib.suppress(BaseException):
+            await asyncio.shield(fut)
+    if not fut.cancelled():
+        fut.exception()  # đã xem lỗi (nếu có): không cảnh báo "exception was never retrieved"
+
+
 async def _paid(run: JobRun, adapter: Adapter, kind: str, units: float, generate: Callable[[], Awaitable[Any]]) -> Any:
-    """Giữ chỗ ngân sách → gọi provider; provider lỗi/bị huỷ → trả chỗ rồi ném lại."""
-    await anyio.to_thread.run_sync(_reserve, run.services, kind, units, run.job_id, adapter.conn.id)
+    """Giữ chỗ ngân sách → gọi provider. Không bao giờ để tiền đã tiêu ra khỏi sổ:
+
+    - provider có thể đã nhận job (`provider_may_hold_job`, vd. nối lại sau khi tắt app): không giữ chỗ lại (dòng cũ
+      vẫn còn) và không bao giờ thất bại vì `budget_exceeded`;
+    - chỉ trả chỗ khi chắc chắn provider không nhận (lỗi mà không có `external_id`/dấu `submitting`), kể cả khi người
+      dùng huỷ; tắt app (`CancelledError` mà `run.cancelled` chưa đặt) không trả chỗ — job nối lại sau;
+    - giữ chỗ chạy trong luồng riêng: bị huỷ giữa chừng thì chờ luồng ghi xong rồi mới trả (không sót dòng).
+    """
+    reserving: asyncio.Future | None = None
     try:
+        if not provider_may_hold_job(run):
+            reserving = asyncio.ensure_future(
+                anyio.to_thread.run_sync(_reserve, run.services, kind, units, run.job_id, adapter.conn.id))
+            await asyncio.shield(reserving)
         return await generate()
-    except BaseException:
-        with contextlib.suppress(Exception):
-            await asyncio.shield(anyio.to_thread.run_sync(_release, run.services, run.job_id))
+    except BaseException as e:
+        if reserving is not None:
+            await _settle(reserving)
+        shutdown = isinstance(e, asyncio.CancelledError) and not run.cancelled.is_set()
+        if not shutdown and not provider_may_hold_job(run):
+            with contextlib.suppress(Exception):
+                await asyncio.shield(anyio.to_thread.run_sync(_release, run.services, run.job_id))
         raise
 
 
@@ -186,7 +223,7 @@ async def _store(
     return [row.id for row in rows]
 
 
-@provider_job(TRY_IMAGE)
+@provider_job(TRY_IMAGE, resumable=True)
 async def try_image(run: JobRun) -> dict:
     p = run.params
     adapter = await _adapter(run, "image")
@@ -204,7 +241,7 @@ async def try_image(run: JobRun) -> dict:
             "adapter": adapter.adapter_id}
 
 
-@provider_job(TRY_VIDEO)
+@provider_job(TRY_VIDEO, resumable=True)
 async def try_video(run: JobRun) -> dict:
     p = run.params
     adapter = await _adapter(run, "video")
@@ -220,7 +257,9 @@ async def try_video(run: JobRun) -> dict:
         try:
             return await adapter.generate(req, run)
         except asyncio.CancelledError:
-            if run.external_id:  # báo provider huỷ job phía họ (không chờ lâu, không che việc huỷ)
+            # Chỉ khi NGƯỜI DÙNG huỷ mới báo provider huỷ job phía họ (không chờ lâu, không che việc huỷ). Tắt app thì
+            # để job phía provider chạy tiếp: lần khởi động sau nối lại đúng job đó.
+            if run.cancelled.is_set() and run.external_id:
                 with contextlib.suppress(Exception):
                     await asyncio.shield(asyncio.wait_for(adapter.cancel(run.external_id), 10))
             raise

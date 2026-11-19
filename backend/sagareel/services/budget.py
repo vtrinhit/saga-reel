@@ -6,9 +6,11 @@
   tra bỏ qua kết nối giả.
 - **Giữ chỗ (job tạo ảnh/video):** trước khi gọi provider, `reserve` kiểm tra trần và chèn dòng `spend` của job trong
   **một** phiên ngắn giữ khoá ghi (`db.session(immediate=True)`) — các job chạy song song thấy chỗ đã giữ của nhau nên
-  tổng **không bao giờ vượt trần**. Thành công → `finalize` (chỉnh `units` theo kết quả thật); provider thất bại hoặc
-  job bị huỷ → `release` xoá chỗ đã giữ. Dòng giữ chỗ và dòng chốt giống nhau (cùng được tính); khoá là `job_id`, và
-  `reserve` lại cho cùng job (thử lại sau lỗi tạm thời) thay chỗ cũ thay vì giữ thêm.
+  tổng **không bao giờ vượt trần**. Thành công → `finalize` (chỉnh `units` theo kết quả thật); chỉ khi chắc chắn
+  provider không nhận job (lỗi trước/không có `external_id`, hoặc người dùng huỷ job chưa được nhận) → `release` xoá
+  chỗ đã giữ — tắt app hay lỗi sau khi provider đã nhận đều giữ nguyên (xem `services/provider_jobs._paid`). Dòng giữ
+  chỗ và dòng chốt giống nhau (cùng được tính); khoá là `job_id`, và `reserve` lại cho cùng job (thử lại sau lỗi tạm
+  thời) thay chỗ cũ thay vì giữ thêm — trừ khi job đã có `external_id` (giữ dòng cũ, không kiểm tra trần).
 - `check` (không ghi) dùng để chặn sớm ở op; `check_and_record` = `check` + `record` trong cùng phiên.
 """
 
@@ -22,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from sagareel.core.errors import AppError
 from sagareel.core.resolver import Resolver, default_resolver
-from sagareel.db.models import ProviderConnection, Spend
+from sagareel.db.models import Job, ProviderConnection, Spend
 from sagareel.services.settings import global_layer
 
 FAKE_PREFIX = "fake_"
@@ -131,7 +133,16 @@ def reserve(
     resolver: Resolver | None = None,
 ) -> Spend:
     """Giữ chỗ cho job: bỏ chỗ cũ của chính job này, `check`, rồi chèn dòng `spend`. Gọi trong phiên giữ khoá ghi
-    (`db.session(immediate=True)`) để hai job không cùng lọt trần; vượt trần → `budget_exceeded` (không ghi gì)."""
+    (`db.session(immediate=True)`) để hai job không cùng lọt trần; vượt trần → `budget_exceeded` (không ghi gì).
+
+    Job đã được provider nhận (`job.external_id`): tiền đã/sẽ bị tính → không xoá dòng cũ của job (trả lại dòng đó để
+    `finalize` chốt khi xong), không kiểm tra trần; chưa có dòng nào thì ghi mới."""
+    accepted = session.scalar(select(Job.external_id).where(Job.id == job_id))
+    if accepted:
+        row = session.scalars(
+            select(Spend).where(Spend.job_id == job_id, Spend.kind == kind).order_by(Spend.id)
+        ).first()
+        return row if row is not None else record(session, kind, units, job_id, connection_id)
     release(session, job_id)
     check(session, kind, units, connection_id, resolver=resolver)
     return record(session, kind, units, job_id, connection_id)

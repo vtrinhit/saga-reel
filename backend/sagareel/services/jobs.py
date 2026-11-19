@@ -7,7 +7,8 @@ qua `anyio.to_thread.run_sync`.
 Chống tạo trùng job tốn tiền:
 - `enqueue(..., client_ref=...)` trả lại job **chưa kết thúc** cùng `client_ref` thay vì tạo mới (chỉ an toàn khi
   gọi trong phiên giữ khoá ghi — `db.session(immediate=True)` hoặc session của UnitOfWork; `submit` làm sẵn).
-- Retry tạm thời, khôi phục sau khởi động lại và tắt app đều **giữ** `external_id`/`external_state`.
+- Retry tạm thời, khôi phục sau khởi động lại và tắt app đều **giữ** `external_id`/`external_state`; `retry_job` (op
+  `job.retry`) cũng giữ khi đã có `external_id`, trừ khi `force_new=True` (tạo job trả phí mới).
 - Dấu `submitting` chưa có `external_id` (không rõ provider đã nhận POST chưa): worker không bao giờ chạy lại job đó
   (mọi kết quả không thành công, job `queued` mang dấu, khôi phục/tắt app → `needs_attention`/`job_unknown`, giữ dấu).
   Chỉ `clear_attention` (`resubmit` hoặc `fail`) mới xoá dấu; `retry_job` từ chối job mang dấu và job `needs_attention`.
@@ -350,10 +351,14 @@ def _reset_for_run(job: Job) -> None:
     job.finished_at = None
 
 
-def retry_job(session: Session, job_id: int, params_patch: dict | None = None) -> Job:
+def retry_job(
+    session: Session, job_id: int, params_patch: dict | None = None, *, force_new: bool = False
+) -> Job:
     """Chạy lại một job đã xong/thất bại/huỷ/bị gián đoạn: đặt lại thành `queued`, `attempt=0`, gộp `params_patch`.
 
-    Dùng lại chính dòng job (id giữ nguyên cho UI); kết quả cũ, trạng thái provider cũ bị xoá — đây là lần gửi mới.
+    Dùng lại chính dòng job (id giữ nguyên cho UI); kết quả cũ bị xoá. Provider đã nhận job (`external_id`): mặc định
+    **giữ** `external_id`/`external_state` để lần chạy tới nối lại (poll) đúng job đó — không trả tiền lần hai;
+    `force_new=True` xoá chúng → tạo job trả phí mới. Chưa có `external_id`: trạng thái provider cũ bị xoá như trước.
     """
     job = get_job(session, job_id)
     if job.status not in RETRYABLE:
@@ -378,16 +383,22 @@ def retry_job(session: Session, job_id: int, params_patch: dict | None = None) -
                 f"Đã có job #{twin} đang hoạt động cho cùng nội dung (client_ref).",
                 hint=f"Theo dõi hoặc huỷ job #{twin} trước khi chạy lại.",
             )
+    resume = bool(job.external_id) and not force_new
+    new_paid = bool(job.external_id) and force_new
     _reset_for_run(job)
     job.attempt = 0
     job.result = {}
     job.cost_actual = {}
-    job.external_id = None
-    job.external_state = {}
+    if not resume:
+        job.external_id = None
+        job.external_state = {}
     if params_patch:
         job.params = {**(job.params or {}), **params_patch}
     session.flush()
-    add_log(session, job.id, "info", "Chạy lại theo yêu cầu" + (" (có sửa tham số)" if params_patch else "") + ".")
+    how = (" — nối lại job đã gửi tới provider (không gửi lại)" if resume
+           else " — tạo job trả phí mới phía provider" if new_paid else "")
+    add_log(session, job.id, "info",
+            "Chạy lại theo yêu cầu" + (" (có sửa tham số)" if params_patch else "") + how + ".")
     return job
 
 
@@ -471,6 +482,11 @@ def cancel_idle(session: Session, job_id: int) -> Job | None:
     add_log(session, job_id, "info", "Đã huỷ.")
     job = session.get(Job, job_id)
     session.refresh(job)
+    if not job.external_id and not (job.external_state or {}).get(SUBMIT_MARKER_KEY):
+        # Người dùng huỷ job provider chưa từng nhận: trả chỗ ngân sách còn sót (vd. từ lần tắt app trước khi gửi).
+        from sagareel.services import budget
+
+        budget.release(session, job_id)
     return job
 
 

@@ -813,3 +813,291 @@ async def test_try_image_maivideo_success_after_429(client, run_jobs):
         m = s.get(Media, job["result"]["media_ids"][0])
         assert m.kind == "image" and m.origin == "generated" and (m.width, m.height) == (48, 64)
         assert [(x.kind, x.connection_id) for x in s.scalars(select(Spend)).all()] == [("image", cid)]
+
+
+def test_try_video_is_resumable():
+    """Như ảnh: app tắt khi đang poll job Grok → `queued`, nối lại đúng job (không gửi lại)."""
+    from sagareel.services import jobs, provider_jobs
+
+    assert jobs.get_handler(provider_jobs.TRY_VIDEO).resumable
+
+
+# --- Post-merge A: tiền an toàn cho job trả tiền (giữ chỗ ngân sách, huỷ, tắt app) -----------------------------------
+
+
+class Ctl:
+    """Điều khiển adapter "trả tiền" của test: lần gửi mới làm gì (`mode`), đếm số lần gửi, ghi các lần huỷ."""
+
+    def __init__(self) -> None:
+        import asyncio
+
+        self.mode = "accept"
+        self.submits = 0
+        self.cancels: list[str] = []
+        self.gate = asyncio.Event()  # adapter chờ ở đây (đang "poll"); test mở để job xong
+
+    async def generate(self, req, run, finish):
+        import asyncio
+
+        from sagareel.providers.base import JobUnknown
+
+        if not run.external_id:
+            if self.mode == "hang_before_submit":
+                await asyncio.sleep(30)
+            await run.save_external(None, state="submitting")
+            self.submits += 1
+            if self.mode == "reject":  # chắc chắn không nhận: xoá dấu rồi ném
+                await run.save_external(None, state=None)
+                raise ProviderJobError("rejected", "Provider từ chối (test).")
+            if self.mode == "unknown":
+                raise JobUnknown("Không rõ provider đã nhận chưa (test).", code="ctl_job_unknown")
+            if self.mode == "hang_submitting":
+                await asyncio.sleep(30)
+            await run.save_external(f"p-{run.job_id}", state="submitted")
+            if self.mode == "fail_after_accept":
+                raise ProviderJobError("failed", "Provider báo job lỗi sau khi đã nhận (test).")
+        await self.gate.wait()
+        return finish()
+
+
+@pytest.fixture
+def ctl(services):
+    """Adapter ảnh + video "trả tiền" (id không bắt đầu bằng fake_) điều khiển bởi `Ctl`; worker của `services`."""
+    from sagareel.providers.base import ImageResult
+    from sagareel.providers.fake.image import FakeImageAdapter
+    from sagareel.providers.fake.video import FakeVideoAdapter
+    from sagareel.services import provider_jobs  # noqa: F401 — đăng ký handler provider.try_*
+
+    c = Ctl()
+
+    class CtlImage(FakeImageAdapter):
+        adapter_id = "test_ctl_image"
+        label = "Ảnh trả tiền điều khiển được (test)"
+
+        async def generate(self, req, run=None):
+            def finish():
+                req.out_dir.mkdir(parents=True, exist_ok=True)
+                path = req.out_dir / "a.png"
+                Image.new("RGB", (48, 64), (10, 20, 30)).save(path)
+                return ImageResult(paths=[path], meta={})
+
+            return await c.generate(req, run, finish)
+
+    class CtlVideo(FakeVideoAdapter):
+        adapter_id = "test_ctl_video"
+        label = "Video trả tiền điều khiển được (test)"
+
+        async def generate(self, req, run=None):
+            def finish():  # pragma: no cover — test video không bao giờ chạy tới cuối
+                raise AssertionError("không dùng")
+
+            return await c.generate(req, run, finish)
+
+        async def cancel(self, external_id):
+            c.cancels.append(external_id)
+
+    registry.register_adapter(CtlImage)
+    registry.register_adapter(CtlVideo)
+    services.settings.data_dir.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (9, 16)).save(services.settings.data_dir / "i.png")  # ảnh đầu vào của job video
+    with services.db.session() as s:
+        c.image_conn = add_connection(s, kind="image", adapter="test_ctl_image", name="ctl-img").id
+        c.video_conn = add_connection(s, kind="video", adapter="test_ctl_video", name="ctl-vid").id
+        m = Media(kind="image", path="i.png", mime="image/png", size=1, sha256="3" * 64, origin="fake", meta={},
+                  width=9, height=16)
+        s.add(m)
+        s.flush()
+        c.image_media = m.id
+        set_global(s, **{"budget.images_total": 1, "budget.videos_total": 1})
+    try:
+        yield c
+    finally:
+        c.gate.set()
+        registry.unregister("test_ctl_image")
+        registry.unregister("test_ctl_video")
+
+
+def submit_try(services, ctl, kind: str = "image") -> int:
+    from sagareel.services import jobs, provider_jobs
+
+    if kind == "image":
+        params = {"connection_id": ctl.image_conn, "prompt": "a", "aspect": "9:16", "resolution": "1080p"}
+        return jobs.submit(services, provider_jobs.TRY_IMAGE, params, lane="L")["id"]
+    params = {"connection_id": ctl.video_conn, "image_media_id": ctl.image_media, "prompt": "v", "duration": 6,
+              "resolution": "720p", "aspect": "9:16"}
+    return jobs.submit(services, provider_jobs.TRY_VIDEO, params, lane="L")["id"]
+
+
+def job_row(services, job_id) -> Job:
+    with services.db.session() as s:
+        return s.get(Job, job_id)
+
+
+def spends(services) -> list[tuple[int, int | None, float]]:
+    with services.db.session() as s:
+        return [(x.id, x.job_id, x.units) for x in s.scalars(select(Spend).order_by(Spend.id))]
+
+
+def active_jobs(services) -> int:
+    with services.db.session() as s:
+        return len(list(s.scalars(select(Job.id).where(Job.status.in_(("queued", "running"))))))
+
+
+async def until(pred, timeout: float = 10.0) -> None:
+    import asyncio
+
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not await anyio.to_thread.run_sync(pred):
+        if asyncio.get_running_loop().time() > deadline:
+            raise AssertionError("Hết giờ chờ điều kiện")
+        await asyncio.sleep(0.01)
+
+
+async def run_idle(services) -> None:
+    w = services.worker
+    await w.start()
+    try:
+        await until(lambda: w.running_count() == 0 and active_jobs(services) == 0)
+    finally:
+        await w.stop()
+
+
+@pytest.mark.parametrize("kind", ["image", "video"])
+async def test_stop_mid_poll_keeps_reservation_and_does_not_cancel_on_provider(services, ctl, kind):
+    """Tắt app khi provider đã nhận job: không trả chỗ ngân sách, không báo provider huỷ; job về `queued`."""
+    job_id = submit_try(services, ctl, kind)
+    await services.worker.start()
+    try:
+        await until(lambda: job_row(services, job_id).external_id == f"p-{job_id}")
+    finally:
+        await services.worker.stop()
+    job = job_row(services, job_id)
+    assert job.status == "queued", (job.status, job.error_code)
+    assert job.external_id == f"p-{job_id}" and job.external_state == {"state": "submitted"}
+    assert [(j, u) for _, j, u in spends(services)] == [(job_id, 1.0)]
+    assert ctl.cancels == []
+
+
+async def test_resume_after_stop_reserves_nothing_and_never_fails_on_budget(services, ctl):
+    job_id = submit_try(services, ctl)
+    await services.worker.start()
+    try:
+        await until(lambda: job_row(services, job_id).external_id == f"p-{job_id}")
+    finally:
+        await services.worker.stop()
+    [(row_id, _, _)] = spends(services)
+    with services.db.session() as s:  # job khác dùng hết trần trong lúc app tắt
+        budget.record(s, "image", 1, None, ctl.image_conn)
+    ctl.gate.set()
+    await run_idle(services)
+    job = job_row(services, job_id)
+    assert job.status == "succeeded", (job.status, job.error_code, job.error_message)
+    assert ctl.submits == 1  # nối lại job cũ, không gửi lại
+    assert [(r, j, u) for r, j, u in spends(services) if j == job_id] == [(row_id, job_id, 1.0)]
+    assert len(spends(services)) == 2
+
+
+async def test_definite_rejection_releases_reservation(services, ctl):
+    ctl.mode = "reject"
+    job_id = submit_try(services, ctl)
+    await run_idle(services)
+    job = job_row(services, job_id)
+    assert (job.status, job.error_code) == ("failed", "provider_rejected")
+    assert ctl.submits == 1 and spends(services) == []
+
+
+@pytest.mark.parametrize("mode, status", [("unknown", "needs_attention"), ("fail_after_accept", "failed")])
+async def test_failure_after_provider_may_have_charged_keeps_reservation(services, ctl, mode, status):
+    """Dấu `submitting` còn (không rõ) hoặc đã có `external_id` (provider đã nhận): không trả chỗ."""
+    ctl.mode = mode
+    job_id = submit_try(services, ctl)
+    await run_idle(services)
+    assert job_row(services, job_id).status == status
+    assert [(j, u) for _, j, u in spends(services)] == [(job_id, 1.0)]
+
+
+@pytest.mark.parametrize("mode, released", [("hang_before_submit", True), ("hang_submitting", False),
+                                            ("accept", False)])
+async def test_user_cancel_releases_only_never_accepted(services, ctl, mode, released):
+    ctl.mode = mode
+    job_id = submit_try(services, ctl, "video")
+    await services.worker.start()
+    try:
+        await until(lambda: bool(spends(services)) and (
+            mode == "hang_before_submit" or job_row(services, job_id).external_state.get("state") is not None))
+        if mode == "accept":
+            await until(lambda: job_row(services, job_id).external_id is not None)
+        assert await services.worker.cancel(job_id)
+    finally:
+        await services.worker.stop()
+    assert job_row(services, job_id).status == "cancelled"
+    assert [(j, u) for _, j, u in spends(services)] == ([] if released else [(job_id, 1.0)])
+    assert ctl.cancels == ([f"p-{job_id}"] if mode == "accept" else [])  # chỉ huỷ phía provider khi người dùng huỷ
+
+
+async def test_cancel_landing_during_reserve_does_not_leak_a_row(services, ctl, monkeypatch):
+    import asyncio
+    import threading
+
+    from sagareel.services import provider_jobs
+
+    entered, go, done = threading.Event(), threading.Event(), threading.Event()
+    orig = provider_jobs._reserve
+
+    def slow_reserve(*args):
+        entered.set()
+        go.wait(10)
+        try:
+            orig(*args)
+        finally:
+            done.set()
+
+    monkeypatch.setattr(provider_jobs, "_reserve", slow_reserve)
+    job_id = submit_try(services, ctl)
+    await services.worker.start()
+    try:
+        assert await anyio.to_thread.run_sync(entered.wait, 10)
+        cancelling = asyncio.create_task(services.worker.cancel(job_id))
+        await asyncio.sleep(0.2)  # huỷ tới trước khi luồng giữ chỗ kịp ghi
+        go.set()
+        assert await cancelling
+    finally:
+        go.set()
+        await services.worker.stop()
+    assert await anyio.to_thread.run_sync(done.wait, 10)  # luồng giữ chỗ đã ghi xong (nếu có ghi)
+    assert job_row(services, job_id).status == "cancelled"
+    assert spends(services) == []
+
+
+def test_reserve_never_drops_or_blocks_row_of_accepted_job(session):
+    """Job đã được provider nhận (`external_id`): `reserve` giữ nguyên dòng cũ, không kiểm tra trần."""
+    conn = add_connection(session)
+    set_global(session, **{"budget.images_total": 1})
+    job = Job(type="provider.try_image", status="running", lane="L", params={}, external_id="p-1")
+    session.add(job)
+    session.flush()
+    row = budget.record(session, "image", 1, job.id, conn.id)
+    budget.record(session, "image", 1, None, conn.id)  # trần đã đầy
+    assert budget.reserve(session, "image", 1, job.id, conn.id).id == row.id
+    assert budget.spent(session, "image") == 2
+    other = Job(type="provider.try_image", status="running", lane="L", params={}, external_id="p-2")
+    session.add(other)
+    session.flush()
+    budget.reserve(session, "image", 1, other.id, conn.id)  # đã tiêu tiền: ghi, không ném budget_exceeded
+    assert budget.spent(session, "image") == 3
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+def test_cancel_idle_job_releases_only_never_accepted(services, ctl, accepted):
+    """Job `queued` còn chỗ giữ từ lần tắt app: người dùng huỷ → trả chỗ nếu provider chưa nhận."""
+    from sagareel.services import jobs
+
+    job_id = submit_try(services, ctl)
+    with services.db.session() as s:
+        budget.record(s, "image", 1, job_id, ctl.image_conn)
+        if accepted:
+            j = s.get(Job, job_id)
+            j.external_id, j.external_state = "p-9", {"state": "submitted"}
+    with services.db.session() as s:
+        assert jobs.cancel_idle(s, job_id) is not None
+    assert len(spends(services)) == (1 if accepted else 0)
