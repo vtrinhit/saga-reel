@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeVar
@@ -20,6 +21,7 @@ import anyio
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from sagareel import local_agent
 from sagareel.container import Services
 from sagareel.core import security
 from sagareel.core.context import OpContext
@@ -28,6 +30,8 @@ from sagareel.core.security import LoginLimiter, Principal, RateKey, too_many_at
 from sagareel.db.base import utcnow
 from sagareel.db.models import ApiToken, AuthSecret, AuthSession
 from sagareel.services.settings import global_layer
+
+logger = logging.getLogger("sagareel.auth")
 
 ROLES = ("owner", "viewer")
 SESSION_TTL = timedelta(hours=12)
@@ -328,6 +332,10 @@ async def set_password(ctx: OpContext, role: str, password: str, current_passwor
     new_hash = await anyio.to_thread.run_sync(security.hash_password, password, limiter=verify_limiter)
     result = await anyio.to_thread.run_sync(_store_password, services, role, new_hash, changing)
     invalidate(services)
+    if role == "owner" and changing:
+        # Đổi mật khẩu chủ đã thu hồi mọi token owner, kể cả token agent cục bộ → cấp token mới vào file (chỉ ai
+        # đọc được thư mục data mới lấy được), CLI cục bộ không phải chờ khởi động lại app.
+        await anyio.to_thread.run_sync(ensure_local_agent_token_safe, services)
     return result
 
 
@@ -368,6 +376,12 @@ def _token_dict(t: ApiToken, now: datetime) -> dict:
 def create_token(ctx: OpContext, name: str, role: str, expires_days: int | None) -> dict:
     """Tạo token API; token thô chỉ có trong kết quả này (DB chỉ giữ sha256)."""
     _no_token(ctx, "tạo token API")
+    if name.strip().lower() == local_agent.TOKEN_NAME:
+        raise ValidationFailed(
+            f"Tên `{local_agent.TOKEN_NAME}` dành riêng cho token agent cục bộ của app.",
+            hint="Chọn tên khác cho token.",
+            extra={"errors": [{"loc": ["name"], "msg": "Tên dành riêng.", "type": "reserved_name"}]},
+        )
     if role == "viewer" and not load_access_config(ctx.services).viewer_enabled:
         raise ValidationFailed(
             "Vai trò người xem chưa được bật.",
@@ -430,3 +444,70 @@ def revoke_session(ctx: OpContext, session_id: int) -> dict:
         if row.revoked_at is None:
             row.revoked_at = utcnow()
         return _session_dict(row, utcnow())
+
+
+# --- Token agent cục bộ (`data/local-agent.token`) ----------------------------------------------------------------
+
+
+def _local_agent_row_valid(row: ApiToken | None) -> bool:
+    return (
+        row is not None
+        and row.name == local_agent.TOKEN_NAME
+        and row.role == "owner"
+        and row.revoked_at is None
+        and row.expires_at is None
+    )
+
+
+def _revoke_local_agent_rows(s: Session, now: datetime) -> int:
+    return s.execute(
+        update(ApiToken)
+        .where(ApiToken.name == local_agent.TOKEN_NAME, ApiToken.revoked_at.is_(None))
+        .values(revoked_at=now)
+    ).rowcount or 0
+
+
+def ensure_local_agent_token(services: Services) -> str:
+    """Bảo đảm `<data>/local-agent.token` chứa token API owner còn hiệu lực (tên `local-agent`, không hạn).
+
+    File thiếu, nội dung lạ, hoặc token đã thu hồi/không có trong DB → tạo token mới: ghi file trước (ACL riêng người
+    dùng), rồi trong một phiên ngắn thu hồi mọi dòng `local-agent` cũ và thêm dòng mới (DB chỉ giữ hash). Không ghi
+    được file → thu hồi dòng cũ, không tạo dòng mới (không để token sống mà không ai giữ). Trả `kept|created|failed`;
+    **không bao giờ** trả, log hay in token thô.
+    """
+    path = local_agent.token_path(services.settings.data_dir)
+    raw = local_agent.read_token(path)
+    if raw is not None:
+        with services.db.session() as s:
+            row = s.scalars(select(ApiToken).where(ApiToken.token_hash == security.sha256_hex(raw))).first()
+            if _local_agent_row_valid(row):
+                return "kept"
+    raw, digest = security.new_secret_token()
+    try:
+        local_agent.write_token_file(path, raw)
+    except OSError as e:
+        logger.warning(
+            "Không ghi được file token agent cục bộ %s (%s); CLI/MCP trên máy này cần đặt SAGAREEL_TOKEN.",
+            path,
+            e.strerror or type(e).__name__,
+        )
+        with services.db.session() as s:
+            _revoke_local_agent_rows(s, utcnow())
+        return "failed"
+    with services.db.session(immediate=True) as s:
+        _revoke_local_agent_rows(s, utcnow())
+        s.add(ApiToken(name=local_agent.TOKEN_NAME, token_hash=digest, role="owner", expires_at=None))
+    logger.info("Đã tạo token agent cục bộ mới (file %s).", path)
+    return "created"
+
+
+def ensure_local_agent_token_safe(services: Services) -> str:
+    """Như `ensure_local_agent_token` nhưng lỗi bất ngờ chỉ cảnh báo (không chặn khởi động / đổi mật khẩu).
+
+    Chỉ log tên kiểu lỗi: thông điệp lỗi SQL có thể kèm tham số (hash token).
+    """
+    try:
+        return ensure_local_agent_token(services)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Không chuẩn bị được token agent cục bộ (%s).", type(e).__name__)
+        return "failed"

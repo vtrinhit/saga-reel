@@ -168,7 +168,8 @@ def test_token_raw_shown_once(local_client):
     assert r.status_code == 200
     raw = r.json()["token"]
     assert raw.startswith("sr_")
-    listed = _op(local_client, "token.list").json()
+    # Bỏ token agent cục bộ (Task 8b, app tạo lúc khởi động).
+    listed = [t for t in _op(local_client, "token.list").json() if t["name"] != "local-agent"]
     assert len(listed) == 1 and listed[0]["name"] == "agent1" and listed[0]["active"] is True
     text = str(listed)
     assert raw not in text and hashlib.sha256(raw.encode()).hexdigest() not in text
@@ -463,7 +464,8 @@ def test_password_change_revokes_sessions_and_tokens_of_role(local_client, remot
     assert _op(remote_client, "system.info", headers=bh).status_code == 200
     r = _op(local_client, "auth.set_password",
             {"role": "owner", "password": "mat-khau-moi-789", "current_password": owner_password})
-    assert r.status_code == 200 and r.json()["revoked_tokens"] == 1 and r.json()["revoked_sessions"] == 2
+    # agent1 + token agent cục bộ (được cấp lại ngay vào file, xem test_local_agent.py).
+    assert r.status_code == 200 and r.json()["revoked_tokens"] == 2 and r.json()["revoked_sessions"] == 2
     assert _op(remote_client, "system.info", headers=_csrf_headers(remote_client)).status_code == 401
     assert _op(remote_client, "system.info", headers=bh).status_code == 401
     assert _op(local_client, "system.info").status_code == 401  # phiên của chính người đổi cũng bị thu hồi
@@ -549,7 +551,7 @@ def test_bearer_owner_token_actor_and_no_csrf(remote_client, owner_token, app):
 
     with app.state.services.db.session() as s:
         assert s.scalars(select(ChangeSet.actor).order_by(ChangeSet.id.desc())).first() == "agent:agent1"
-        assert s.scalars(select(ApiToken)).one().last_used_at is not None
+        assert s.scalars(select(ApiToken).where(ApiToken.name == "agent1")).one().last_used_at is not None
 
 
 def test_invalid_bearer_rejected(remote_client, local_client):
@@ -563,7 +565,7 @@ def test_invalid_bearer_rejected(remote_client, local_client):
 def test_token_revoke_and_expiry(local_client, remote_client, owner_token, app):
     h = {**REMOTE_H, "Authorization": f"Bearer {owner_token}"}
     assert _op(remote_client, "system.info", headers=h).status_code == 200
-    tid = _op(local_client, "token.list").json()[0]["id"]
+    tid = next(t["id"] for t in _op(local_client, "token.list").json() if t["name"] == "agent1")
     assert _op(local_client, "token.revoke", {"id": tid}).status_code == 200
     assert _op(remote_client, "system.info", headers=h).status_code == 401
     assert _op(local_client, "token.revoke", {"id": 12345}).status_code == 404

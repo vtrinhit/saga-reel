@@ -34,6 +34,19 @@ def _under(root: Path, value: Path | str) -> Path:
     return p if p.is_absolute() else root / p
 
 
+def resolve_data_dir(root: Path | None = None, data_dir: Path | str | None = None) -> Path:
+    """Thư mục data (không tạo gì): `data_dir` → biến môi trường SAGAREEL_DATA_DIR → `root/"data"`.
+
+    Đường dẫn tương đối tính từ `root` (mặc định thư mục gốc repo). Dùng chung cho app, CLI và lệnh ngoại tuyến.
+    """
+    root = Path(root) if root is not None else _DEFAULT_ROOT
+    if data_dir is not None:
+        return _under(root, data_dir)
+    if os.environ.get(DATA_DIR_ENV):
+        return _under(root, os.environ[DATA_DIR_ENV])
+    return root / "data"
+
+
 def load_settings(
     root: Path | None = None,
     data_dir: Path | None = None,
@@ -46,13 +59,7 @@ def load_settings(
     Không đọc nội dung `env_file` ở đây (chỉ ghi nhận đường dẫn).
     """
     root = Path(root) if root is not None else _DEFAULT_ROOT
-
-    if data_dir is not None:
-        data = _under(root, data_dir)
-    elif os.environ.get(DATA_DIR_ENV):
-        data = _under(root, os.environ[DATA_DIR_ENV])
-    else:
-        data = root / "data"
+    data = resolve_data_dir(root, data_dir)
 
     settings = AppSettings(
         root=root,

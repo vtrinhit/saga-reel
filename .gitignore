@@ -33,3 +33,6 @@ temp/
 .superpowers/
 .DS_Store
 Thumbs.db
+
+# token agent cục bộ (luôn nằm trong data/, thêm cho chắc)
+local-agent.token
