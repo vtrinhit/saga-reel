@@ -1,0 +1,2229 @@
+{
+ "layout": [
+  {
+   "name": "trống",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 0,
+    "warnings": []
+   }
+  },
+  {
+   "name": "một clip, không làm tròn",
+   "fps": null,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 4000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 4000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 4000
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 4000,
+    "warnings": []
+   }
+  },
+  {
+   "name": "cắt thẳng 3 clip",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 4000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 3000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 3,
+      "dur_ms": 5000,
+      "key": "C3",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 4000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 4000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 4000,
+      "dur_ms": 3000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 7000
+     },
+     {
+      "id": 3,
+      "index": 2,
+      "start_ms": 7000,
+      "dur_ms": 5000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C3",
+      "end_ms": 12000
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 12000,
+    "warnings": []
+   }
+  },
+  {
+   "name": "link=fade cùng cảnh và sang cảnh mới",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 4000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 4000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "fade",
+      "transition": {}
+     },
+     {
+      "id": 3,
+      "dur_ms": 4000,
+      "key": "C3",
+      "scene_id": 2,
+      "link": "fade",
+      "transition": {}
+     },
+     {
+      "id": 4,
+      "dur_ms": 4000,
+      "key": "C4",
+      "scene_id": 2,
+      "link": "continue",
+      "transition": {}
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 4000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 4000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 3500,
+      "dur_ms": 4000,
+      "overlap_ms": 500,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 7500
+     },
+     {
+      "id": 3,
+      "index": 2,
+      "start_ms": 6800,
+      "dur_ms": 4000,
+      "overlap_ms": 700,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 2,
+      "key": "C3",
+      "end_ms": 10800
+     },
+     {
+      "id": 4,
+      "index": 3,
+      "start_ms": 10800,
+      "dur_ms": 4000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 2,
+      "key": "C4",
+      "end_ms": 14800
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 14800,
+    "warnings": []
+   }
+  },
+  {
+   "name": "scene None == None là cùng cảnh",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 4000,
+      "key": "C1",
+      "scene_id": null,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 4000,
+      "key": "C2",
+      "scene_id": null,
+      "link": "fade",
+      "transition": {}
+     },
+     {
+      "id": 3,
+      "dur_ms": 4000,
+      "key": "C3",
+      "scene_id": 5,
+      "link": "fade",
+      "transition": {}
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 4000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": null,
+      "key": "C1",
+      "end_ms": 4000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 3500,
+      "dur_ms": 4000,
+      "overlap_ms": 500,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": null,
+      "key": "C2",
+      "end_ms": 7500
+     },
+     {
+      "id": 3,
+      "index": 2,
+      "start_ms": 6800,
+      "dur_ms": 4000,
+      "overlap_ms": 700,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 5,
+      "key": "C3",
+      "end_ms": 10800
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 10800,
+    "warnings": []
+   }
+  },
+  {
+   "name": "transition tên + duration riêng",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 6000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 6000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {
+       "name": "fadeblack"
+      }
+     },
+     {
+      "id": 3,
+      "dur_ms": 6000,
+      "key": "C3",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {
+       "name": "dissolve",
+       "duration_ms": 250
+      }
+     },
+     {
+      "id": 4,
+      "dur_ms": 6000,
+      "key": "C4",
+      "scene_id": 3,
+      "link": "cut",
+      "transition": {
+       "name": "fadewhite"
+      }
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 6000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 6000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 5000,
+      "dur_ms": 6000,
+      "overlap_ms": 1000,
+      "transition": "fadeblack",
+      "xfade": "fadeblack",
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 11000
+     },
+     {
+      "id": 3,
+      "index": 2,
+      "start_ms": 10767,
+      "dur_ms": 6000,
+      "overlap_ms": 233,
+      "transition": "dissolve",
+      "xfade": "dissolve",
+      "scene_id": 1,
+      "key": "C3",
+      "end_ms": 16767
+     },
+     {
+      "id": 4,
+      "index": 3,
+      "start_ms": 16067,
+      "dur_ms": 6000,
+      "overlap_ms": 700,
+      "transition": "fadewhite",
+      "xfade": "fadewhite",
+      "scene_id": 3,
+      "key": "C4",
+      "end_ms": 22067
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 22067,
+    "warnings": []
+   }
+  },
+  {
+   "name": "duration_ms 0 tường minh giữ tên fade, chồng 0",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 3000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 3000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {
+       "name": "fade",
+       "duration_ms": 0
+      }
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 3000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 3000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 3000,
+      "dur_ms": 3000,
+      "overlap_ms": 0,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 6000
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 6000,
+    "warnings": []
+   }
+  },
+  {
+   "name": "transition name rỗng + link fade",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 3000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 3000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "fade",
+      "transition": {
+       "name": ""
+      }
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 3000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 3000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 2500,
+      "dur_ms": 3000,
+      "overlap_ms": 500,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 5500
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 5500,
+    "warnings": []
+   }
+  },
+  {
+   "name": "transition cut tường minh thắng link fade",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 3000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 3000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "fade",
+      "transition": {
+       "name": "cut"
+      }
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 3000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 3000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 3000,
+      "dur_ms": 3000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 6000
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 6000,
+    "warnings": []
+   }
+  },
+  {
+   "name": "transition không có",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 3000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 3000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {
+       "name": "starwipe"
+      }
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 3000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 3000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 3000,
+      "dur_ms": 3000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 6000
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 6000,
+    "warnings": [
+     {
+      "code": "transition_unknown",
+      "clip_id": 2,
+      "name": "starwipe",
+      "message": "Chuyển cảnh “starwipe” không có; dùng cắt thẳng."
+     }
+    ]
+   }
+  },
+  {
+   "name": "rút ngắn vì nửa clip ngắn hơn",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 900,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 5000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {
+       "name": "fadeblack"
+      }
+     },
+     {
+      "id": 3,
+      "dur_ms": 1001,
+      "key": "C3",
+      "scene_id": 1,
+      "link": "fade",
+      "transition": {}
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 900,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 900
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 467,
+      "dur_ms": 5000,
+      "overlap_ms": 433,
+      "transition": "fadeblack",
+      "xfade": "fadeblack",
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 5467
+     },
+     {
+      "id": 3,
+      "index": 2,
+      "start_ms": 4967,
+      "dur_ms": 1001,
+      "overlap_ms": 500,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C3",
+      "end_ms": 5968
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 5968,
+    "warnings": [
+     {
+      "code": "transition_clamped",
+      "clip_id": 2,
+      "wanted_ms": 1000,
+      "used_ms": 433,
+      "message": "Chuyển cảnh dài hơn nửa clip ngắn hơn nên đã được rút ngắn."
+     }
+    ]
+   }
+  },
+  {
+   "name": "rút ngắn về 0 thành cắt",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 40,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 5000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {
+       "name": "fade"
+      }
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 40,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 40
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 40,
+      "dur_ms": 5000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 5040
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 5040,
+    "warnings": [
+     {
+      "code": "transition_clamped",
+      "clip_id": 2,
+      "wanted_ms": 500,
+      "used_ms": 0,
+      "message": "Chuyển cảnh dài hơn nửa clip ngắn hơn nên đã được rút ngắn."
+     }
+    ]
+   }
+  },
+  {
+   "name": "clip 0 ms và âm",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 0,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": -500,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "fade",
+      "transition": {}
+     },
+     {
+      "id": 3,
+      "dur_ms": 3000,
+      "key": "C3",
+      "scene_id": 1,
+      "link": "fade",
+      "transition": {}
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 0,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 0
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 0,
+      "dur_ms": 0,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 0
+     },
+     {
+      "id": 3,
+      "index": 2,
+      "start_ms": 0,
+      "dur_ms": 3000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C3",
+      "end_ms": 3000
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 3000,
+    "warnings": [
+     {
+      "code": "transition_clamped",
+      "clip_id": 2,
+      "wanted_ms": 500,
+      "used_ms": 0,
+      "message": "Chuyển cảnh dài hơn nửa clip ngắn hơn nên đã được rút ngắn."
+     },
+     {
+      "code": "transition_clamped",
+      "clip_id": 3,
+      "wanted_ms": 500,
+      "used_ms": 0,
+      "message": "Chuyển cảnh dài hơn nửa clip ngắn hơn nên đã được rút ngắn."
+     }
+    ]
+   }
+  },
+  {
+   "name": "fps 24 làm tròn chồng",
+   "fps": 24,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 5000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 5000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {
+       "name": "fade",
+       "duration_ms": 523
+      }
+     },
+     {
+      "id": 3,
+      "dur_ms": 5000,
+      "key": "C3",
+      "scene_id": 2,
+      "link": "fade",
+      "transition": {}
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 5000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 5000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 4500,
+      "dur_ms": 5000,
+      "overlap_ms": 500,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 9500
+     },
+     {
+      "id": 3,
+      "index": 2,
+      "start_ms": 8833,
+      "dur_ms": 5000,
+      "overlap_ms": 667,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 2,
+      "key": "C3",
+      "end_ms": 13833
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 13833,
+    "warnings": []
+   }
+  },
+  {
+   "name": "fps 16 chạm .5 (banker)",
+   "fps": 16,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 5000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 5000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {
+       "name": "fade",
+       "duration_ms": 437
+      }
+     },
+     {
+      "id": 3,
+      "dur_ms": 5000,
+      "key": "C3",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {
+       "name": "fade",
+       "duration_ms": 563
+      }
+     },
+     {
+      "id": 4,
+      "dur_ms": 5000,
+      "key": "C4",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {
+       "name": "fade",
+       "duration_ms": 312
+      }
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 5000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 5000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 4625,
+      "dur_ms": 5000,
+      "overlap_ms": 375,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 9625
+     },
+     {
+      "id": 3,
+      "index": 2,
+      "start_ms": 9063,
+      "dur_ms": 5000,
+      "overlap_ms": 562,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C3",
+      "end_ms": 14063
+     },
+     {
+      "id": 4,
+      "index": 3,
+      "start_ms": 13813,
+      "dur_ms": 5000,
+      "overlap_ms": 250,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C4",
+      "end_ms": 18813
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 18813,
+    "warnings": []
+   }
+  },
+  {
+   "name": "fps 48 lẻ",
+   "fps": 48,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 4000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 4000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {
+       "name": "fade",
+       "duration_ms": 510
+      }
+     },
+     {
+      "id": 3,
+      "dur_ms": 4000,
+      "key": "C3",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {
+       "name": "fade",
+       "duration_ms": 1010
+      }
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 4000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 4000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 3500,
+      "dur_ms": 4000,
+      "overlap_ms": 500,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 7500
+     },
+     {
+      "id": 3,
+      "index": 2,
+      "start_ms": 6500,
+      "dur_ms": 4000,
+      "overlap_ms": 1000,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C3",
+      "end_ms": 10500
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 10500,
+    "warnings": []
+   }
+  },
+  {
+   "name": "bảng transition tuỳ biến",
+   "fps": 30,
+   "transitions": {
+    "cut": {
+     "xfade": null,
+     "duration_ms": 0
+    },
+    "fade": {
+     "xfade": "fade",
+     "duration_ms": 400,
+     "new_scene_duration_ms": 650
+    },
+    "wipe": {
+     "xfade": "wipeleft",
+     "duration_ms": 333
+    },
+    "broken": {
+     "xfade": null,
+     "duration_ms": 500
+    },
+    "nodefault": {
+     "xfade": "slideup"
+    }
+   },
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 4000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 4000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "fade",
+      "transition": {}
+     },
+     {
+      "id": 3,
+      "dur_ms": 4000,
+      "key": "C3",
+      "scene_id": 2,
+      "link": "fade",
+      "transition": {}
+     },
+     {
+      "id": 4,
+      "dur_ms": 4000,
+      "key": "C4",
+      "scene_id": 2,
+      "link": "cut",
+      "transition": {
+       "name": "wipe"
+      }
+     },
+     {
+      "id": 5,
+      "dur_ms": 4000,
+      "key": "C5",
+      "scene_id": 2,
+      "link": "cut",
+      "transition": {
+       "name": "broken"
+      }
+     },
+     {
+      "id": 6,
+      "dur_ms": 4000,
+      "key": "C6",
+      "scene_id": 3,
+      "link": "cut",
+      "transition": {
+       "name": "nodefault"
+      }
+     },
+     {
+      "id": 7,
+      "dur_ms": 4000,
+      "key": "C7",
+      "scene_id": 3,
+      "link": "cut",
+      "transition": {
+       "name": "dissolve"
+      }
+     }
+    ],
+    "lines": [],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 4000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 4000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 3600,
+      "dur_ms": 4000,
+      "overlap_ms": 400,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 7600
+     },
+     {
+      "id": 3,
+      "index": 2,
+      "start_ms": 6967,
+      "dur_ms": 4000,
+      "overlap_ms": 633,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 2,
+      "key": "C3",
+      "end_ms": 10967
+     },
+     {
+      "id": 4,
+      "index": 3,
+      "start_ms": 10667,
+      "dur_ms": 4000,
+      "overlap_ms": 300,
+      "transition": "wipe",
+      "xfade": "wipeleft",
+      "scene_id": 2,
+      "key": "C4",
+      "end_ms": 14667
+     },
+     {
+      "id": 5,
+      "index": 4,
+      "start_ms": 14667,
+      "dur_ms": 4000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 2,
+      "key": "C5",
+      "end_ms": 18667
+     },
+     {
+      "id": 6,
+      "index": 5,
+      "start_ms": 18167,
+      "dur_ms": 4000,
+      "overlap_ms": 500,
+      "transition": "nodefault",
+      "xfade": "slideup",
+      "scene_id": 3,
+      "key": "C6",
+      "end_ms": 22167
+     },
+     {
+      "id": 7,
+      "index": 6,
+      "start_ms": 22167,
+      "dur_ms": 4000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 3,
+      "key": "C7",
+      "end_ms": 26167
+     }
+    ],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 26167,
+    "warnings": [
+     {
+      "code": "transition_unknown",
+      "clip_id": 5,
+      "name": "broken",
+      "message": "Chuyển cảnh “broken” không có; dùng cắt thẳng."
+     },
+     {
+      "code": "transition_unknown",
+      "clip_id": 7,
+      "name": "dissolve",
+      "message": "Chuyển cảnh “dissolve” không có; dùng cắt thẳng."
+     }
+    ]
+   }
+  },
+  {
+   "name": "thoại: offset, mồ côi, tràn cuối, sắp xếp",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 4000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 4000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "fade",
+      "transition": {}
+     }
+    ],
+    "lines": [
+     {
+      "id": 5,
+      "clip_id": 2,
+      "offset_ms": 200,
+      "duration_ms": 1500,
+      "text": "b",
+      "subtitle": true
+     },
+     {
+      "id": 3,
+      "clip_id": 1,
+      "offset_ms": 0,
+      "duration_ms": 1200,
+      "text": "a",
+      "subtitle": true
+     },
+     {
+      "id": 4,
+      "clip_id": 1,
+      "offset_ms": 0,
+      "duration_ms": 800,
+      "text": "a2",
+      "subtitle": false
+     },
+     {
+      "id": 9,
+      "clip_id": 99,
+      "offset_ms": 0,
+      "duration_ms": 1000,
+      "text": "mồ côi",
+      "subtitle": true
+     },
+     {
+      "id": 7,
+      "clip_id": 2,
+      "offset_ms": 3000,
+      "duration_ms": 4000,
+      "text": "tràn",
+      "subtitle": true
+     },
+     {
+      "id": 8,
+      "clip_id": 1,
+      "offset_ms": 500,
+      "duration_ms": -100,
+      "text": "âm",
+      "subtitle": true
+     }
+    ],
+    "items": []
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 4000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 4000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 3500,
+      "dur_ms": 4000,
+      "overlap_ms": 500,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 7500
+     }
+    ],
+    "dialogue": [
+     {
+      "id": 3,
+      "kind": "dialogue",
+      "start_ms": 0,
+      "end_ms": 1200,
+      "clip_id": 1,
+      "text": "a",
+      "subtitle": true,
+      "params": {},
+      "dur_ms": 1200
+     },
+     {
+      "id": 4,
+      "kind": "dialogue",
+      "start_ms": 0,
+      "end_ms": 800,
+      "clip_id": 1,
+      "text": "a2",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 800
+     },
+     {
+      "id": 8,
+      "kind": "dialogue",
+      "start_ms": 500,
+      "end_ms": 500,
+      "clip_id": 1,
+      "text": "âm",
+      "subtitle": true,
+      "params": {},
+      "dur_ms": 0
+     },
+     {
+      "id": 5,
+      "kind": "dialogue",
+      "start_ms": 3700,
+      "end_ms": 5200,
+      "clip_id": 2,
+      "text": "b",
+      "subtitle": true,
+      "params": {},
+      "dur_ms": 1500
+     },
+     {
+      "id": 7,
+      "kind": "dialogue",
+      "start_ms": 6500,
+      "end_ms": 7500,
+      "clip_id": 2,
+      "text": "tràn",
+      "subtitle": true,
+      "params": {},
+      "dur_ms": 1000
+     }
+    ],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 7500,
+    "warnings": [
+     {
+      "code": "dialogue_orphan",
+      "line_id": 9,
+      "message": "Câu thoại thuộc clip không có trong tập; bỏ qua."
+     },
+     {
+      "code": "dialogue_overflow",
+      "line_id": 7,
+      "message": "Câu thoại kéo quá cuối tập; phần thừa bị cắt."
+     }
+    ]
+   }
+  },
+  {
+   "name": "thoại khi tập trống",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [],
+    "lines": [
+     {
+      "id": 1,
+      "clip_id": 1,
+      "offset_ms": 0,
+      "duration_ms": 1000,
+      "text": "x",
+      "subtitle": true
+     }
+    ],
+    "items": []
+   },
+   "output": {
+    "clips": [],
+    "dialogue": [],
+    "sfx": [],
+    "music": [],
+    "titles": [],
+    "total_ms": 0,
+    "warnings": [
+     {
+      "code": "dialogue_orphan",
+      "line_id": 1,
+      "message": "Câu thoại thuộc clip không có trong tập; bỏ qua."
+     }
+    ]
+   }
+  },
+  {
+   "name": "nhạc/SFX/title đủ nhánh",
+   "fps": 30,
+   "transitions": null,
+   "input": {
+    "clips": [
+     {
+      "id": 1,
+      "dur_ms": 4000,
+      "key": "C1",
+      "scene_id": 1,
+      "link": "cut",
+      "transition": {}
+     },
+     {
+      "id": 2,
+      "dur_ms": 6000,
+      "key": "C2",
+      "scene_id": 1,
+      "link": "fade",
+      "transition": {}
+     },
+     {
+      "id": 3,
+      "dur_ms": 5000,
+      "key": "C3",
+      "scene_id": 2,
+      "link": "fade",
+      "transition": {}
+     }
+    ],
+    "lines": [],
+    "items": [
+     {
+      "id": 1,
+      "track": "music",
+      "anchor_clip_id": null,
+      "offset_ms": 0,
+      "duration_ms": null,
+      "end_anchor": null,
+      "media_duration_ms": null,
+      "params": {
+       "volume_db": -12
+      }
+     },
+     {
+      "id": 2,
+      "track": "music",
+      "anchor_clip_id": 2,
+      "offset_ms": 500,
+      "duration_ms": null,
+      "end_anchor": null,
+      "media_duration_ms": 3000,
+      "params": {}
+     },
+     {
+      "id": 3,
+      "track": "music",
+      "anchor_clip_id": 2,
+      "offset_ms": 0,
+      "duration_ms": null,
+      "end_anchor": null,
+      "media_duration_ms": 3000,
+      "params": {
+       "loop": true
+      }
+     },
+     {
+      "id": 4,
+      "track": "sfx",
+      "anchor_clip_id": 1,
+      "offset_ms": 1000,
+      "duration_ms": 800,
+      "end_anchor": null,
+      "media_duration_ms": null,
+      "params": {}
+     },
+     {
+      "id": 5,
+      "track": "sfx",
+      "anchor_clip_id": 2,
+      "offset_ms": 0,
+      "duration_ms": null,
+      "end_anchor": {
+       "clip_id": 3
+      },
+      "media_duration_ms": null,
+      "params": {}
+     },
+     {
+      "id": 6,
+      "track": "sfx",
+      "anchor_clip_id": 3,
+      "offset_ms": 0,
+      "duration_ms": null,
+      "end_anchor": {
+       "sequence_end": true
+      },
+      "media_duration_ms": null,
+      "params": {}
+     },
+     {
+      "id": 7,
+      "track": "sfx",
+      "anchor_clip_id": 3,
+      "offset_ms": 0,
+      "duration_ms": null,
+      "end_anchor": {
+       "clip_id": 999
+      },
+      "media_duration_ms": 2000,
+      "params": {}
+     },
+     {
+      "id": 8,
+      "track": "sfx",
+      "anchor_clip_id": 3,
+      "offset_ms": 0,
+      "duration_ms": null,
+      "end_anchor": {
+       "clip_id": 999
+      },
+      "media_duration_ms": null,
+      "params": {}
+     },
+     {
+      "id": 9,
+      "track": "sfx",
+      "anchor_clip_id": null,
+      "offset_ms": 2000,
+      "duration_ms": null,
+      "end_anchor": null,
+      "media_duration_ms": null,
+      "params": {}
+     },
+     {
+      "id": 10,
+      "track": "sfx",
+      "anchor_clip_id": 404,
+      "offset_ms": 100,
+      "duration_ms": 500,
+      "end_anchor": null,
+      "media_duration_ms": null,
+      "params": {}
+     },
+     {
+      "id": 11,
+      "track": "title",
+      "anchor_clip_id": 1,
+      "offset_ms": 0,
+      "duration_ms": 2000,
+      "end_anchor": null,
+      "media_duration_ms": null,
+      "params": {
+       "text": "Tập 1"
+      }
+     },
+     {
+      "id": 12,
+      "track": "title",
+      "anchor_clip_id": 2,
+      "offset_ms": 0,
+      "duration_ms": null,
+      "end_anchor": null,
+      "media_duration_ms": null,
+      "params": {
+       "text": null
+      }
+     },
+     {
+      "id": 13,
+      "track": "title",
+      "anchor_clip_id": 3,
+      "offset_ms": 0,
+      "duration_ms": null,
+      "end_anchor": null,
+      "media_duration_ms": null,
+      "params": {}
+     },
+     {
+      "id": 14,
+      "track": "voice",
+      "anchor_clip_id": 1,
+      "offset_ms": 0,
+      "duration_ms": 1000,
+      "end_anchor": null,
+      "media_duration_ms": null,
+      "params": {}
+     },
+     {
+      "id": 15,
+      "track": "sfx",
+      "anchor_clip_id": 3,
+      "offset_ms": 9000,
+      "duration_ms": 1000,
+      "end_anchor": null,
+      "media_duration_ms": null,
+      "params": {}
+     },
+     {
+      "id": 16,
+      "track": "music",
+      "anchor_clip_id": 3,
+      "offset_ms": 4000,
+      "duration_ms": 5000,
+      "end_anchor": null,
+      "media_duration_ms": null,
+      "params": {}
+     },
+     {
+      "id": 17,
+      "track": "sfx",
+      "anchor_clip_id": 1,
+      "offset_ms": 0,
+      "duration_ms": null,
+      "end_anchor": {},
+      "media_duration_ms": 1500,
+      "params": {}
+     },
+     {
+      "id": 18,
+      "track": "sfx",
+      "anchor_clip_id": 1,
+      "offset_ms": 0,
+      "duration_ms": null,
+      "end_anchor": {
+       "clip_id": null
+      },
+      "media_duration_ms": null,
+      "params": {}
+     },
+     {
+      "id": 19,
+      "track": "music",
+      "anchor_clip_id": null,
+      "offset_ms": 0,
+      "duration_ms": null,
+      "end_anchor": null,
+      "media_duration_ms": 0,
+      "params": {}
+     },
+     {
+      "id": 20,
+      "track": "sfx",
+      "anchor_clip_id": 2,
+      "offset_ms": 0,
+      "duration_ms": 0,
+      "end_anchor": null,
+      "media_duration_ms": null,
+      "params": {}
+     }
+    ]
+   },
+   "output": {
+    "clips": [
+     {
+      "id": 1,
+      "index": 0,
+      "start_ms": 0,
+      "dur_ms": 4000,
+      "overlap_ms": 0,
+      "transition": "cut",
+      "xfade": null,
+      "scene_id": 1,
+      "key": "C1",
+      "end_ms": 4000
+     },
+     {
+      "id": 2,
+      "index": 1,
+      "start_ms": 3500,
+      "dur_ms": 6000,
+      "overlap_ms": 500,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 1,
+      "key": "C2",
+      "end_ms": 9500
+     },
+     {
+      "id": 3,
+      "index": 2,
+      "start_ms": 8800,
+      "dur_ms": 5000,
+      "overlap_ms": 700,
+      "transition": "fade",
+      "xfade": "fade",
+      "scene_id": 2,
+      "key": "C3",
+      "end_ms": 13800
+     }
+    ],
+    "dialogue": [],
+    "sfx": [
+     {
+      "id": 17,
+      "kind": "sfx",
+      "start_ms": 0,
+      "end_ms": 1500,
+      "clip_id": 1,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 1500
+     },
+     {
+      "id": 18,
+      "kind": "sfx",
+      "start_ms": 0,
+      "end_ms": 4000,
+      "clip_id": 1,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 4000
+     },
+     {
+      "id": 10,
+      "kind": "sfx",
+      "start_ms": 100,
+      "end_ms": 600,
+      "clip_id": 404,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 500
+     },
+     {
+      "id": 4,
+      "kind": "sfx",
+      "start_ms": 1000,
+      "end_ms": 1800,
+      "clip_id": 1,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 800
+     },
+     {
+      "id": 9,
+      "kind": "sfx",
+      "start_ms": 2000,
+      "end_ms": 13800,
+      "clip_id": null,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 11800
+     },
+     {
+      "id": 5,
+      "kind": "sfx",
+      "start_ms": 3500,
+      "end_ms": 13800,
+      "clip_id": 2,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 10300
+     },
+     {
+      "id": 6,
+      "kind": "sfx",
+      "start_ms": 8800,
+      "end_ms": 13800,
+      "clip_id": 3,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 5000
+     },
+     {
+      "id": 7,
+      "kind": "sfx",
+      "start_ms": 8800,
+      "end_ms": 10800,
+      "clip_id": 3,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 2000
+     },
+     {
+      "id": 8,
+      "kind": "sfx",
+      "start_ms": 8800,
+      "end_ms": 13800,
+      "clip_id": 3,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 5000
+     }
+    ],
+    "music": [
+     {
+      "id": 1,
+      "kind": "music",
+      "start_ms": 0,
+      "end_ms": 13800,
+      "clip_id": null,
+      "text": "",
+      "subtitle": false,
+      "params": {
+       "volume_db": -12
+      },
+      "dur_ms": 13800
+     },
+     {
+      "id": 19,
+      "kind": "music",
+      "start_ms": 0,
+      "end_ms": 13800,
+      "clip_id": null,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 13800
+     },
+     {
+      "id": 3,
+      "kind": "music",
+      "start_ms": 3500,
+      "end_ms": 13800,
+      "clip_id": 2,
+      "text": "",
+      "subtitle": false,
+      "params": {
+       "loop": true
+      },
+      "dur_ms": 10300
+     },
+     {
+      "id": 2,
+      "kind": "music",
+      "start_ms": 4000,
+      "end_ms": 7000,
+      "clip_id": 2,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 3000
+     },
+     {
+      "id": 16,
+      "kind": "music",
+      "start_ms": 12800,
+      "end_ms": 13800,
+      "clip_id": 3,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 1000
+     }
+    ],
+    "titles": [
+     {
+      "id": 11,
+      "kind": "title",
+      "start_ms": 0,
+      "end_ms": 2000,
+      "clip_id": 1,
+      "text": "Tập 1",
+      "subtitle": false,
+      "params": {
+       "text": "Tập 1"
+      },
+      "dur_ms": 2000
+     },
+     {
+      "id": 12,
+      "kind": "title",
+      "start_ms": 3500,
+      "end_ms": 9500,
+      "clip_id": 2,
+      "text": "None",
+      "subtitle": false,
+      "params": {
+       "text": null
+      },
+      "dur_ms": 6000
+     },
+     {
+      "id": 13,
+      "kind": "title",
+      "start_ms": 8800,
+      "end_ms": 13800,
+      "clip_id": 3,
+      "text": "",
+      "subtitle": false,
+      "params": {},
+      "dur_ms": 5000
+     }
+    ],
+    "total_ms": 13800,
+    "warnings": [
+     {
+      "code": "anchor_missing",
+      "item_id": 10,
+      "message": "Clip neo không còn trong tập; item được đặt từ đầu tập."
+     },
+     {
+      "code": "track_unknown",
+      "item_id": 14,
+      "message": "Track “voice” không hợp lệ."
+     },
+     {
+      "code": "item_empty",
+      "item_id": 15,
+      "message": "Item nằm ngoài thời lượng tập; bỏ qua."
+     },
+     {
+      "code": "item_empty",
+      "item_id": 20,
+      "message": "Item nằm ngoài thời lượng tập; bỏ qua."
+     }
+    ]
+   }
+  }
+ ],
+ "frame_ms": [
+  [
+   0,
+   33
+  ],
+  [
+   1,
+   33
+  ],
+  [
+   16,
+   33
+  ],
+  [
+   17,
+   33
+  ],
+  [
+   33,
+   33
+  ],
+  [
+   34,
+   33
+  ],
+  [
+   50,
+   67
+  ],
+  [
+   4950,
+   4933
+  ],
+  [
+   4983,
+   4967
+  ],
+  [
+   5000,
+   5000
+  ],
+  [
+   5016,
+   5000
+  ],
+  [
+   5017,
+   5033
+  ],
+  [
+   6000,
+   6000
+  ],
+  [
+   7450,
+   7467
+  ],
+  [
+   12345,
+   12333
+  ]
+ ]
+}
