@@ -265,9 +265,29 @@ def test_uow_track_plain_entity_and_undo(ctx):
     history.undo(ctx, None)
     with ctx.services.db.session() as s:
         assert s.get(GlobalSettings, 1).data == {"x": 1}
-    history.undo(ctx, None)  # undo tạo: bảng không có deleted_at → xoá dòng
+    created = history.undo(ctx, None)  # undo tạo: bảng không có deleted_at → xoá dòng
     with ctx.services.db.session() as s:
         assert s.get(GlobalSettings, 1) is None
+    history.redo(ctx, created.id)  # làm lại: chèn lại dòng từ after_json
+    with ctx.services.db.session() as s:
+        assert s.get(GlobalSettings, 1).data == {"x": 1}
+
+
+def test_tracked_models_use_snapshot_safe_column_types():
+    """Snapshot/khôi phục chỉ hỗ trợ kiểu JSON-native + datetime; model ★ mới dùng kiểu khác phải mở rộng codec."""
+    from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
+    from sqlalchemy.types import TypeDecorator
+
+    from sagareel.db.base import Base, _JSONText
+
+    supported = (Boolean, DateTime, Float, Integer, String, Text, _JSONText)
+    tracked = [m for m in Base.registry.mappers if getattr(m.class_, "__tracked__", False)]
+    assert {m.local_table.name for m in tracked} >= {"template", "provider_connection", "llm_task"}
+    for mapper in tracked:
+        for col in mapper.columns:
+            t = col.type
+            ok = isinstance(t, supported) or (isinstance(t, TypeDecorator) and isinstance(t.impl_instance, supported))
+            assert ok, f"{mapper.local_table.name}.{col.name}: {t!r}"
 
 
 # --- Hoàn tác / làm lại -----------------------------------------------------------------------------------------
