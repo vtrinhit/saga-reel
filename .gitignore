@@ -36,3 +36,6 @@ Thumbs.db
 
 # token agent cục bộ (luôn nằm trong data/, thêm cho chắc)
 local-agent.token
+
+# log của công cụ trình duyệt
+.playwright-mcp/
