@@ -53,7 +53,7 @@ def run_migrations_online() -> None:
             context.run_migrations()
         return
 
-    engine = create_engine(_url(), poolclass=NullPool)
+    engine = create_engine(_url(), poolclass=NullPool, hide_parameters=True)  # lỗi SQL không in tham số (khoá API)
     try:
         with engine.connect() as conn:
             _configure(connection=conn)

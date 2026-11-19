@@ -158,6 +158,23 @@ def test_key_never_leaks_from_create_get_update_or_history(client):
         assert revs and all("SECRET" not in json.dumps([r.before_json, r.after_json]) for r in revs)
 
 
+def test_sql_error_on_insert_never_logs_bound_api_key(client, caplog):
+    """Lỗi SQL khi chèn kết nối (IntegrityError từ trigger) không được in tham số bind (khoá API) vào log/response."""
+    from sqlalchemy import text
+
+    with client.app.state.services.db.session() as s:
+        s.execute(text("CREATE TRIGGER boom BEFORE INSERT ON provider_connection "
+                       "BEGIN SELECT RAISE(ABORT, 'boom (test)'); END"))
+    caplog.set_level("DEBUG")
+    r = call(client, "provider.create", {**FAKE_IMG, "api_key": "sk-SECRET-SQL-4321"})
+    assert r.status_code == 500, r.text
+    assert "SECRET-SQL" not in r.text
+    logged = caplog.text + "".join(
+        str(rec.exc_info[1]) for rec in caplog.records if rec.exc_info and rec.exc_info[1] is not None)
+    assert "boom (test)" in logged  # lỗi thật sự đã được ghi log…
+    assert "SECRET-SQL" not in logged  # …nhưng không kèm tham số bind
+
+
 def test_update_empty_api_key_keeps_existing(client):
     created = create(client, FAKE_IMG, api_key="sk-SECRET-9876")
     for empty in ("", None):

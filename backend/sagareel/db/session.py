@@ -66,7 +66,10 @@ class Database:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.url = sqlite_url(self.db_path)
         # check_same_thread=False: lifespan, request và worker (to_thread) dùng chung pool ở nhiều luồng.
-        self.engine: Engine = create_engine(self.url, connect_args={"check_same_thread": False})
+        # hide_parameters=True: lỗi SQL (IntegrityError/OperationalError…) không in tham số bind — có thể là khoá API.
+        self.engine: Engine = create_engine(
+            self.url, connect_args={"check_same_thread": False}, hide_parameters=True
+        )
         event.listen(self.engine, "connect", _set_sqlite_pragmas)
         event.listen(self.engine, "begin", _begin_immediate)
         self._sessionmaker = sessionmaker(bind=self.engine, expire_on_commit=False)
