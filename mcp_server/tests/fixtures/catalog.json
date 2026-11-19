@@ -2084,7 +2084,7 @@
     },
     "fields": {
      "additionalProperties": true,
-     "description": "Cột clip, vd. image_prompt, duration_ms, shot_size, assets, custom{axis_side,cut_in,cut_out}",
+     "description": "Cột clip, vd. image_prompt, duration_ms, shot_size, assets, axis_side, cut_in, cut_out",
      "title": "Fields",
      "type": "object"
     },
@@ -11252,6 +11252,89 @@
   "result_schema": null,
   "summary": "Nhân bản tập: cảnh, clip, lời thoại, timeline (không chép take)",
   "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "sequence",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "sequence.estimate",
+  "params_schema": {
+   "properties": {
+    "generation": {
+     "default": true,
+     "description": "Kèm ước tính tạo ảnh/video/âm thanh cho clip còn thiếu",
+     "title": "Generation",
+     "type": "boolean"
+    },
+    "id": {
+     "title": "Id",
+     "type": "integer"
+    },
+    "lang": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Ngôn ngữ thoại/phụ đề; trống = ngôn ngữ chính",
+     "title": "Lang"
+    },
+    "overrides": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Như clip.regenerate.overrides (connection, video_connection…) cho phần tạo",
+     "title": "Overrides"
+    },
+    "platform": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Preset nền tảng (ảnh hưởng mã hoá bản cuối)",
+     "title": "Platform"
+    },
+    "variant": {
+     "default": "final",
+     "description": "Biến thể dựng để ước tính",
+     "enum": [
+      "draft",
+      "animatic",
+      "final"
+     ],
+     "title": "Variant",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id"
+   ],
+   "title": "SequenceEstimateParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Ước tính cả tập trước khi chạy: tạo ảnh/video/TTS còn thiếu (dry_run) + dựng (khối, thời gian, dung lượng) — không tốn tiền, không ghi gì",
+  "viewer": true
  },
  {
   "costly": false,
