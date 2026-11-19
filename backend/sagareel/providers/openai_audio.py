@@ -1,9 +1,10 @@
 """Phần chung của adapter âm thanh qua API tương thích OpenAI (`openai_tts`, `openai_stt`).
 
 - URL: `{base_url}/<đường dẫn>` (base_url thường kết thúc bằng `/v1`).
-- Sức khoẻ: mặc định chỉ `GET {base}/models` (không tốn tiền). Bật tuỳ chọn `health_speech` thì thêm một yêu cầu thật
-  cực ngắn (có thể tốn một ít tiền) — chỉ khi người dùng bấm “Kiểm tra”. Máy chủ trả "No credentials" (vd. LLM proxy
-  chưa có backend TTS/STT) → `not_configured`, không phải `dead`.
+- Sức khoẻ: `GET {base}/models`, rồi (tuỳ chọn `health_speech`, **mặc định bật**) một yêu cầu thật cực ngắn — TTS 1 ký
+  tự, STT một WAV im lặng tự tạo — vì `/models` của LLM proxy vẫn trả 200 khi chưa có backend TTS/STT. Máy chủ trả
+  "No credentials" → `not_configured` (không bao giờ `alive`, không phải `dead`). Chủ máy tắt tuỳ chọn được nếu không
+  muốn tốn tiền cho mỗi lần kiểm tra.
 - Gửi yêu cầu tính tiền trong job: ghi dấu `state="submitting"` ngay trước POST; provider chắc chắn **không** nhận
   (không kết nối được, 429/502/503/52x, 4xx) → xoá dấu rồi ném lỗi; không rõ (mất kết nối sau khi gửi, 500/504) →
   giữ dấu và ném `JobUnknown` (`<adapter>_job_unknown`) để người dùng quyết định. Lần chạy sau thấy dấu → không gửi lại.
@@ -39,9 +40,16 @@ NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout, httpx.W
             httpx.UnsupportedProtocol)
 
 HEALTH_SPEECH_FIELD = ConfigField(
-    "health_speech", "Kiểm tra bằng một yêu cầu thật", "bool", False, False,
-    help="Khi bấm “Kiểm tra”, gửi thêm một yêu cầu cực ngắn (có thể tốn một ít tiền). Tắt: chỉ đọc danh sách model.",
+    "health_speech", "Kiểm tra bằng một yêu cầu thật", "bool", False, True,
+    help="Khi kiểm tra, gửi thêm một yêu cầu cực ngắn (có thể tốn một ít tiền) để biết máy chủ thật sự đọc/nghe được. "
+         "Tắt: chỉ đọc danh sách model (không phát hiện được máy chủ chưa cấu hình TTS/STT).",
 )
+
+
+def health_speech(options: dict) -> bool:
+    """Giá trị hiệu lực của `health_speech` (thiếu → mặc định của trường)."""
+    value = options.get("health_speech")
+    return bool(HEALTH_SPEECH_FIELD.default if value is None else value)
 
 
 def error_message(r: httpx.Response) -> str:
@@ -101,7 +109,7 @@ class OpenAIAudioMixin(Adapter):
                 if not r.is_success:
                     return Health(status="dead",
                                   detail=f"Máy chủ trả lỗi HTTP {r.status_code}: {self._msg(r)}")
-                if not self.conn.options.get("health_speech"):
+                if not health_speech(self.conn.options):
                     return Health(status="alive", detail="Máy chủ trả lời (chưa thử gửi yêu cầu thật).",
                                   capabilities=self.capabilities())
                 p = await self._probe_request(c)

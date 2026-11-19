@@ -319,8 +319,14 @@ async def test_edge_health_dead_without_vi_voice(monkeypatch):
 
 @pytest.fixture
 def adapter():
-    """Adapter openai_tts có bật kiểm tra bằng một câu thật (người dùng bấm “Kiểm tra”)."""
-    return registry.get("openai_tts")(conn("openai_tts", "tts", base_url=BASE, api_key=KEY, health_speech=True))
+    """Adapter openai_tts với cấu hình mặc định (health_speech mặc định bật)."""
+    return registry.get("openai_tts")(conn("openai_tts", "tts", base_url=BASE, api_key=KEY))
+
+
+def test_openai_health_speech_defaults_on():
+    for adapter_id in ("openai_tts", "openai_stt"):
+        field = next(f for f in registry.get(adapter_id).config_fields if f.name == "health_speech")
+        assert field.default is True and field.type == "bool"
 
 
 @respx.mock
@@ -330,16 +336,25 @@ async def test_openai_tts_no_credentials_is_not_configured(adapter):
     h = await adapter.check_health()
     assert h.status == "not_configured" and speech.called
     assert KEY not in h.detail
+    assert len(json.loads(speech.calls.last.request.content)["input"]) == 1  # 1 ký tự
 
 
 @respx.mock
-async def test_openai_tts_health_default_only_lists_models():
-    a = registry.get("openai_tts")(conn("openai_tts", "tts", base_url=BASE, api_key=KEY))
+async def test_openai_tts_health_default_probes_speech(adapter):
+    models = respx.get(f"{BASE}/models").respond(200, json={"data": []})
+    speech = respx.post(f"{BASE}/audio/speech").respond(200, content=b"x")
+    h = await adapter.check_health()
+    assert h.status == "alive" and models.called and speech.called
+    assert models.calls.last.request.headers["authorization"] == f"Bearer {KEY}"
+
+
+@respx.mock
+async def test_openai_tts_health_speech_off_only_lists_models():
+    a = registry.get("openai_tts")(conn("openai_tts", "tts", base_url=BASE, api_key=KEY, health_speech=False))
     models = respx.get(f"{BASE}/models").respond(200, json={"data": []})
     speech = respx.post(f"{BASE}/audio/speech").respond(200, content=b"x")
     h = await a.check_health()
     assert h.status == "alive" and models.called and not speech.called
-    assert models.calls.last.request.headers["authorization"] == f"Bearer {KEY}"
 
 
 async def test_openai_tts_health_not_configured_without_url():
@@ -442,15 +457,17 @@ async def test_openai_stt_transcribe_words_in_ms(run_ctx, mp3_bytes, tmp_path):
 
 @respx.mock
 async def test_openai_stt_no_credentials_is_not_configured():
-    a = registry.get("openai_stt")(conn("openai_stt", "stt", base_url=BASE, api_key=KEY, health_speech=True))
+    a = registry.get("openai_stt")(conn("openai_stt", "stt", base_url=BASE, api_key=KEY))  # mặc định: thử thật
     respx.get(f"{BASE}/models").respond(200, json={"data": []})
     route = respx.post(f"{BASE}/audio/transcriptions").respond(400, json=NO_CREDS)
     assert (await a.check_health()).status == "not_configured" and route.called
+    body = route.calls.last.request.content
+    assert b'filename="probe.wav"' in body and b"RIFF" in body and len(body) < 20_000
 
 
 @respx.mock
-async def test_openai_stt_health_default_only_lists_models():
-    a = registry.get("openai_stt")(conn("openai_stt", "stt", base_url=BASE, api_key=KEY))
+async def test_openai_stt_health_speech_off_only_lists_models():
+    a = registry.get("openai_stt")(conn("openai_stt", "stt", base_url=BASE, api_key=KEY, health_speech=False))
     respx.get(f"{BASE}/models").respond(200, json={"data": []})
     route = respx.post(f"{BASE}/audio/transcriptions").respond(200, json={"text": ""})
     assert (await a.check_health()).status == "alive" and not route.called
@@ -537,3 +554,39 @@ async def test_try_tts_job_with_openai_marker_lifecycle(client, mp3_bytes):
         job = await anyio.to_thread.run_sync(wait, job_id)
         assert job["status"] == "succeeded", job
         assert route.call_count == 4
+
+
+def test_try_tts_jobs_get_six_attempts(client):
+    """Job TTS thử lại tới 6 lần: NoAudioReceived của edge-tts trải ~10 phút (20+40+80+160+300 s)."""
+    from sagareel.db.models import Job
+    from sagareel.services import provider_jobs as pj
+
+    assert pj.MAX_ATTEMPTS[pj.TRY_TTS] == 6
+    client.app.state.services.worker.pause_all()  # chỉ kiểm tra lúc tạo job
+    assert call(client, "provider.create", {"kind": "tts", "adapter": "edge_tts", "name": "edge"}).status_code == 200
+    assert call(client, "provider.create", {"kind": "llm", "adapter": "fake_llm", "name": "llm"}).status_code == 200
+    tts_id = call(client, "provider.try_tts", {"connection": "edge", "text": "a", "voice": "vi-VN-HoaiMyNeural"}
+                  ).json()["job_id"]
+    llm_id = call(client, "provider.try_llm", {"connection": "llm", "prompt": "a"}).json()["job_id"]
+    with client.app.state.services.db.session() as s:
+        assert s.get(Job, tts_id).max_attempts == 6
+        assert s.get(Job, llm_id).max_attempts == 3  # loại khác giữ mặc định
+
+
+async def test_service_built_edge_adapter_uses_voice_cache(client, monkeypatch):
+    """`ProviderService` truyền `cache_dir` cho adapter nhận nó → danh sách giọng được cache ở cache_dir."""
+    from sagareel.services.provider_jobs import provider_service
+
+    count = fake_list_voices(monkeypatch)
+    assert call(client, "provider.create", {"kind": "tts", "adapter": "edge_tts", "name": "edge"}).status_code == 200
+    services = client.app.state.services
+    ps = provider_service(services)
+    adapter = await anyio.to_thread.run_sync(ps.adapter, "edge")
+    assert adapter.cache_dir == services.settings.cache_dir
+    assert len(await adapter.voices("vi")) == 2
+    again = await anyio.to_thread.run_sync(ps.adapter, "edge")
+    assert len(await again.voices("vi")) == 2
+    assert count[0] == 1 and (services.settings.cache_dir / "edge_voices.json").is_file()
+    # Adapter không nhận cache_dir vẫn dựng bình thường.
+    assert call(client, "provider.create", {"kind": "llm", "adapter": "fake_llm", "name": "llm"}).status_code == 200
+    assert (await anyio.to_thread.run_sync(ps.adapter, "llm")).adapter_id == "fake_llm"

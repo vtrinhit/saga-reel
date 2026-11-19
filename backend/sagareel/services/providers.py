@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -99,7 +100,14 @@ class ProviderService:
 
     def adapter(self, name_or_id: int | str, http: httpx.AsyncClient | None = None) -> Adapter:
         conn = self.connection(name_or_id)
-        return registry.get(conn.adapter)(conn, http)
+        return self.build(conn, http)
+
+    def build(self, conn: Connection, http: httpx.AsyncClient | None = None) -> Adapter:
+        """Dựng adapter; lớp nào nhận tham số `cache_dir` (vd. edge_tts) được truyền `settings.cache_dir`."""
+        cls = registry.get(conn.adapter)
+        if "cache_dir" in inspect.signature(cls.__init__).parameters:
+            return cls(conn, http, cache_dir=self.services.settings.cache_dir)
+        return cls(conn, http)
 
     # --- Sức khoẻ -----------------------------------------------------------------------------------------------
 
@@ -116,7 +124,7 @@ class ProviderService:
 
     async def _probe(self, conn: Connection) -> Health:
         try:
-            adapter = registry.get(conn.adapter)(conn)
+            adapter = self.build(conn)
             health = await asyncio.wait_for(adapter.check_health(), CHECK_TIMEOUT_S)
         except TimeoutError:
             return Health(status="dead", detail=f"Hết thời gian chờ ({CHECK_TIMEOUT_S:.0f} s) khi kiểm tra kết nối.")

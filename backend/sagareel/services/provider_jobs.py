@@ -41,6 +41,9 @@ TRY_VIDEO = "provider.try_video"
 TRY_TTS = "provider.try_tts"
 TRY_STT = "provider.try_stt"
 TRY_LLM = "provider.try_llm"
+# Số lần thử theo loại job (thiếu → mặc định của hàng đợi). TTS: edge-tts NoAudioReceived thường hết sau vài phút;
+# backoff 20·2^n ≤ 300 s cho 6 lần ≈ 20+40+80+160+300 s ≈ 10 phút.
+MAX_ATTEMPTS: dict[str, int] = {TRY_TTS: 6}
 
 
 def provider_service(services: Services) -> ProviderService:

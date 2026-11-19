@@ -206,10 +206,14 @@ kết quả (`budget.record`). Kết nối có adapter `fake_*` được ghi s�
 | `openai_tts` | `providers/tts/openai_tts.py` | `POST {base}/audio/speech` (`model`, `input`, `voice`, `response_format=mp3`, `speed`). Không có thời điểm từng từ. |
 | `openai_stt` | `providers/stt/openai_stt.py` | `POST {base}/audio/transcriptions` multipart (`model`, `response_format=verbose_json`, `timestamp_granularities[]=word`, `language`). |
 
-Phần chung OpenAI (`providers/openai_audio.py`): sức khoẻ mặc định chỉ `GET {base}/models`; tuỳ chọn
-`health_speech=true` thêm một yêu cầu thật cực ngắn khi bấm “Kiểm tra”. Body lỗi "No credentials" → `not_configured`
+Phần chung OpenAI (`providers/openai_audio.py`): sức khoẻ = `GET {base}/models` rồi, vì tuỳ chọn `health_speech`
+**mặc định bật**, một yêu cầu thật cực ngắn (TTS 1 ký tự, STT một WAV im lặng tự tạo); tắt tuỳ chọn thì chỉ đọc
+`/models`. Body lỗi "No credentials" → `not_configured`
 (sức khoẻ) / `provider_unavailable` (job). POST trong job có dấu `submitting`; mất kết nối sau khi gửi hoặc 500/504 →
 `JobUnknown` (`openai_tts_job_unknown` / `openai_stt_job_unknown`).
 
 Chưa có kết nối STT nào đang bật → `provider.try_stt` trả `stt_not_configured` (409) kèm gợi ý thêm kết nối STT hoặc
 dán lời thoại thủ công.
+
+Job `provider.try_tts` được tạo với `max_attempts=6` (`provider_jobs.MAX_ATTEMPTS`): lỗi tạm thời của edge-tts
+được thử lại khoảng 10 phút. `ProviderService.build()` truyền `cache_dir` cho adapter nhận tham số đó (edge_tts).

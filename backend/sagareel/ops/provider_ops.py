@@ -387,8 +387,10 @@ async def _dispatch(
                     budget.check(s, budget_kind, estimate.get("units", 1), conn.id, resolver=ctx.services.resolver)
         if dry_run:
             return {"estimate": estimate}
+        attempts = {"max_attempts": pj.MAX_ATTEMPTS[job_type]} if job_type in pj.MAX_ATTEMPTS else {}
         data = jobs.submit(ctx.services, job_type, {"connection_id": conn.id, **params},
-                           lane=ProviderService.lane(conn), project_id=ctx.project_id, cost_estimate=estimate)
+                           lane=ProviderService.lane(conn), project_id=ctx.project_id, cost_estimate=estimate,
+                           **attempts)
         return {"job_id": data["id"]}
 
     return await anyio.to_thread.run_sync(run)
