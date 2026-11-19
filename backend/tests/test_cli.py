@@ -266,21 +266,52 @@ def test_ops_lists_catalog(cli):
     assert out.code == 2 and out.stderr.startswith("unknown_group: ")
 
 
-def test_auth_set_password_reports_missing_op(cli, monkeypatch):
-    asked = []
-    monkeypatch.setattr("getpass.getpass", lambda prompt="": asked.append(prompt) or "mat-khau")
-    out = cli(["auth", "set-password"])
-    assert out.code == 2 and out.stderr.startswith("unknown_op: ") and "auth.set_password" in out.stderr
-    assert asked == []  # không hỏi mật khẩu khi op chưa có
+def test_argparse_messages_are_vietnamese(cli):
+    import argparse
+
+    original = argparse._
+    out = cli(["test", "cli-create", "--name", "x", "--count", "ba"])
+    assert out.stderr.startswith("invalid_arguments: tham số --count: giá trị int không hợp lệ: 'ba'")
+    out = cli(["test", "cli-create", "--name", "x", "--kind", "audio"])
+    assert "lựa chọn không hợp lệ: 'audio'" in out.stderr
+    out = cli(["test", "cli-create", "--bogus", "1"])
+    assert out.stderr.startswith("invalid_arguments: tham số không nhận ra: --bogus 1")
+    out = cli(["test"])
+    assert out.stderr.startswith("invalid_arguments: thiếu tham số bắt buộc: <hành động>")
+    out = cli(["test", "cli-create", "--help"])
+    assert out.stdout.startswith("cách dùng: sagareel test cli-create")
+    assert "tuỳ chọn:" in out.stdout and "hiện trợ giúp này rồi thoát" in out.stdout
+    assert argparse._ is original  # bản dịch chỉ áp trong lúc CLI chạy
 
 
-def test_job_wait_reports_missing_op(cli):
-    out = cli(["job", "wait", "1", "2"])
-    assert out.code == 2 and out.stderr.startswith("unknown_op: ") and "job.wait" in out.stderr
+def test_bad_json_flag_value_is_not_echoed(cli):
+    out = cli(["test", "cli-create", "--name", "x", "--options", '{"api_key": "sk-bi-mat'])
+    assert out.code == 2 and out.stderr.startswith("invalid_arguments: tham số --options: ")
+    assert "sk-bi-mat" not in out.stderr  # giá trị có thể chứa bí mật
 
 
 # ---------------------------------------------------------------------------------------------------------------
 # App chưa chạy, cache catalog
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.1:abc", "http://[::1", "http://127.0.0.1:99999", "localhost:8990"])
+def test_bad_url_is_invalid_url(capsys, monkeypatch, url):
+    monkeypatch.setenv("SAGAREEL_URL", url)
+
+    def no_network(request: httpx.Request) -> httpx.Response:  # pragma: no cover - không được gọi
+        raise AssertionError("URL hỏng không được gọi mạng")
+
+    assert cli_main.main(["ops"], transport=httpx.MockTransport(no_network)) == 2
+    assert capsys.readouterr().err.startswith("invalid_url: ")
+
+
+def test_unexpected_cli_bug_is_reported_with_exit_1(capsys, monkeypatch):
+    def broken(ctx):
+        raise RuntimeError("hỏng")
+
+    monkeypatch.setattr(cli_main, "load_catalog", broken)
+    assert cli_main.main(["ops"], transport=httpx.MockTransport(lambda r: httpx.Response(200))) == 1
+    assert capsys.readouterr().err.startswith("cli_internal_error: ")
 
 
 def test_app_not_running_exit_3(capsys):
@@ -379,20 +410,40 @@ _FAKE_CATALOG = [
 ]
 
 
-def _fake_app(op_handler):
+def _fake_app(op_handler, catalog=None):
     calls = []
+    catalog = _FAKE_CATALOG if catalog is None else catalog
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/health":
             return httpx.Response(200, json={"ok": True, "boot_id": "a" * 32})
         if request.url.path == "/api/ops":
-            return httpx.Response(200, json=_FAKE_CATALOG)
+            return httpx.Response(200, json=catalog)
         name = request.url.path.removeprefix("/api/ops/")
         body = json.loads(request.content or b"{}")
         calls.append((name, body, request))
         return op_handler(name, body)
 
     return httpx.MockTransport(handler), calls
+
+
+def test_auth_set_password_reports_missing_op(capsys, monkeypatch):
+    # Catalog không có auth.set_password (task khác thêm) → lỗi chuẩn, không hỏi mật khẩu, không gọi op.
+    asked = []
+    monkeypatch.setattr("getpass.getpass", lambda prompt="": asked.append(prompt) or "mat-khau")
+    transport, calls = _fake_app(lambda n, b: httpx.Response(200, json={}), catalog=_FAKE_CATALOG[2:])
+    assert cli_main.main(["auth", "set-password"], transport=transport) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("unknown_op: ") and "auth.set_password" in err
+    assert asked == [] and calls == []
+
+
+def test_job_wait_reports_missing_op(capsys):
+    transport, calls = _fake_app(lambda n, b: httpx.Response(200, json={}), catalog=_FAKE_CATALOG[2:])
+    assert cli_main.main(["job", "wait", "1", "2"], transport=transport) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("unknown_op: ") and "job.wait" in err
+    assert calls == []
 
 
 def test_job_wait_loops_in_chunks_until_overall_timeout(capsys, monkeypatch):

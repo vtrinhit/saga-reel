@@ -9,7 +9,8 @@ Catalog tải qua `GET /api/ops`, cache ở `%LOCALAPPDATA%/sagareel/ops-<host>_
 
 Đầu ra: kết quả ra stdout (JSON thụt lề, `ensure_ascii=False`; `--json` → một dòng). Lỗi ra stderr, dòng đầu luôn là
 `error_code: detail (gợi ý: hint)`, các dòng sau là chi tiết (`extra`). Mã thoát ổn định:
-0 = thành công, 2 = lỗi người dùng / lỗi app trả về (xem `error_code`), 3 = không kết nối được app.
+0 = thành công, 2 = lỗi người dùng / lỗi app trả về (xem `error_code`), 3 = không kết nối được app,
+1 = lỗi không lường trước của chính CLI (`cli_internal_error`).
 
 Module này không import backend (chỉ stdlib + httpx) để CLI nhẹ và chạy được khi app nằm ở máy khác.
 """
@@ -23,6 +24,8 @@ import json
 import os
 import re
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -36,6 +39,7 @@ CACHE_DIR_ENV = "SAGAREEL_CACHE_DIR"
 DEFAULT_URL = "http://127.0.0.1:8990"
 
 EXIT_OK = 0
+EXIT_CLI_BUG = 1  # lỗi không lường trước của chính CLI (`cli_internal_error`)
 EXIT_USER = 2  # lỗi người dùng hoặc lỗi do app trả về
 EXIT_APP_DOWN = 3  # không kết nối được app
 
@@ -71,6 +75,48 @@ class CliError(Exception):
         self.hint = hint
         self.extra = extra or {}
         self.exit_code = exit_code
+
+
+# Bản dịch thông báo/nhãn của argparse (Python 3.11). argparse tra `argparse._` / `argparse.ngettext` lúc gọi,
+# nên `_vietnamese_argparse()` thay tạm hai hàm này trong lúc dựng parser và phân tích argv, rồi trả lại.
+_VI_ARGPARSE = {
+    "usage: ": "cách dùng: ",
+    "positional arguments": "tham số vị trí",
+    "options": "tuỳ chọn",
+    "show this help message and exit": "hiện trợ giúp này rồi thoát",
+    "argument %(argument_name)s: %(message)s": "tham số %(argument_name)s: %(message)s",
+    "unknown parser %(parser_name)r (choices: %(choices)s)":
+        "không có lệnh %(parser_name)r (chọn một trong: %(choices)s)",
+    "unrecognized arguments: %s": "tham số không nhận ra: %s",
+    "the following arguments are required: %s": "thiếu tham số bắt buộc: %s",
+    "expected one argument": "cần đúng một giá trị",
+    "expected at most one argument": "cần nhiều nhất một giá trị",
+    "expected at least one argument": "cần ít nhất một giá trị",
+    "ignored explicit argument %r": "không nhận giá trị %r",
+    "ambiguous option: %(option)s could match %(matches)s": "tuỳ chọn mơ hồ: %(option)s có thể là %(matches)s",
+    "invalid %(type)s value: %(value)r": "giá trị %(type)s không hợp lệ: %(value)r",
+    "invalid choice: %(value)r (choose from %(choices)s)":
+        "lựa chọn không hợp lệ: %(value)r (chọn một trong: %(choices)s)",
+    "not allowed with argument %s": "không dùng chung được với %s",
+    "unexpected option string: %s": "tuỳ chọn không mong đợi: %s",
+}
+
+
+def _vi_ngettext(singular: str, plural: str, n: int) -> str:
+    if singular == "expected %s argument":
+        return "cần %s giá trị"
+    return singular if n == 1 else plural
+
+
+@contextmanager
+def _vietnamese_argparse() -> Iterator[None]:
+    saved = argparse._, argparse.ngettext  # type: ignore[attr-defined]
+    argparse._ = lambda s: _VI_ARGPARSE.get(s, s)  # type: ignore[attr-defined]
+    argparse.ngettext = _vi_ngettext  # type: ignore[attr-defined]
+    try:
+        yield
+    finally:
+        argparse._, argparse.ngettext = saved  # type: ignore[attr-defined]
 
 
 class _Parser(argparse.ArgumentParser):
@@ -147,7 +193,10 @@ def _json_value(text: str) -> Any:
     try:
         return json.loads(text)
     except ValueError as e:
-        raise argparse.ArgumentTypeError(f"giá trị không phải JSON hợp lệ ({e.msg}): {text!r}") from None
+        # Không lặp lại giá trị: nó có thể chứa bí mật (api_key…).
+        raise argparse.ArgumentTypeError(
+            f"giá trị không phải JSON hợp lệ ({e.msg}, dòng {e.lineno}, cột {e.colno})"
+        ) from None
 
 
 def _json_or_str(text: str) -> Any:
@@ -211,6 +260,11 @@ def _json_flag_parent() -> argparse.ArgumentParser:
 
 def build_parser(catalog: list[dict]) -> argparse.ArgumentParser:
     """Parser đầy đủ: lệnh cố định + mỗi op trong catalog một lệnh `<group> <action>`."""
+    with _vietnamese_argparse():  # tiêu đề nhóm ("tuỳ chọn"…) và help -h được dịch lúc dựng
+        return _build_parser(catalog)
+
+
+def _build_parser(catalog: list[dict]) -> argparse.ArgumentParser:
     json_parent = _json_flag_parent()
     parser = _Parser(
         prog="sagareel",
@@ -326,10 +380,15 @@ class _Ctx:
 
 def _base_url() -> str:
     url = (os.environ.get(URL_ENV) or DEFAULT_URL).rstrip("/")
-    parts = urlsplit(url)
-    if parts.scheme not in ("http", "https") or not parts.hostname:
-        raise CliError("invalid_url", f"{URL_ENV} không hợp lệ: {url!r}.",
-                       hint=f"Dùng dạng {DEFAULT_URL}.")
+    try:
+        parts = urlsplit(url)
+        _ = parts.port  # ném ValueError nếu cổng không phải số hoặc ngoài 0–65535
+        httpx.URL(url)
+        valid = parts.scheme in ("http", "https") and bool(parts.hostname)
+    except (ValueError, httpx.InvalidURL):
+        valid = False
+    if not valid:
+        raise CliError("invalid_url", f"{URL_ENV} không hợp lệ: {url!r}.", hint=f"Dùng dạng {DEFAULT_URL}.")
     return url
 
 
@@ -639,7 +698,9 @@ def main(argv: list[str] | None = None, *, transport: httpx.BaseTransport | None
                 if e.exit_code != EXIT_APP_DOWN or not _only_help(argv):
                     raise
                 print("Không kết nối được app: chỉ hiện lệnh cố định.", file=sys.stderr)
-            args = build_parser(ctx.catalog).parse_args(argv)
+            parser = build_parser(ctx.catalog)
+            with _vietnamese_argparse():  # thông báo lỗi cú pháp và usage
+                args = parser.parse_args(argv)
             result = args.handler(ctx, args)
         _emit(result, bool(getattr(args, "json", False)))
         return EXIT_OK
@@ -651,3 +712,7 @@ def main(argv: list[str] | None = None, *, transport: httpx.BaseTransport | None
     except KeyboardInterrupt:
         print("interrupted: Đã dừng theo yêu cầu người dùng.", file=sys.stderr)
         return 130
+    except Exception as e:  # lỗi của chính CLI: vẫn giữ định dạng một dòng, mã thoát riêng
+        print(f"cli_internal_error: Lỗi không lường trước trong CLI ({type(e).__name__}: {e}). "
+              "(gợi ý: Báo lỗi kèm lệnh vừa chạy.)", file=sys.stderr)
+        return EXIT_CLI_BUG
