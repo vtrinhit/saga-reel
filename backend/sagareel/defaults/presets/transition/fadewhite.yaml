@@ -1,0 +1,6 @@
+key: fadewhite
+name: Qua trắng
+kind: transition
+xfade: fadewhite
+duration_ms: 700
+new_scene_duration_ms: 700

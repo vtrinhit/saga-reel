@@ -1,0 +1,5 @@
+key: light_flicker
+name: Ánh sáng chập chờn
+kind: motion
+type: post
+filter: "eq=brightness='0.012*sin(2*PI*t*1.7)+0.008*sin(2*PI*t*4.3)':eval=frame"

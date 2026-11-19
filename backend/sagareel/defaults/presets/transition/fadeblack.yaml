@@ -1,0 +1,6 @@
+key: fadeblack
+name: Qua đen
+kind: transition
+xfade: fadeblack
+duration_ms: 1000         # hồi tưởng, kết chương/tập 0,8–1,2 s
+new_scene_duration_ms: 1000

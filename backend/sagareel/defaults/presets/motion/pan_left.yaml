@@ -1,0 +1,9 @@
+key: pan_left
+name: Lia trái
+kind: motion
+type: pan
+zoom: 1.15
+z: "{zoom}"
+x: "(iw-iw/zoom)*({start}+{span}*(1-{ease}))"
+y: "(ih-ih/zoom)*{focus_y}"
+post: [grain, vignette]

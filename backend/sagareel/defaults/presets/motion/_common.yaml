@@ -1,0 +1,11 @@
+# Tham số chung của still_motion (post-production.md "Mặc định đề xuất" › still_motion).
+upscale_factor: 4          # phóng 4× chiều rộng trước zoompan (chống rung); ảnh nguồn lớn → 3×
+upscale_factor_large: 3
+large_source_px: 4000
+ease: "(3*pow(on/{D},2)-2*pow(on/{D},3))"
+zoompan: "zoompan=z='{z}':x='{x}':y='{y}':d={D}:s={W}x{H}:fps={fps}"
+max_zoom_per_s: 0.02
+max_pan_width_per_s: 0.04
+focus_x: 0.5
+focus_y: 0.5
+default_cycle: [slow_zoom_in, slow_zoom_out, pan_right, pan_left]

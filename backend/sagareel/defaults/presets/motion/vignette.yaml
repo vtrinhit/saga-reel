@@ -1,0 +1,5 @@
+key: vignette
+name: Tối góc
+kind: motion
+type: post
+filter: "vignette=PI/6:eval=init"

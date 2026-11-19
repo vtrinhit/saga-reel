@@ -1,0 +1,6 @@
+# Chuyển cảnh (post-production.md §4): mặc định cắt thẳng.
+key: cut
+name: Cắt thẳng
+kind: transition
+xfade: null
+duration_ms: 0

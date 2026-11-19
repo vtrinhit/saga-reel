@@ -1,0 +1,9 @@
+key: slow_zoom_out
+name: Lùi chậm ra
+kind: motion
+type: zoom
+amt: 0.08
+z: "1+{amt}-{amt}*{ease}"
+x: "(iw-iw/zoom)*{focus_x}"
+y: "(ih-ih/zoom)*{focus_y}"
+post: [grain, vignette]

@@ -181,8 +181,11 @@ async def run(
     total_ms: int | None = None,
     on_progress: Callable[[float], None] | None = None,
     cancel: asyncio.Event | None = None,
-) -> None:
-    """Chạy ffmpeg với `args`; ném `FFmpegError` (code `ffmpeg_failed` / `ffmpeg_timeout` / `ffmpeg_cancelled`)."""
+) -> str:
+    """Chạy ffmpeg với `args`; ném `FFmpegError` (code `ffmpeg_failed` / `ffmpeg_timeout` / `ffmpeg_cancelled`).
+
+    Thành công → trả đuôi stderr (≤ `STDERR_TAIL_LINES` dòng), vd. để đọc JSON của `loudnorm print_format=json`.
+    """
     cmd = build_command(args)
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -241,6 +244,7 @@ async def run(
             raise FFmpegError(f"ffmpeg chạy quá {timeout:g} giây nên đã bị dừng.", tail_text, code="ffmpeg_timeout")
         if proc.returncode != 0:
             raise FFmpegError(f"ffmpeg thất bại (mã thoát {proc.returncode}).", tail_text)
+        return tail_text
     finally:
         if proc.returncode is None:  # task bị cancel từ ngoài, hoặc lỗi bất ngờ
             await asyncio.shield(_stop(proc))

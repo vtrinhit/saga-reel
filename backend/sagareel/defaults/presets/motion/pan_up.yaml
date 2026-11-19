@@ -1,0 +1,9 @@
+key: pan_up
+name: Lia lên
+kind: motion
+type: pan
+zoom: 1.15
+z: "{zoom}"
+x: "(iw-iw/zoom)*{focus_x}"
+y: "(ih-ih/zoom)*({start}+{span}*(1-{ease}))"
+post: [grain, vignette]
