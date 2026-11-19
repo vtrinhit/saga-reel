@@ -46,7 +46,7 @@ class CliClearParams(BaseModel):
     action: Literal["resubmit", "fail"]
 
 
-TEST_OPS = ("test.cli_list", "test.cli_create", "test.cli_clear")
+TEST_OPS = ("test.cli_list", "test.cli_create", "test.cli_clear", "test.cli_boom")
 
 
 def _register_test_ops() -> None:
@@ -61,6 +61,10 @@ def _register_test_ops() -> None:
     @ops.op("test.cli_clear", summary="Op có trường tên `action`", params=CliClearParams)
     def cli_clear(ctx: OpContext, p: CliClearParams) -> dict:
         return p.model_dump()
+
+    @ops.op("test.cli_boom", summary="Luôn ném lỗi không lường trước", params=CliListParams)
+    def cli_boom(ctx: OpContext, p: CliListParams) -> None:
+        raise RuntimeError("bí mật nội bộ")
 
 
 @pytest.fixture(autouse=True)
@@ -307,11 +311,13 @@ def test_bad_url_is_invalid_url(capsys, monkeypatch, url):
 
 def test_unexpected_cli_bug_is_reported_with_exit_1(capsys, monkeypatch):
     def broken(ctx):
-        raise RuntimeError("hỏng")
+        raise RuntimeError("tok-SECRET-123 lọt vào thông báo")
 
     monkeypatch.setattr(cli_main, "load_catalog", broken)
     assert cli_main.main(["ops"], transport=httpx.MockTransport(lambda r: httpx.Response(200))) == 1
-    assert capsys.readouterr().err.startswith("cli_internal_error: ")
+    err = capsys.readouterr().err
+    assert err.startswith("cli_internal_error: ") and "RuntimeError" in err
+    assert "tok-SECRET" not in err  # chỉ in tên kiểu lỗi, không in nội dung (có thể chứa token)
 
 
 def test_app_not_running_exit_3(capsys):
@@ -338,7 +344,13 @@ def test_read_timeout_is_not_app_not_running(capsys):
         raise httpx.ReadTimeout("slow", request=request)
 
     code = cli_main.main(["call", "system.info"], transport=httpx.MockTransport(slow))
-    assert code == 2 and capsys.readouterr().err.startswith("request_timeout: ")
+    assert code == 5 and capsys.readouterr().err.startswith("request_timeout: ")
+
+
+def test_op_crash_in_live_app_is_exit_5(cli):
+    out = cli(["test", "cli-boom"])
+    assert out.code == 5 and out.stderr.startswith("internal_error: ")
+    assert "bí mật nội bộ" not in out.stderr
 
 
 def test_serve_never_touches_network(monkeypatch):
@@ -453,7 +465,8 @@ def test_job_wait_loops_in_chunks_until_overall_timeout(capsys, monkeypatch):
     transport, calls = _fake_app(op_handler)
     code = cli_main.main(["job", "wait", "4", "5", "--timeout", "1300", "--json"], transport=transport)
     out = capsys.readouterr()
-    assert code == 0, out.err
+    assert code == 4, out.err  # hết giờ: mã thoát 4, kết quả vẫn in ra stdout
+    assert out.err == ""
     assert [c[1] for c in calls] == [
         {"ids": [4, 5], "timeout_s": 600}, {"ids": [4, 5], "timeout_s": 600}, {"ids": [4, 5], "timeout_s": 100},
     ]
@@ -468,6 +481,16 @@ def test_job_wait_stops_when_done(capsys):
     assert cli_main.main(["job", "wait", "4"], transport=transport) == 0
     assert [c[1] for c in calls] == [{"ids": [4], "timeout_s": 600}]
     assert '"succeeded"' in capsys.readouterr().out
+
+
+def test_job_wait_completed_after_timed_out_chunk_returns_0(capsys):
+    results = iter([{"timed_out": True, "jobs": []}, {"timed_out": False, "jobs": [{"id": 4, "status": "failed"}]}])
+    transport, calls = _fake_app(lambda n, b: httpx.Response(200, json=next(results)))
+    code = cli_main.main(["job", "wait", "4", "--timeout", "900", "--json"], transport=transport)
+    out = capsys.readouterr()
+    assert code == 0, out.err  # đã kết thúc (kể cả job failed) → 0; trạng thái nằm trong kết quả
+    assert [c[1]["timeout_s"] for c in calls] == [600, 300]
+    assert json.loads(out.out)["timed_out"] is False
 
 
 def test_job_wait_requires_ids(capsys):
@@ -518,10 +541,35 @@ def test_token_sent_as_bearer(capsys, monkeypatch):
     capsys.readouterr()
 
 
-def test_non_json_server_error(capsys):
+def test_non_json_server_error_is_retryable_exit_5(capsys):
     transport, _ = _fake_app(lambda n, b: httpx.Response(502, text="Bad Gateway"))
-    assert cli_main.main(["call", "job.wait", "{}"], transport=transport) == 2
+    assert cli_main.main(["call", "job.wait", "{}"], transport=transport) == 5
     assert capsys.readouterr().err.startswith("http_error: ")
+
+
+def test_non_json_client_error_is_exit_2(capsys):
+    transport, _ = _fake_app(lambda n, b: httpx.Response(405, json={"detail": "Method Not Allowed"}))
+    assert cli_main.main(["call", "job.wait", "{}"], transport=transport) == 2
+    assert capsys.readouterr().err.startswith("http_error: Máy chủ trả HTTP 405")
+
+
+def test_json_5xx_error_is_exit_5(capsys):
+    payload = {"ok": False, "error_code": "internal_error", "detail": "Đã xảy ra lỗi nội bộ không lường trước.",
+               "hint": "Xem log của máy chủ để biết chi tiết.", "status": 500, "extra": {}}
+    transport, _ = _fake_app(lambda n, b: httpx.Response(500, json=payload))
+    assert cli_main.main(["call", "job.wait", "{}"], transport=transport) == 5
+    assert capsys.readouterr().err.startswith("internal_error: Đã xảy ra lỗi nội bộ")
+
+
+def test_transport_failure_after_connecting_is_exit_5(capsys):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.startswith("/api/ops/"):
+            raise httpx.RemoteProtocolError("server disconnected", request=request)
+        return {"/api/health": httpx.Response(200, json={"ok": True, "boot_id": "c" * 32}),
+                "/api/ops": httpx.Response(200, json=_FAKE_CATALOG)}[request.url.path]
+
+    assert cli_main.main(["call", "job.wait", "{}"], transport=httpx.MockTransport(handler)) == 5
+    assert capsys.readouterr().err.startswith("connection_failed: ")
 
 
 def test_auth_error_on_catalog_fetch_is_exit_2(capsys):

@@ -9,8 +9,15 @@ Catalog tải qua `GET /api/ops`, cache ở `%LOCALAPPDATA%/sagareel/ops-<host>_
 
 Đầu ra: kết quả ra stdout (JSON thụt lề, `ensure_ascii=False`; `--json` → một dòng). Lỗi ra stderr, dòng đầu luôn là
 `error_code: detail (gợi ý: hint)`, các dòng sau là chi tiết (`extra`). Mã thoát ổn định:
-0 = thành công, 2 = lỗi người dùng / lỗi app trả về (xem `error_code`), 3 = không kết nối được app,
-1 = lỗi không lường trước của chính CLI (`cli_internal_error`).
+
+    0  thành công (kể cả `job wait` khi mọi job đã kết thúc, dù job thất bại: trạng thái nằm trong kết quả)
+    1  lỗi không lường trước của chính CLI (`cli_internal_error`)
+    2  app từ chối yêu cầu hoặc lệnh sai: HTTP 4xx (`validation_failed`, `unknown_op`, `unauthorized`…),
+       lỗi cú pháp (`invalid_arguments`, `invalid_json`, `invalid_url`…) — thử lại y nguyên sẽ vẫn lỗi
+    3  app chưa chạy: không kết nối được (`app_not_running`)
+    4  `job wait` hết giờ khi còn job chưa kết thúc (kết quả có `timed_out: true` vẫn in ra stdout)
+    5  lỗi phía app có thể hết khi thử lại: HTTP 5xx (`internal_error`, `http_error`), hết giờ chờ trả lời
+       (`request_timeout`), mất kết nối sau khi đã kết nối (`connection_failed`)
 
 Module này không import backend (chỉ stdlib + httpx) để CLI nhẹ và chạy được khi app nằm ở máy khác.
 """
@@ -40,8 +47,10 @@ DEFAULT_URL = "http://127.0.0.1:8990"
 
 EXIT_OK = 0
 EXIT_CLI_BUG = 1  # lỗi không lường trước của chính CLI (`cli_internal_error`)
-EXIT_USER = 2  # lỗi người dùng hoặc lỗi do app trả về
-EXIT_APP_DOWN = 3  # không kết nối được app
+EXIT_USER = 2  # app từ chối yêu cầu (4xx, validate, op lạ) hoặc lỗi cú pháp lệnh
+EXIT_APP_DOWN = 3  # app chưa chạy (không kết nối được)
+EXIT_TIMEOUT = 4  # `job wait` hết giờ khi job chưa kết thúc (kết quả vẫn in ra stdout)
+EXIT_RETRYABLE = 5  # lỗi phía app có thể hết khi thử lại: HTTP 5xx, hết giờ chờ trả lời, mất kết nối giữa chừng
 
 CONNECT_TIMEOUT_S = 10.0
 READ_TIMEOUT_S = 300.0
@@ -270,7 +279,9 @@ def _build_parser(catalog: list[dict]) -> argparse.ArgumentParser:
         prog="sagareel",
         description="Điều khiển SagaReel Studio từ dòng lệnh. Lệnh sinh từ danh mục thao tác của app đang chạy.",
         epilog=f"Biến môi trường: {URL_ENV} (mặc định {DEFAULT_URL}), {TOKEN_ENV} (Bearer token). "
-        "Mã thoát: 0 thành công, 2 lỗi người dùng/lỗi app trả về, 3 không kết nối được app.",
+        "Mã thoát: 0 thành công; 1 lỗi của chính CLI; 2 app từ chối yêu cầu hoặc lệnh sai (4xx, cú pháp); "
+        "3 app chưa chạy; 4 job wait hết giờ (kết quả vẫn in ra); "
+        "5 lỗi phía app có thể thử lại (5xx, hết giờ chờ, mất kết nối giữa chừng).",
         allow_abbrev=False,
     )
     parser.add_argument("--json", action="store_true", default=False, help="In kết quả JSON trên một dòng")
@@ -430,27 +441,31 @@ def _request(ctx: _Ctx, method: str, path: str, *, body: Any = None, read_timeou
                        exit_code=EXIT_APP_DOWN) from None
     except httpx.TimeoutException:
         raise CliError("request_timeout", f"App không trả lời {method} {path} kịp thời gian chờ.",
-                       hint="App vẫn chạy nhưng bận; thử lại sau hoặc xem log máy chủ.") from None
+                       hint="App vẫn chạy nhưng bận; thử lại sau hoặc xem log máy chủ.",
+                       exit_code=EXIT_RETRYABLE) from None
     except httpx.UnsupportedProtocol:
         raise CliError("invalid_url", f"{URL_ENV} không hợp lệ: {ctx.url!r}.",
                        hint=f"Dùng dạng {DEFAULT_URL}.") from None
     except httpx.TransportError as e:
         raise CliError("connection_failed", f"Mất kết nối tới SagaReel Studio tại {ctx.url}: {type(e).__name__}.",
-                       hint="Kiểm tra app còn chạy không rồi thử lại.", exit_code=EXIT_APP_DOWN) from None
+                       hint="Kiểm tra app còn chạy không rồi thử lại.", exit_code=EXIT_RETRYABLE) from None
 
     if r.status_code >= 400:
+        # 5xx: lỗi phía app, thử lại có thể được; 4xx: app từ chối yêu cầu, thử lại y nguyên vẫn lỗi.
+        exit_code = EXIT_RETRYABLE if r.status_code >= 500 else EXIT_USER
         try:
             data = r.json()
         except ValueError:
             data = None
         if isinstance(data, dict) and isinstance(data.get("error_code"), str):
             raise CliError(data["error_code"], str(data.get("detail") or ""), hint=data.get("hint"),
-                           extra=data.get("extra") if isinstance(data.get("extra"), dict) else None)
+                           extra=data.get("extra") if isinstance(data.get("extra"), dict) else None,
+                           exit_code=exit_code)
         server_detail = data.get("detail") if isinstance(data, dict) else None
         raise CliError("http_error",
                        f"Máy chủ trả HTTP {r.status_code} cho {method} {path}"
                        + (f": {server_detail}" if isinstance(server_detail, str) else "."),
-                       hint=f"Kiểm tra {URL_ENV} có trỏ đúng SagaReel Studio không.")
+                       hint=f"Kiểm tra {URL_ENV} có trỏ đúng SagaReel Studio không.", exit_code=exit_code)
     if not r.content:
         return None
     try:
@@ -630,7 +645,10 @@ def _cmd_job_wait(ctx: _Ctx, args: argparse.Namespace) -> Any:
         result = _call_op(ctx, "job.wait", {"ids": args.ids, "timeout_s": chunk},
                           read_timeout=chunk + JOB_WAIT_GRACE_S)
         remaining -= chunk
-        if remaining <= 0 or not (isinstance(result, dict) and result.get("timed_out")):
+        timed_out = isinstance(result, dict) and bool(result.get("timed_out"))
+        if remaining <= 0 or not timed_out:
+            if timed_out:
+                args.exit_code = EXIT_TIMEOUT  # `main` vẫn in kết quả rồi trả mã này
             return result
 
 
@@ -703,7 +721,7 @@ def main(argv: list[str] | None = None, *, transport: httpx.BaseTransport | None
                 args = parser.parse_args(argv)
             result = args.handler(ctx, args)
         _emit(result, bool(getattr(args, "json", False)))
-        return EXIT_OK
+        return getattr(args, "exit_code", EXIT_OK)  # handler đặt khi kết quả hợp lệ nhưng cần mã khác 0
     except CliError as e:
         _report(e)
         return e.exit_code
@@ -713,6 +731,7 @@ def main(argv: list[str] | None = None, *, transport: httpx.BaseTransport | None
         print("interrupted: Đã dừng theo yêu cầu người dùng.", file=sys.stderr)
         return 130
     except Exception as e:  # lỗi của chính CLI: vẫn giữ định dạng một dòng, mã thoát riêng
-        print(f"cli_internal_error: Lỗi không lường trước trong CLI ({type(e).__name__}: {e}). "
+        # Chỉ in tên kiểu lỗi: nội dung có thể chứa một phần token/bí mật (vd. UnicodeEncodeError khi dựng header).
+        print(f"cli_internal_error: Lỗi không lường trước trong CLI ({type(e).__name__}). "
               "(gợi ý: Báo lỗi kèm lệnh vừa chạy.)", file=sys.stderr)
         return EXIT_CLI_BUG
