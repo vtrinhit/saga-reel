@@ -630,9 +630,10 @@ async def sheet_generate(ctx: OpContext, look_id: int, views: list[str] | None =
     def run() -> dict[str, Any]:
         with ctx.services.db.session() as s:
             if dry_run:
-                estimate["budget"] = budget.status(s, "image", resolver=ctx.services.resolver)
+                estimate["budget"] = budget.status(s, "image", resolver=ctx.services.resolver, project_id=project.id)
                 return {"estimate": estimate}
-            budget.check(s, "image", units_each * count, conn.id, resolver=ctx.services.resolver)
+            budget.check(s, "image", units_each * count, conn.id, resolver=ctx.services.resolver,
+                         project_id=project.id)
         lane = ProviderService.lane(conn)
         if has_anchor or compiler.ANCHOR not in norm:
             submitted = submit_sheet_jobs(ctx.services, look_id=look_id, project_id=project.id, views=norm,

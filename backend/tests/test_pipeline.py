@@ -327,7 +327,7 @@ async def test_batch_pilot_gate_releases_followers(services, owner_ctx, proj, fa
 async def test_pipeline_ops_dry_run_status_cancel_and_gate_errors(services, owner_ctx, proj):
     sid = make_seq(owner_ctx, proj)
     plan = await invoke("pipeline.run", {"sequence_ids": [sid], "dry_run": True}, owner_ctx)
-    assert plan["dry_run"] and "render_animatic" in plan["steps"] and plan["sequences"][0]["status"] == "idle"
+    assert plan["dry_run"] and "render_animatic" in plan["step_keys"] and plan["sequences"][0]["status"] == "idle"
     with pytest.raises(AppError) as e:
         await invoke("pipeline.run", {"sequence_ids": [sid], "overrides": {"steps": {"nope": True}}}, owner_ctx)
     assert e.value.code == "workflow_step_unknown"

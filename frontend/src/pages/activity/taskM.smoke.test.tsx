@@ -45,7 +45,7 @@ const OPS: Record<string, unknown> = {
   },
   'budget.status': { image: { enabled: true, total: 100, spent: 10, remaining: 90 }, video: { enabled: false, total: null, spent: 0, remaining: null } },
   'token.list': [{ id: 1, name: 'biên-tập', role: 'owner', active: true, last_used_at: null }],
-  'pipeline.run': { dry_run: true, workflow: 'storyboard_first', steps: ['write_script', 'generate_images', 'gate:storyboard'], sequences: [{ sequence_id: 12, clips: 48, images: 48, videos: 0, llm_calls: 1, status: 'waiting_review' }], estimate: { images: 48, videos: 0, llm_calls: 1, budget: { image: { enabled: true, total: 100, spent: 10, remaining: 90 }, video: { enabled: false, total: null, spent: 0, remaining: null } } } },
+  'pipeline.run': { dry_run: true, workflow: 'storyboard_first', step_keys: ['write_script', 'generate_images', 'gate:storyboard'], steps: [], sequences: [{ sequence_id: 12, clips: 48, images: 48, videos: 0, llm_calls: 1, status: 'waiting_review' }], estimate: { images: 48, videos: 0, llm_calls: 1, budget: { image: { enabled: true, total: 100, spent: 10, remaining: 90 }, video: { enabled: false, total: null, spent: 0, remaining: null } } } },
   'sequence.status': { sequence_id: 12, number: 12, title: 'Đêm trăng máu', has_script: true, clips: { total: 0, with_image: 0, with_video: 0, image_prompt: 0, motion_prompt: 0, approved: 0, flagged: 0, seconds: 0 }, active_jobs: 0 },
   'gate.approve': { gate: 'outline', resumed: true },
   'bible.list': {

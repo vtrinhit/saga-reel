@@ -471,14 +471,18 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
         estimate["parts"]["still_motion"] = {"jobs": sum(1 for st in steps if st["type"] == GEN_STILL), "units": 0,
                                              "cost": 0}
 
+    project_ids = {ci["project_id"] for ci in info.values()}
+    project_id = project_ids.pop() if len(project_ids) == 1 else None
+
     def check_budget(dry: bool) -> None:
         with ctx.services.db.session() as s:
             for kind, u in units.items():
                 conn = targets[kind][0]
                 if dry:
-                    estimate["parts"][kind]["budget"] = budget.status(s, kind, resolver=ctx.services.resolver)
+                    estimate["parts"][kind]["budget"] = budget.status(s, kind, resolver=ctx.services.resolver,
+                                                                      project_id=project_id)
                 else:
-                    budget.check(s, kind, u, conn.id, resolver=ctx.services.resolver)
+                    budget.check(s, kind, u, conn.id, resolver=ctx.services.resolver, project_id=project_id)
 
     await anyio.to_thread.run_sync(check_budget, dry_run)
     warnings = sorted({w for _, w in durations.values() if w})
