@@ -19,3 +19,10 @@
 - Spec dùng khoá theo vị trí cho dialogue/timeline (`clip#n`); migration 0005 (S) đã có cột `key` → chuyển spec sang khoá thật.
 - Spec chưa xuất bible, take; id trong cột JSON không được ánh xạ lại.
 - `skill.list/get` (read_only) có thể ghi change set đồng bộ → tách đồng bộ ra khỏi op đọc.
+
+## Từ M (UI) — việc cho người điều phối / task shell-fix
+- BUG G0: `lib/pipeline.ts` đọc `sequence.pipeline.steps` dạng map, thực tế `{run:{steps:[...],status,waiting},memory}` → thanh bước + chip Cần bạn sai; đếm theo `pipeline.status` như `lib/activity.ts buildNeeds`. `pipeline.updated` thiếu trong `EVENT_TYPES`.
+- Gắn route `settings/storage` → `SettingsStorage` + mục "Lưu trữ" trong SettingsLayout; route `s/:seqId/script` (khu H) hoặc trỏ `story?seq=`.
+- H dùng `RunToGateDialog`, `IdeaToVideoDialog`, `NeedItem` trên Tổng quan.
+- Thêm `js-yaml` vào package.json.
+- Backend: `token.suspend/resume`; `history.list` lọc `actor`; `pipeline.status` toàn cục; chi phí theo bước trong dry run + ước tính tập chưa tách clip; khoá "không hỏi lại dưới n lượt"; tổng drift; `media.cleanup_preview`/`trash.purge`; nguồn video xem trước cho GateCard.
