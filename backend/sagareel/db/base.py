@@ -91,6 +91,12 @@ class JSONListType(_JSONText):
     """
 
 
+class JSONValueType(_JSONText):
+    """Cột JSON giá trị bất kỳ (chuỗi, số, bool, list, dict). Không theo dõi sửa tại chỗ: luôn gán lại cả giá trị."""
+
+    cache_ok = True  # SQLAlchemy đòi khai báo trên chính lớp con (không kế thừa) khi dùng trong câu Core
+
+
 # Kiểu dùng trong model: thay đổi tại chỗ ở mức nông tự đánh dấu dirty.
 JSONDict = MutableDict.as_mutable(JSONDictType())
 JSONList = MutableList.as_mutable(JSONListType())
