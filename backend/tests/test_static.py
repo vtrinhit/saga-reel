@@ -67,19 +67,35 @@ def test_api_and_media_are_not_swallowed(spa_client):
         assert r.headers["content-type"].startswith("application/json"), path
 
 
-def test_routes_included_after_static_still_receive_media(settings, dist):
+def test_media_is_never_answered_by_spa_fallback(spa_client):
+    """Router media thật đứng trước/sau SPA đều được: `/media/...` không bao giờ rơi vào index.html."""
+    for path in ("/media", "/media/999999", "/media/999999/thumb", "/media/khong-phai-so", "/media/a/b/c.js"):
+        r = spa_client.get(path)
+        assert r.status_code in (400, 404, 422), path
+        assert r.headers["content-type"].startswith("application/json"), path
+        assert INDEX not in r.text, path
+
+
+def test_routers_included_after_static_still_receive_requests(settings, dist):
+    """Router include SAU router tĩnh (như khi gộp nhánh thêm route vào cuối create_app) vẫn nhận request của mình."""
     from fastapi import APIRouter
 
     app = create_app(dataclasses.replace(settings, frontend_dist=dist))
     later = APIRouter()
 
-    @later.get("/media/{media_id}")
-    async def media(media_id: int) -> dict:
-        return {"media_id": media_id}
+    @later.get("/api/zz-later/{x}")
+    async def api_later(x: int) -> dict:
+        return {"api": x}
 
-    app.include_router(later)  # include sau router tĩnh (như khi gộp nhánh thêm route mới vào cuối create_app)
+    @later.get("/media/zz-later/{x}")
+    async def media_later(x: int) -> dict:
+        return {"media": x}
+
+    app.include_router(later)
     with TestClient(app) as c:
-        assert c.get("/media/5").json() == {"media_id": 5}
+        assert c.get("/api/zz-later/5").json() == {"api": 5}
+        assert c.get("/media/zz-later/6").json() == {"media": 6}
+        assert c.get("/settings/providers").text == INDEX  # SPA vẫn chạy cho đường dẫn khác
 
 
 def test_content_types_do_not_depend_on_registry(spa_client, dist):
@@ -143,9 +159,22 @@ def test_non_get_methods_not_served(spa_client):
     assert spa_client.post("/settings").status_code == 405
 
 
-def test_static_routes_hidden_from_openapi(spa_client):
+def test_static_routes_hidden_from_openapi(spa_client, dist):
+    """Route SPA (dù path là gì) không có trong OpenAPI; không giả định path của router khác."""
+    from fastapi.routing import APIRoute
+
+    from sagareel.api.static import build_static_router
+
+    spa_routes = [r for r in build_static_router(dist).routes if isinstance(r, APIRoute)]
+    assert spa_routes, "không tìm thấy route SPA"
     paths = spa_client.get("/openapi.json").json()["paths"]
-    assert not any(not p.startswith("/api") for p in paths)
+    for route in spa_routes:
+        assert route.include_in_schema is False
+        assert route.path_format not in paths, route.path_format
+    # Không operation nào của OpenAPI là endpoint SPA.
+    spa_names = {r.name for r in spa_routes}
+    operation_ids = {op.get("operationId", "") for item in paths.values() for op in item.values() if isinstance(op, dict)}
+    assert not any(oid.startswith(name) for oid in operation_ids for name in spa_names)
 
 
 def test_absent_dist_serves_nothing_and_api_still_works(settings, tmp_path):
