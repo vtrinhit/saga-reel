@@ -463,3 +463,22 @@ def test_package_folder_rejects_traversal(services):
         with _pytest.raises(AppError):
             package.package_folder(services, "demo", "ep1", "tiktok", bad or "/")
     assert package.package_folder(services, "demo", "ep1", "tiktok", "vi").name == "tiktok-vi"
+
+
+def test_cue_box_real_subtitles_respects_safe_zone():
+    """Hộp chữ tính từ Cue thật của D (không có `box`): nằm trong vùng an toàn khi build_cues nâng lề; style đặt
+    lề quá thấp mà không nâng → bị báo."""
+    from sagareel.services.audio import subtitles as subs
+    from sagareel.services.export import checks, package, platforms
+
+    spec = {"safe_zone_px": {"top": 160, "bottom": 480, "left": 60, "right": 140},
+            "safe_zone_ref": {"width": 1080, "height": 1920}}
+    st = subs.load_style("9x16")
+    lines = [{"text": "Con chào bà ạ, con về rồi.", "start_ms": 0, "end_ms": 1500}]
+    cues = subs.build_cues(lines, st, 1080, 1920, platforms.safe_zone(spec, 1080, 1920))
+    boxes = [package.cue_box(subs, st, c, 1080, 1920) for c in cues]
+    assert boxes and all(b["y"] + b["h"] <= 1920 - 480 and b["x"] >= 60 for b in boxes)
+    assert checks.check_subtitle_boxes(spec, boxes, (1080, 1920)) == []
+    low = subs.load_style("9x16", overrides={"margin_v": 40})
+    bad = [package.cue_box(subs, low, c, 1080, 1920) for c in subs.build_cues(lines, low, 1080, 1920, None)]
+    assert checks.check_subtitle_boxes(spec, bad, (1080, 1920))[0]["code"] == "subtitle_outside_safe_zone"

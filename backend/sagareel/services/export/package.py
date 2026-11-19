@@ -304,6 +304,23 @@ def shift_cues(cues: Sequence[Any], start_ms: int, end_ms: int) -> list[Any]:
     return out
 
 
+def cue_box(subs: Any, style: Any, cue: Any, width: int, height: int) -> dict[str, Any]:
+    """Hộp chữ (px trên khung `width×height`) libass sẽ vẽ cho `cue`: độ rộng đo như libass (`text_width`), cao =
+    số dòng × `line_height`, cộng viền; canh theo `alignment` (numpad) và lề của cue (đã nâng theo vùng an toàn)."""
+    px, py = style.play_res
+    pad = float(style.get("outline", 0))
+    lines = [" ".join(w.text for w in ln) for ln in cue.lines] or [""]
+    bw = max(subs.text_width(t, style) for t in lines) + 2 * pad
+    bh = len(lines) * subs.line_height(style) + 2 * pad
+    align = int(style.get("alignment", 2))
+    col, row = (align - 1) % 3, (align - 1) // 3  # 0 trái/giữa/phải; 0 dưới, 1 giữa, 2 trên
+    left, right = cue.margin_l, px - cue.margin_r
+    x = left if col == 0 else right - bw if col == 2 else left + (right - left - bw) / 2
+    y = py - cue.margin_v - bh if row == 0 else cue.margin_v if row == 2 else (py - bh) / 2
+    kx, ky = width / px, height / py
+    return {"x": round(x * kx), "y": round(y * ky), "w": round(bw * kx), "h": round(bh * ky)}
+
+
 def cue_boxes(cues: Sequence[Any]) -> list[Any]:
     boxes = []
     for c in cues:
@@ -333,8 +350,11 @@ async def collect_cues(services: Any, sequence_id: int, lang: str, extra: Mappin
         if not lines or not loaded.options.subtitles:
             return []
         w, h = platforms.target_size(dict(spec))
-        return list(subs.build_cues(lines, dict(loaded.options.subtitle_style), w, h,
-                                    platforms.safe_zone(dict(spec), w, h)))
+        style = subs.load_style(dict(loaded.options.subtitle_style))
+        cues = list(subs.build_cues(lines, style, w, h, platforms.safe_zone(dict(spec), w, h)))
+        for c in cues:
+            c.box = cue_box(subs, style, c, w, h)  # Cue của D không có hộp chữ → tính cho kiểm vùng an toàn
+        return cues
 
     try:
         return await anyio.to_thread.run_sync(build)

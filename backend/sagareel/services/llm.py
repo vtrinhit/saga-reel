@@ -80,6 +80,10 @@ def default_tasks() -> list[dict[str, Any]]:
 
 def builtin_template(key: str) -> str | None:
     """Nội dung template cài sẵn `templates/<key>.md` (xuống dòng chuẩn hoá `\\n`), `None` nếu không có."""
+    from sagareel.compile import compiler  # import muộn: compiler phụ thuộc services
+
+    if key in compiler.TEMPLATE_KINDS:  # template prompt compiler (`*.j2`): image.synced, motion.synced, sheet.*
+        return compiler.builtin_body(key)
     if not KEY_RE.match(key or ""):
         return None
     path = TEMPLATES_DIR / f"{key}.md"
