@@ -33,3 +33,7 @@
 - Op trả danh sách enum shot; khoá cài đặt "không hỏi lại dưới n lượt" (H dùng localStorage, M cũng cần); `take.verdict` xoá được verdict; vị trí hàng đợi job.
 - `entity.changed` → nạp lại cả tập 1000 clip (~3 MB); vá theo id clip đổi.
 - UI: nối `pages/overview/slots.tsx` với `RunToGateDialog`/`NeedItem` của M.
+
+## Từ kiểm chứng thật M1 (người điều phối, 2026-11-20)
+- BUG: `job.cancel` một job sheet `anchor` đã gửi provider trả `skipped` (đúng: không huỷ được lượt đã gửi) nhưng **các view `follow` vẫn tự xếp hàng khi anchor xong** → tốn thêm 4 ảnh. Sửa: huỷ (hoặc yêu cầu huỷ) job cha phải đánh dấu `follow_cancelled` để không sinh view tiếp; UI hiện "đã gửi, không huỷ được lượt này; các góc sau sẽ không chạy".
+- Từ I: xfade lỗi timebase — ĐÃ SỬA trên main (settb=AVTB). Còn: `dialogue.list` thiếu độ dài audio; `clip.list` thiếu media id/thumbnail/độ dài nguồn; `export.check` trả metadata sinh ra + `export.create` nhận metadata ghi đè; op dịch + lồng tiếng (`audio.translate_dub(sequence_id, lang)`); `apply_duration_plan` vs độ dài video take (BF đang làm phần render theo duration).
