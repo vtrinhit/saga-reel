@@ -15,7 +15,7 @@ import re
 from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 import anyio
 from pydantic import BaseModel, ValidationError
@@ -28,6 +28,17 @@ McpKind = Literal["tool", "call"]
 
 # Tên op đang chạy trong ngữ cảnh hiện tại (UnitOfWork dùng để đặt tên change set). Được chép sang thread worker.
 current_op: ContextVar[str | None] = ContextVar("sagareel_current_op", default=None)
+
+
+class CommittedChange(NamedTuple):
+    change_set_id: int
+    project_id: int | None
+    entities: tuple[tuple[str, int], ...]
+
+
+# Change set đã commit trong op đang chạy: `execute` đặt một list mới, `UnitOfWork` append vào (cùng object list,
+# kể cả từ thread worker vì context được chép), sau khi op xong `execute` phát một `entity.changed`.
+committed_changes: ContextVar[list[CommittedChange] | None] = ContextVar("sagareel_committed_changes", default=None)
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
@@ -154,6 +165,8 @@ async def execute(spec: OpSpec, params: BaseModel, ctx: OpContext) -> dict | lis
     """Chạy op với params đã validate (REST dùng trực tiếp vì FastAPI đã validate body)."""
     check_role(spec, ctx)
     token = current_op.set(spec.name)
+    changes: list[CommittedChange] = []
+    changes_token = committed_changes.set(changes)
     try:
         if spec.is_async:
             value = await spec.handler(ctx, params)
@@ -161,8 +174,25 @@ async def execute(spec: OpSpec, params: BaseModel, ctx: OpContext) -> dict | lis
             # to_thread.run_sync chép contextvars sang thread worker → handler thấy current_op.
             value = await anyio.to_thread.run_sync(functools.partial(spec.handler, ctx, params))
     finally:
+        committed_changes.reset(changes_token)
         current_op.reset(token)
+        # Phát cả khi handler lỗi sau khi đã commit: dữ liệu đã thật sự đổi.
+        if changes:
+            _publish_entity_changed(ctx, changes)
     return _dump(spec, value)
+
+
+def _publish_entity_changed(ctx: OpContext, changes: list[CommittedChange]) -> None:
+    """Một `entity.changed` cho cả op: `change_set` là id (một UoW) hoặc list id; project lấy từ các UoW."""
+    ids = [c.change_set_id for c in changes]
+    entities = list(dict.fromkeys(e for c in changes for e in c.entities))
+    projects = {c.project_id for c in changes}
+    project_id = projects.pop() if len(projects) == 1 else None
+    ctx.services.bus.publish(
+        "entity.changed",
+        {"change_set": ids[0] if len(ids) == 1 else ids, "entities": [list(e) for e in entities]},
+        project_id=project_id,
+    )
 
 
 async def invoke(name: str, payload: dict, ctx: OpContext) -> dict | list | None:

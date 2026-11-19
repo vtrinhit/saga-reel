@@ -29,7 +29,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Mapper, Session
 
 from sagareel.core import secrets
-from sagareel.core.ops import current_op
+from sagareel.core.ops import CommittedChange, committed_changes, current_op
 from sagareel.db.models import ChangeSet, Revision
 from sagareel.db.session import Database
 
@@ -132,6 +132,7 @@ class UnitOfWork(AbstractContextManager):
             except BaseException:
                 self._reset_result()
                 raise
+            self._report_committed()
             return False
         finally:
             event.remove(s, "before_flush", self._before_flush)
@@ -191,6 +192,12 @@ class UnitOfWork(AbstractContextManager):
         s.flush()
         self.change_set_id = cs.id if cs is not None else None
         self.changed = [key for key, _, _ in diffs]
+
+    def _report_committed(self) -> None:
+        """Báo change set vừa commit cho op đang chạy (để `ops.execute` phát `entity.changed`)."""
+        collector = committed_changes.get()
+        if collector is not None and self.change_set_id is not None:
+            collector.append(CommittedChange(self.change_set_id, self.project_id, tuple(self.changed)))
 
     def _reset_result(self) -> None:
         self.change_set_id = None
