@@ -225,7 +225,8 @@ async def run(
         if reason is not None:
             await _stop(proc)
         await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)  # đọc nốt pipe tới EOF
-        if reason == "callback":
+        if not stdout_task.cancelled() and stdout_task.exception() is not None:
+            # on_progress ném lỗi (kể cả ở khối cuối sau khi ffmpeg đã thoát) → ném lại cho người gọi.
             raise stdout_task.exception()  # type: ignore[misc]
         tail_text = "\n".join(tail)
         if reason == "cancelled":

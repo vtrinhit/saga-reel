@@ -208,6 +208,26 @@ def test_register_copy_keeps_source(session, tmp_path):
     assert (m.mime, m.width, m.height, m.project_id, m.duration_ms) == ("image/png", 64, 112, 3, None)
 
 
+def test_register_audio(session, tmp_path):
+    wav = tmp_path / "tone.wav"
+    subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=d=1", str(wav)],
+                   check=True, stdin=subprocess.DEVNULL, capture_output=True)
+    m = media.register(session, wav, kind="audio", origin="fake")
+    assert (m.mime, m.width, m.height) == ("audio/wav", None, None)
+    assert 900 <= m.duration_ms <= 1100 and m.meta["probe"]["has_audio"] is True
+
+
+async def test_progress_callback_error_on_final_block_is_raised(tmp_path):
+    def fail_at_end(pct: float) -> None:
+        if pct >= 100:
+            raise RuntimeError("lỗi ở 100%")
+
+    with pytest.raises(RuntimeError, match="lỗi ở 100%"):
+        await ffmpeg.run(["-f", "lavfi", "-i", "testsrc2=s=64x112:d=0.2:r=30", "-c:v", "libx264",
+                          str(tmp_path / "f.part.mp4")], total_ms=200, on_progress=fail_at_end)
+    assert not list(tmp_path.iterdir())
+
+
 def test_register_explicit_data_dir(session, tmp_path):
     data = tmp_path / "elsewhere"
     m = media.register(session, _png(tmp_path / "x.png", (8, 8)), kind="image", origin="upload", data_dir=data)
