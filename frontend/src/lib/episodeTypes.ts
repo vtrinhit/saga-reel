@@ -169,5 +169,5 @@ export interface AssetBrief {
   key: string;
   name: string;
   kind: string;
-  looks?: { id: number; name: string; key?: string }[];
+  looks?: { id: number; name: string; key?: string; anchor_media_id?: number | null; is_default?: boolean }[];
 }
