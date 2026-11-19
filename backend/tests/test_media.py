@@ -265,6 +265,18 @@ def test_prepare_needs_no_session(settings, tmp_path, sample_video):
     assert (prepared.width, prepared.height, prepared.mime) == (64, 112, "video/mp4")
 
 
+@pytest.mark.parametrize("move", [True, False])
+def test_prepare_on_already_stored_file_keeps_it(settings, tmp_path, move):
+    first = media.prepare(_png(tmp_path / "o.png", (8, 8)), kind="image", media_dir=settings.media_dir,
+                          origin="upload", data_dir=settings.data_dir)
+    data = first.stored_path.read_bytes()
+    # Nhận lại file mồ côi đã nằm đúng chỗ trong kho (vd. sau khi `record` thất bại).
+    again = media.prepare(first.stored_path, kind="image", media_dir=settings.media_dir, origin="upload",
+                          data_dir=settings.data_dir, move=move)
+    assert again.path == first.path and again.stored_path == first.stored_path
+    assert first.stored_path.read_bytes() == data and again.size == len(data)
+
+
 def test_record_does_no_file_io(session, settings, tmp_path):
     prepared = media.prepare(_png(tmp_path / "r.png", (16, 16)), kind="image", media_dir=settings.media_dir,
                              origin="upload")
@@ -389,6 +401,18 @@ def test_thumb_video_first_frame(client_with_media):
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
     assert Image.open(io.BytesIO(r.content)).size == (64, 112)  # không phóng to quá kích thước gốc
     assert not list((client_with_media.settings.cache_dir / "thumbs").rglob("*.part*"))
+
+
+async def test_failing_video_thumb_leaves_no_part(settings, tmp_path, monkeypatch):
+    async def half_written_then_fail(args, **kw):
+        Path(args[-1]).write_bytes(b"\xff\xd8 partial")  # ffmpeg đã mở/ghi đầu ra rồi mới hỏng (timeout, huỷ…)
+        raise ffmpeg.FFmpegError("ffmpeg chạy quá 60 giây nên đã bị dừng.", code="ffmpeg_timeout")
+
+    monkeypatch.setattr(media.ffmpeg, "run", half_written_then_fail)
+    out = media.thumb_cache_path(settings, "ab" * 32, 320)
+    with pytest.raises(ffmpeg.FFmpegError):
+        await media.video_thumb(tmp_path / "v.mp4", out, 320)
+    assert not out.exists() and not list(out.parent.glob("*.part*"))
 
 
 def test_thumb_bad_width_is_validation_error(client_with_media):

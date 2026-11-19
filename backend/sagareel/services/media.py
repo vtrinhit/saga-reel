@@ -81,6 +81,8 @@ def _place(src: Path, dest: Path, *, move: bool) -> None:
 
     Lỗi nào cũng thành `AppError("media_store_failed")`; không bao giờ để lại file trong kho mà người gọi không biết.
     """
+    if src.resolve() == dest.resolve():
+        return  # file đã nằm đúng chỗ trong kho (vd. nhận lại file mồ côi) — tuyệt đối không xoá
     if dest.is_file() and dest.stat().st_size == src.stat().st_size:
         # Tên file là sha256 nội dung → bản trong kho giống hệt; không ghi đè (Windows: có thể đang được phục vụ).
         if move:
@@ -378,9 +380,13 @@ async def video_thumb(src: Path, out: Path, w: int) -> None:
     """Khung đầu của video qua ffmpeg, rộng tối đa `w`."""
     out.parent.mkdir(parents=True, exist_ok=True)
     part = ffmpeg.part_path(out)
-    await ffmpeg.run(
-        ["-i", str(src), "-frames:v", "1", "-an", "-vf", f"scale='min({w},iw)':-2",
-         "-q:v", "3", "-update", "1", str(part)],
-        timeout=60,
-    )
-    _publish(part, out)
+    try:
+        await ffmpeg.run(
+            ["-i", str(src), "-frames:v", "1", "-an", "-vf", f"scale='min({w},iw)':-2",
+             "-q:v", "3", "-update", "1", str(part)],
+            timeout=60,
+        )
+        _publish(part, out)
+    finally:  # lỗi / timeout / huỷ: không để lại `.part` trong cache (run() không tự xoá file nào)
+        with contextlib.suppress(FileNotFoundError, PermissionError):
+            part.unlink()
