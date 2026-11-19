@@ -252,6 +252,30 @@ def test_check_writes_health_and_publishes(client):
         assert not [r for r in revs if "alive" in json.dumps(r.after_json)]
 
 
+@pytest.mark.parametrize("second", ["history.redo", "history.undo"])
+def test_check_does_not_block_undo_redo(client, second):
+    """Ghi sức khoẻ (cột sổ sách) giữa các lần hoàn tác không gây undo_conflict."""
+    cid = create(client, FAKE_IMG)["id"]
+    assert call(client, "provider.update", {"id": cid, "fields": {"default_model": "m2"}}).status_code == 200
+    assert call(client, "history.undo").status_code == 200
+    assert call(client, "provider.check", {"ids": [cid]}).json()["items"][0]["health"]["status"] == "alive"
+    r = call(client, second)  # redo lần sửa, hoặc hoàn tác tiếp lần tạo
+    assert r.status_code == 200, r.text
+    with client.app.state.services.db.session() as s:
+        row = s.get(ProviderConnection, cid)
+        assert (row.deleted_at is None) == (second == "history.redo")
+        assert row.health["status"] == "alive"  # hoàn tác/làm lại không ghi đè sức khoẻ
+
+
+def test_name_of_soft_deleted_connection_has_hint(client):
+    cid = create(client, FAKE_IMG)["id"]
+    token = call(client, "provider.delete_preview", {"id": cid}).json()["confirm_token"]
+    call(client, "provider.delete", {"id": cid, "confirm_token": token})
+    body = call(client, "provider.create", FAKE_IMG).json()
+    assert body["error_code"] == "conflict"
+    assert body["hint"] == "Tên đã thuộc một kết nối đã xoá: khôi phục bằng history hoặc chọn tên khác"
+
+
 # --- try_* --------------------------------------------------------------------------------------------------------
 
 

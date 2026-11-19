@@ -189,6 +189,14 @@ Lane `ffmpeg` theo cài đặt `jobs.ffmpeg_concurrency`.
 `services.budget`: `budget.enabled`, `budget.images_total`, `budget.videos_total` (**0 = không giới hạn**). Handler
 tạo ảnh/video kiểm tra trước khi gọi provider (`budget.check`, ném `budget_exceeded` 402) và ghi sổ `spend` sau khi có
 kết quả (`budget.record`). Kết nối có adapter `fake_*` được ghi sổ nhưng không tính vào tổng và không bị chặn.
+Vì không giữ chỗ trước, các job chạy song song trên cùng lane có thể cùng qua bước kiểm tra: tổng có thể vượt trần
+tối đa **(concurrency của lane − 1)** đơn vị (đã chấp nhận).
+
+## Sức khoẻ là cột sổ sách
+
+`provider_connection.health` khai báo `info={"bookkeeping": True}`: ghi nó không sinh change set, lịch sử bỏ qua nó
+khi phát hiện xung đột, và hoàn tác/làm lại/khôi phục không ghi đè nó. Cột trạng thái chạy khác của model khác dùng cùng
+cơ chế (`core.uow.bookkeeping_columns`).
 
 ## Op
 

@@ -26,7 +26,8 @@ class ProviderConnection(Tracked, Base):
     options: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)
     concurrency: Mapped[int] = mapped_column(default=2)
     enabled: Mapped[bool] = mapped_column(default=True)
-    health: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)
+    # Trạng thái chạy (sổ sách, không phải dữ liệu người dùng): không sinh revision, lịch sử không so/áp ngược.
+    health: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict, info={"bookkeeping": True})
 
 
 class LlmTask(Tracked, Base):

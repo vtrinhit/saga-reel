@@ -116,7 +116,8 @@ def _check_name_free(s: Session, name: str, exclude_id: int | None = None) -> No
     if other.deleted_at is not None:
         raise Conflict(
             f"Tên '{name}' đang thuộc kết nối #{other.id} đã xoá.",
-            hint="Chọn tên khác, hoặc hoàn tác lần xoá (history.undo) để dùng lại kết nối cũ.",
+            hint="Tên đã thuộc một kết nối đã xoá: khôi phục bằng history hoặc chọn tên khác",
+            extra={"deleted_connection_id": other.id},
         )
     raise Conflict(f"Đã có kết nối tên '{name}'.", hint="Chọn tên khác.")
 

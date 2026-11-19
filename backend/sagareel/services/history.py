@@ -29,7 +29,7 @@ from sqlalchemy.types import TypeDecorator
 from sagareel.core import secrets
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, Conflict, NotFound
-from sagareel.core.uow import BOOKKEEPING_COLUMNS, UnitOfWork, entity_type_of, read_snapshot
+from sagareel.core.uow import UnitOfWork, bookkeeping_columns, entity_type_of, read_snapshot
 from sagareel.db.base import Base, utcnow
 from sagareel.db.models import ChangeSet, Revision
 
@@ -38,8 +38,12 @@ OP_REDO = "history.redo"
 OP_RESTORE = "history.restore"
 # Change set sinh ra bởi hoàn tác/làm lại: không phải đích của Ctrl+Z, không tự chặn hoàn tác change set khác.
 TRANSPARENT_OPS = (OP_UNDO, OP_REDO)
-# Không bao giờ áp ngược giá trị cột này: để onupdate đóng dấu thời điểm hoàn tác/khôi phục.
-_SKIP_ON_APPLY = BOOKKEEPING_COLUMNS
+
+
+def _skip_on_apply(mapper: Mapper) -> frozenset[str]:
+    """Cột sổ sách không bao giờ được áp ngược: `updated_at` (để onupdate đóng dấu thời điểm hoàn tác/khôi phục) và
+    cột `info={"bookkeeping": True}` (trạng thái chạy như `health` — giữ giá trị hiện tại)."""
+    return bookkeeping_columns(mapper)
 
 
 # --- Schema -----------------------------------------------------------------------------------------------------
@@ -262,7 +266,7 @@ def _comparable(mapper: Mapper, snap: dict[str, Any] | None) -> dict[str, Any] |
     """Dạng so sánh trạng thái: bỏ `updated_at` và cột bí mật; không có dòng ≡ đã xoá mềm."""
     if snap is None or snap.get("deleted_at") is not None:
         return None
-    skip = {a.key for a in mapper.column_attrs if secrets.is_secret(secrets.column_of(a))} | _SKIP_ON_APPLY
+    skip = {a.key for a in mapper.column_attrs if secrets.is_secret(secrets.column_of(a))} | _skip_on_apply(mapper)
     return {k: v for k, v in snap.items() if k not in skip}
 
 
@@ -355,11 +359,12 @@ def _apply(s: Session, u: UnitOfWork, mapper: Mapper, entity_id: int, target: di
         obj = cls()
         setattr(obj, mapper.get_property_by_column(mapper.primary_key[0]).key, entity_id)
     u.track(obj)
+    skip = _skip_on_apply(mapper)
     for attr in mapper.column_attrs:
         column = secrets.column_of(attr)
         if (
             column.primary_key
-            or attr.key in _SKIP_ON_APPLY
+            or attr.key in skip
             or secrets.is_secret(column)
             or attr.key not in target
         ):

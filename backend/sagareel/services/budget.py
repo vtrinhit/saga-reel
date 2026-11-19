@@ -7,6 +7,8 @@
 - Kiểm tra trước khi gọi provider (`check`), ghi sổ sau khi có kết quả (`record`) — tiền đã tiêu thì luôn ghi, kể cả
   khi lúc đó đã vượt trần. `check_and_record` gộp cả hai trong một transaction (dùng khi việc tạo không tốn tiền
   trước, hoặc để giữ chỗ).
+- **Vượt trần có giới hạn (đã chấp nhận):** kiểm tra trước và ghi sau không giữ chỗ, nên các job chạy song song trên
+  cùng lane có thể cùng qua `check`; tổng có thể vượt trần tối đa (concurrency của lane − 1) đơn vị.
 """
 
 from __future__ import annotations
