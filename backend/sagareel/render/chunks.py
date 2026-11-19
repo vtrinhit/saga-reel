@@ -215,9 +215,13 @@ def build_graph(
     g: list[str] = []
 
     # Hình + âm nền: nối lần lượt (xfade/acrossfade khi có chồng, concat khi cắt)
-    v, a = "[0:v]", "[0:a]"
+    # Đồng nhất timebase mọi input trước khi nối: xfade đòi hai đầu vào cùng timebase (segment chuẩn hoá và
+    # segment still_motion ra timebase khác nhau → "First input link main timebase … do not match").
+    for i in range(n):
+        g.append(f"[{i}:v]settb=AVTB,setpts=PTS-STARTPTS[in{i}]")
+    v, a = "[in0]", "[0:a]"
     if n == 1:
-        g.append("[0:v]null[v0]")
+        g.append("[in0]null[v0]")
         g.append("[0:a]anull[a0]")
         v, a = "[v0]", "[a0]"
     for i in range(1, n):
@@ -225,10 +229,10 @@ def build_graph(
         local = c.start_ms - spec.start_ms
         if c.overlap_ms and c.xfade:
             d = f"{round(c.overlap_ms * fps / 1000) / fps:.6f}"
-            g.append(f"{v}[{i}:v]xfade=transition={c.xfade}:duration={d}:offset={_offset(local, fps)}[v{i}]")
+            g.append(f"{v}[in{i}]xfade=transition={c.xfade}:duration={d}:offset={_offset(local, fps)}[v{i}]")
             g.append(f"{a}[{i}:a]acrossfade=d={d}:c1=tri:c2=tri[a{i}]")
         else:
-            g.append(f"{v}[{i}:v]concat=n=2:v=1:a=0[v{i}]")
+            g.append(f"{v}[in{i}]concat=n=2:v=1:a=0[v{i}]")
             g.append(f"{a}[{i}:a]concat=n=2:v=0:a=1[a{i}]")
         v, a = f"[v{i}]", f"[a{i}]"
 

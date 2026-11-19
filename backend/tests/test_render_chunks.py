@@ -279,3 +279,22 @@ async def test_render_chunk_segment_count_mismatch(tmp_path):
     with pytest.raises(AppError):
         await chunks.render(specs[0], [], out_path=tmp_path / "o.mov", stem_out=tmp_path / "o.wav",
                             work_dir=tmp_path)
+
+
+async def test_render_chunk_xfade_mixed_timebases(tmp_path):
+    """Hồi quy: segment khác timebase (still_motion vs clip chuẩn hoá) → xfade không được lỗi timebase."""
+    import subprocess
+
+    specs = _plan([_clip(1, 1000), _clip(2, 1000, link="fade"), _clip(3, 1000, link="fade")])
+    segs = await _segments(tmp_path, 3)
+    remuxed = []
+    for i, (seg, ts) in enumerate(zip(segs, (15360, 90000, 1000), strict=True)):
+        p = getattr(seg, "path", seg)
+        out = tmp_path / f"tb{i}{p.suffix}"
+        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", str(p), "-c", "copy",
+                        "-video_track_timescale", str(ts), str(out)], check=True)
+        remuxed.append(type(seg)(**{**seg.__dict__, "path": out}) if hasattr(seg, "path") else out)
+    out, _stem = await chunks.render(specs[0], remuxed, out_path=tmp_path / "o.mov", stem_out=tmp_path / "o.wav",
+                                    work_dir=tmp_path / "w")
+    vd, ad = stream_durations(out)
+    assert abs(vd - 2.0) < 1 / 30 and abs(vd - ad) < 1 / 30
