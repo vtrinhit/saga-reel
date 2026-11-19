@@ -1,9 +1,12 @@
-import { Check, CircleCheck, CircleAlert, CircleDot, Clock, History, LoaderCircle, ScanFace, AlertTriangle, type LucideIcon } from 'lucide-react';
+import { Check, CircleCheck, CircleAlert, CircleDot, Clock, Diamond, History, LoaderCircle, ScanFace, AlertTriangle, type LucideIcon } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
-/** Bảy trạng thái clip (DESIGN §3.2) + hai tông hệ thống (warn, ok) cho provider/ngân sách. */
+/**
+ * Bảy trạng thái clip (DESIGN §3.2) + hai tông hệ thống (warn, ok) cho provider/ngân sách + `wait` (v2 §5.6: viền đứt
+ * accent, nền trong suốt — "chờ bạn").
+ */
 export type ClipStatus = 'queued' | 'running' | 'done' | 'failed' | 'stale' | 'drifted' | 'approved';
-export type PillStatus = ClipStatus | 'warn' | 'ok';
+export type PillStatus = ClipStatus | 'warn' | 'ok' | 'wait';
 
 export const STATUS_ICON: Record<PillStatus, LucideIcon> = {
   queued: Clock,
@@ -15,6 +18,7 @@ export const STATUS_ICON: Record<PillStatus, LucideIcon> = {
   approved: CircleCheck,
   warn: CircleAlert,
   ok: CircleDot,
+  wait: Diamond,
 };
 
 export const CLIP_STATUSES: ClipStatus[] = ['queued', 'running', 'done', 'failed', 'stale', 'drifted', 'approved'];
@@ -40,6 +44,8 @@ export function statusLabel(status: PillStatus, opts: { position?: number | null
       return 'Cảnh báo';
     case 'ok':
       return 'Ổn';
+    case 'wait':
+      return 'Chờ bạn';
   }
 }
 

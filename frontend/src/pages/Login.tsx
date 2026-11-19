@@ -10,6 +10,7 @@ import { IconButton } from '../components/ui/IconButton';
 import { Input } from '../components/ui/Input';
 import { NetChip } from '../components/ui/NetChip';
 import { formatSeconds } from '../lib/format';
+import { Mark } from '../components/shell/Mark';
 
 const DEFAULT_NEXT = '/projects';
 
@@ -44,7 +45,7 @@ function useCountdown(until: number | null): number {
 function Wordmark() {
   return (
     <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-[-0.01em] sm:text-3xl">
-      <span className="h-[22px] w-7 flex-none -rotate-[8deg] rounded-[50%] border-[3px] border-accent" aria-hidden />
+      <Mark className="h-8 w-8 sm:h-9 sm:w-9" />
       SagaReel Studio
     </h1>
   );

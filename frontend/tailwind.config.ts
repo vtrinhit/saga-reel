@@ -33,9 +33,10 @@ export default {
       boxShadow: { pop: 'var(--shadow-pop)', modal: 'var(--shadow-modal)' },
       outlineWidth: { focus: 'var(--focus-w)' },
       outlineOffset: { focus: 'var(--focus-offset)' },
-      height: { control: 'var(--h-control)', touch: 'var(--h-touch)', row: 'var(--h-row)', track: 'var(--h-track)', topbar: 'var(--h-topbar)', meta: 'var(--h-meta)' },
+      height: { control: 'var(--h-control)', touch: 'var(--h-touch)', row: 'var(--h-row)', track: 'var(--h-track)', topbar: 'var(--h-topbar)', meta: 'var(--h-meta)', spine: 'var(--h-spine)', bottomnav: 'var(--h-bottomnav)' },
       minHeight: { touch: 'var(--h-touch)' },
-      width: { rail: 'var(--w-rail)', inspector: 'var(--w-inspector)' },
+      width: { rail: 'var(--w-rail)', inspector: 'var(--w-inspector)', activity: 'var(--w-activity)', queue: 'var(--w-queue)' },
+      borderWidth: { ring: 'var(--ring-w)' },
       zIndex: {
         sticky: 'var(--z-sticky)', playhead: 'var(--z-playhead)', dropdown: 'var(--z-dropdown)', drawer: 'var(--z-drawer)',
         batchbar: 'var(--z-batchbar)', modal: 'var(--z-modal)', toast: 'var(--z-toast)', palette: 'var(--z-palette)',

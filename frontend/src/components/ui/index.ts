@@ -1,3 +1,4 @@
+export { ActorTag, actorLabel, type ActorTagProps } from './ActorTag';
 export { BatchProgressBar, SegBar } from './BatchProgressBar';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export { Checkbox } from './Checkbox';

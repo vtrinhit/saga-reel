@@ -2,7 +2,10 @@ import type { RouteObject } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import { collectRoutes, coveredSections, featureRoutes } from './featureRoutes';
 import { buildRoutes } from './routes';
-import { PROJECT_SECTIONS } from './nav';
+import { PROJECT_SECTIONS, REDIRECT_SECTIONS } from './nav';
+
+/** Đường dẫn route giữ chỗ / chuyển hướng mong đợi cho một section chưa có module. */
+const placeholderPath = (s: string) => (s in REDIRECT_SECTIONS ? s : `${s}/*`);
 
 function shellChildren(routes: RouteObject[]): RouteObject[] {
   const shell = routes.find((r) => r.path === undefined && r.children);
@@ -44,8 +47,13 @@ describe('featureRoutes', () => {
     expect(paths.filter((p) => p === 'library')).toHaveLength(1);
     expect(paths.filter((p) => p === 'review')).toHaveLength(1);
     expect(paths).toContain('library/:assetId');
-    // Section chưa có module vẫn có trang giữ chỗ.
-    for (const s of Object.keys(PROJECT_SECTIONS)) expect(paths).toContain(s);
+    // Section đã có module không còn trang giữ chỗ.
+    expect(paths).not.toContain('library/*');
+    expect(paths).not.toContain('review/*');
+    // Section chưa có module vẫn có trang giữ chỗ (khớp cả trang con) hoặc chuyển hướng.
+    for (const s of Object.keys(PROJECT_SECTIONS).filter((x) => x !== 'library' && x !== 'review')) {
+      expect(paths).toContain(placeholderPath(s));
+    }
     const lib = project.find((r) => r.path === 'library');
     expect((lib?.element as { type?: unknown })?.type).toBe(LibraryPage);
     const globals = shellChildren(routes);
@@ -57,7 +65,13 @@ describe('featureRoutes', () => {
   it('không có module nào thì giữ nguyên trang giữ chỗ', () => {
     const routes = buildRoutes({ project: [], global: [] });
     const paths = projectChildren(routes).map((r) => r.path).filter(Boolean);
-    expect(paths.sort()).toEqual(Object.keys(PROJECT_SECTIONS).sort());
+    expect(paths.sort()).toEqual(Object.keys(PROJECT_SECTIONS).map(placeholderPath).sort());
+    // Section mới của v2 có mặt.
+    for (const s of ['overview', 'story', 'activity', 'history', 'settings', 's']) expect(paths).toContain(`${s}/*`);
+    expect(paths).toContain('sequences');
+    const index = projectChildren(routes).find((r) => r.index);
+    expect((index?.element as { props?: { to?: string } })?.props?.to).toBe('overview');
+    expect(shellChildren(routes).some((r) => r.path === 'inbox')).toBe(true);
     expect(Array.isArray(featureRoutes.project)).toBe(true);
     expect(Array.isArray(featureRoutes.global)).toBe(true);
   });

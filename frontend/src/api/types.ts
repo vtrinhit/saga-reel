@@ -179,3 +179,93 @@ export interface OpCatalogEntry {
   viewer: boolean;
   params_schema?: { properties?: Record<string, unknown>; required?: string[] };
 }
+
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* W2 — op đã có trên main nhưng `schema.d.ts` (sinh lúc M0) chưa có. Viết tay tối thiểu; người điều phối sinh lại     */
+/* schema.d.ts thì chuyển sang `callOp` có kiểu và xoá khối này.                                                      */
+/* ------------------------------------------------------------------------------------------------------------------ */
+
+/** `project.get` ← `ops/project_ops.py::ProjectOut` (rút gọn). */
+export interface ProjectInfo {
+  id: number;
+  key: string;
+  name: string;
+  description: string;
+  genre_key: string;
+  aspect: string;
+  language: string;
+  target_platforms: unknown[];
+  settings: Record<string, unknown>;
+  budget: Record<string, unknown>;
+  counts?: Record<string, number>;
+}
+
+/** `sequence.get` / mục của `sequence.list` ← `services/sequences.py::seq_out`. */
+export interface SequenceInfo {
+  id: number;
+  project_id: number;
+  group_id: number | null;
+  key: string;
+  number: number;
+  title: string;
+  synopsis: string;
+  script: string;
+  status: string;
+  workflow_key: string;
+  /** Hình dạng do Task J chốt — đọc khoan dung bằng `lib/pipeline.ts`. */
+  gates: Record<string, unknown>;
+  pipeline: Record<string, unknown>;
+  counts: { clips?: number; scenes?: number; duration_ms?: number } & Record<string, number | undefined>;
+  updated_at?: string;
+}
+
+export interface SequencePage {
+  items: SequenceInfo[];
+  next_cursor: string | null;
+}
+
+/** Mục của `clip.list` (chỉ các trường khung app cần). */
+export interface ClipBrief {
+  id: number;
+  sequence_id: number;
+  key: string;
+  image_take_id: number | null;
+  video_take_id: number | null;
+  flags: Record<string, unknown>;
+  review: string;
+}
+
+export interface ClipPage {
+  items: ClipBrief[];
+  next_cursor: string | null;
+}
+
+/** `history.list` ← `services/history.py::ChangeSetOut`. */
+export interface ChangeSet {
+  id: number;
+  op_name: string;
+  /** `user:<id>` · `owner` · `agent:<tên>` · `llm:<…>` … */
+  actor: string;
+  summary: string;
+  created_at: string;
+  undone_at: string | null;
+  entities: { type: string; id: number; revision_id: number }[];
+}
+
+export interface HistoryPage {
+  items: ChangeSet[];
+  next_cursor: number | null;
+}
+
+/** `budget.status` ← `ops/budget_ops.py::BudgetStatus`. */
+export interface BudgetKindStatus {
+  enabled: boolean;
+  total: number | null;
+  spent: number;
+  remaining: number | null;
+}
+
+export interface BudgetStatus {
+  image: BudgetKindStatus;
+  video: BudgetKindStatus;
+}

@@ -177,6 +177,174 @@ describe('shell (smoke)', () => {
   });
 });
 
+const AUTH_OK = { authenticated: true, role: 'owner', via: 'local', local: true, password_set: { owner: true, viewer: false } };
+const recent = (minAgo: number) => new Date(Date.now() - minAgo * 60_000).toISOString();
+
+/** Backend giả cho khung v2: dự án 3 "Kiếp Hồ Ly", tập 12 + 13, lịch sử có 2 agent, 1 việc cần xử lý. */
+function shellBackend() {
+  const SEQ = (id: number, number: number, gates: Record<string, unknown> = {}) => ({
+    id, project_id: 3, group_id: null, key: `ep${number}`, number, title: number === 12 ? 'Đêm trăng máu' : 'Người đưa đò',
+    synopsis: '', script: 'x', status: 'draft', workflow_key: '', gates, pipeline: {},
+    counts: { clips: 3, scenes: 1, duration_ms: 18000 },
+  });
+  const routes: Record<string, unknown> = {
+    '/api/auth/status': AUTH_OK,
+    '/api/ops/project.get': { id: 3, key: 'khl', name: 'Kiếp Hồ Ly', description: '', genre_key: 'serial', aspect: '9:16', language: 'vi', target_platforms: [], settings: {}, budget: {} },
+    '/api/ops/project.list': { items: [], next_cursor: null },
+    '/api/ops/sequence.list': { items: [SEQ(12, 12, { animatic: 'waiting' }), SEQ(13, 13)], next_cursor: null },
+    '/api/ops/sequence.get': SEQ(12, 12, { animatic: 'waiting' }),
+    '/api/ops/clip.list': {
+      items: [
+        { id: 1, sequence_id: 12, key: 'c1', image_take_id: 1, video_take_id: null, flags: { stale_image: true }, review: 'pending' },
+        { id: 2, sequence_id: 12, key: 'c2', image_take_id: 2, video_take_id: null, flags: {}, review: 'pending' },
+        { id: 3, sequence_id: 12, key: 'c3', image_take_id: 3, video_take_id: null, flags: {}, review: 'pending' },
+      ],
+      next_cursor: null,
+    },
+    '/api/ops/history.list': {
+      items: [
+        { id: 9, op_name: 'clip.update', actor: 'agent:biên-tập', summary: 'Sửa prompt 12 clip', created_at: recent(1), undone_at: null, entities: [] },
+        { id: 8, op_name: 'clip.update', actor: 'agent:kiểm-định', summary: 'Đánh dấu lệch', created_at: recent(6), undone_at: null, entities: [] },
+        { id: 7, op_name: 'sequence.update', actor: 'owner', summary: 'Đổi tên tập', created_at: recent(30), undone_at: null, entities: [] },
+        { id: 6, op_name: 'clip.update', actor: 'agent:cũ', summary: 'Việc cũ', created_at: recent(45), undone_at: null, entities: [] },
+      ],
+      next_cursor: null,
+    },
+    '/api/ops/job.list': { items: [{ id: 1, status: 'needs_attention' }, { id: 2, status: 'succeeded' }], next_cursor: null, paused: false },
+    '/api/ops/budget.status': {
+      image: { enabled: true, total: 1236, spent: 412, remaining: 824 },
+      video: { enabled: false, total: null, spent: 0, remaining: null },
+    },
+    '/api/ops': [],
+  };
+  api.defaults.adapter = async (config) => ({
+    data: routes[String(config.url)] ?? {}, status: 200, statusText: 'OK', headers: {}, config, request: {},
+  });
+}
+
+const settle = () =>
+  act(async () => {
+    await new Promise((r) => setTimeout(r, 60));
+  });
+
+describe('khung v2 (dây chuyền, Cần bạn, agent)', () => {
+  it('rail mới theo thứ tự làm phim + nhóm phụ; thanh dưới điện thoại mới', async () => {
+    shellBackend();
+    await render('/p/3/overview');
+    await settle();
+    const rail = Array.from(container.querySelectorAll('nav[aria-label="Trong dự án"]')).at(-1)!;
+    const labels = Array.from(rail.querySelectorAll('a')).map((a) => a.textContent?.replace(/\d+$/, ''));
+    expect(labels).toEqual(['Tổng quan', 'Câu chuyện', 'Thư viện', 'Duyệt', 'Xuất', 'Hoạt động', 'Lịch sử', 'Cài đặt']);
+    expect(rail.querySelector('hr')).not.toBeNull();
+    const bottom = container.querySelector('nav[aria-label="Điều hướng chính"]')!;
+    const items = Array.from(bottom.querySelectorAll('a, button')).map((a) => a.textContent?.replace(/\d+/g, ''));
+    expect(items).toEqual(['Cần bạn', 'Duyệt', 'Tập', 'Việc', 'Thêm']);
+    expect(bottom.querySelector('a[aria-label="Cần bạn: 2 việc chờ bạn"]')).not.toBeNull();
+  });
+
+  it('/p/:id → overview; /p/:id/sequences → overview, giữ query', async () => {
+    shellBackend();
+    let router = await render('/p/3');
+    expect(router.state.location.pathname).toBe('/p/3/overview');
+    expect(container.textContent).toContain('Dự án chưa có tập nào trên bàn sản xuất.');
+    router = await render('/p/3/sequences?arc=2');
+    expect(router.state.location.pathname).toBe('/p/3/overview');
+    expect(router.state.location.search).toBe('?arc=2');
+  });
+
+  it('topbar: tên dự án thật, đồng hồ chi phí, chip agent và Cần bạn đếm từ dữ liệu', async () => {
+    shellBackend();
+    await render('/p/3/overview');
+    await settle();
+    expect(container.textContent).toContain('Kiếp Hồ Ly');
+    expect(container.textContent).not.toContain('Dự án 3');
+    // 2 agent trong 10 phút (agent:cũ 45 phút trước không tính), agent:biên-tập vừa ghi → "đang ghi".
+    const agent = container.querySelector('button[popovertarget="sr-activity-panel"]')!;
+    expect(agent.getAttribute('aria-label')).toContain('2 agent trong 10 phút, đang ghi');
+    // Cần bạn = 1 gate chờ (tập 12, animatic) + 1 việc needs_attention.
+    const need = container.querySelector('a[aria-label^="Cần bạn:"]')!;
+    expect(need.getAttribute('aria-label')).toBe('Cần bạn: 1 gate chờ duyệt, 1 việc cần xử lý');
+    expect(need.getAttribute('href')).toBe('/p/3/activity');
+    expect(container.querySelector('a[href="/settings/budget"]')?.textContent).toContain('412');
+    // Panel Hoạt động: agent + change set có Hoàn tác.
+    const panel = document.getElementById('sr-activity-panel')!;
+    expect(panel.textContent).toContain('biên-tập');
+    expect(panel.querySelectorAll('button[aria-label^="Hoàn tác:"]').length).toBe(4);
+  });
+
+  it('thanh chặng hiện ở trang của tập và ở review với đúng một ?seq=, ẩn ở chỗ khác', async () => {
+    shellBackend();
+    await render('/p/3/s/12');
+    await settle();
+    const spine = () => container.querySelector('[data-spine]');
+    expect(spine()).not.toBeNull();
+    const stages = spine()!.querySelectorAll('nav ol > li > a');
+    expect(stages).toHaveLength(8);
+    expect(stages[1].getAttribute('aria-current')).toBe('page');
+    expect(stages[2].getAttribute('aria-label')).toBe('Chặng 3: Khung hình — có clip đã cũ · 1 cũ (Alt 3)');
+    expect(stages[3].getAttribute('aria-label')).toContain('chờ bạn');
+    expect(spine()!.textContent).toContain('Đêm trăng máu');
+
+    await render('/p/3/review?seq=12&part=video');
+    await settle();
+    expect(spine()).not.toBeNull();
+    expect(spine()!.querySelector('[aria-current="page"]')?.getAttribute('href')).toBe('/p/3/review?seq=12&part=video');
+
+    await render('/p/3/review?seq=12,13');
+    await settle();
+    expect(spine()).toBeNull();
+    await render('/p/3/library');
+    await settle();
+    expect(spine()).toBeNull();
+  });
+
+  it('phím: ] tập kế, [ tập trước, Alt 3 chặng Khung hình, G rồi L Thư viện; không chạy khi đang gõ', async () => {
+    shellBackend();
+    const router = await render('/p/3/s/12');
+    await settle();
+    const press = (key: string, init: KeyboardEventInit = {}) =>
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
+      });
+    press(']');
+    expect(router.state.location.pathname).toBe('/p/3/s/13');
+    press('[');
+    expect(router.state.location.pathname).toBe('/p/3/s/12');
+    press('3', { altKey: true, code: 'Digit3' });
+    expect(router.state.location.pathname + router.state.location.search).toBe('/p/3/review?seq=12&part=image');
+    press('g');
+    press('l');
+    expect(router.state.location.pathname).toBe('/p/3/library');
+
+    const input = document.createElement('input');
+    container.appendChild(input);
+    input.focus();
+    act(() => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'g', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'o', bubbles: true }));
+    });
+    expect(router.state.location.pathname).toBe('/p/3/library');
+  });
+
+  it('người xem (history/job bị 403) → chip không lỗi, khung vẫn dựng', async () => {
+    shellBackend();
+    const ok = api.defaults.adapter as AxiosAdapter;
+    api.defaults.adapter = async (config) => {
+      if (/history\.list|job\.list/.test(String(config.url))) {
+        const { AxiosError } = await import('axios');
+        throw new AxiosError('x', 'ERR_BAD_RESPONSE', config, {}, {
+          data: { ok: false, error_code: 'forbidden', detail: 'Không có quyền.', status: 403 }, status: 403, statusText: '', headers: {}, config,
+        });
+      }
+      return ok(config);
+    };
+    await render('/p/3/overview');
+    await settle();
+    expect(container.textContent).toContain('Kiếp Hồ Ly');
+    expect(container.querySelector('a[aria-label^="Cần bạn:"]')?.getAttribute('aria-label')).toBe('Cần bạn: 1 gate chờ duyệt');
+  });
+});
+
 describe('safeNext', () => {
   it('chỉ nhận đường dẫn tương đối cùng origin', () => {
     expect(safeNext('/jobs?x=1')).toBe('/jobs?x=1');
