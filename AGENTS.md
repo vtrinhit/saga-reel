@@ -24,6 +24,22 @@ sai) rồi sửa params; đừng thử lại y nguyên lỗi 4xx.
 2. `sr_project_list` → chọn project; `sr_entity_get/list/patch` đọc/sửa nhanh mọi bảng (`type` = tên bảng).
 3. Sửa có kiểm tranh chấp: gửi `expected_updated_at` (lấy lúc đọc); lỗi `stale_write` → đọc lại rồi làm lại.
 
+## Sửa hàng loạt bằng file khai báo (spec §17)
+
+`project.export_spec(project_id, include?)` → YAML (lưu thêm ở `outputs/specs/`), schema
+`docs/schema/project-spec.schema.json`. Mọi tham chiếu là **khoá ổn định** (project/asset/look/sequence/scene/clip key;
+thoại `clip#n`, mục timeline `track@clip#n` theo vị trí; media theo sha256 + đường dẫn; provider theo tên kết nối).
+`project.plan(spec_text | upload_id)` → `creates`, `updates` (diff từng trường), `delete_candidates` (**chỉ liệt kê**,
+không bao giờ tự xoá), `estimate` (ảnh/video/giọng/render + ngân sách), `warnings`, `plan_fingerprint` → cho người dùng
+xem → `project.apply(spec_text, plan_fingerprint)`: một change set (hoàn tác được), áp lại = không đổi gì, dữ liệu đổi
+sau plan → `plan_stale` (409, plan lại).
+
+## Skill vận hành
+
+`.claude/skills/sagareel-operator/` (SKILL.md + `playbooks/`: video ghép, phim bộ, dài tập, clone, lồng tiếng, lỗi
+provider). Đọc/sửa qua op `skill.list` / `skill.get` / `skill.update` (bảng `skill_file`, có lịch sử; file trên đĩa
+được đồng bộ hai chiều).
+
 ## Quy tắc an toàn (bắt buộc)
 
 1. **Xoá hai bước.** Op destructive (`*.delete`…) luôn đi kèm `*.delete_preview`: gọi preview → nhận

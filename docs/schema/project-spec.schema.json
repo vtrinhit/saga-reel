@@ -1,0 +1,1275 @@
+{
+  "$defs": {
+    "AssetKindSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "icon": {
+          "default": "",
+          "title": "Icon",
+          "type": "string"
+        },
+        "key": {
+          "description": "Key loại tài sản riêng của project",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "ref_priority": {
+          "default": 0,
+          "title": "Ref Priority",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "label"
+      ],
+      "title": "AssetKindSpec",
+      "type": "object"
+    },
+    "AssetSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "cover": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cover"
+        },
+        "custom": {
+          "additionalProperties": true,
+          "title": "Custom",
+          "type": "object"
+        },
+        "description": {
+          "default": "",
+          "description": "Khối khoá, dán nguyên văn",
+          "title": "Description",
+          "type": "string"
+        },
+        "key": {
+          "description": "Key tài sản (duy nhất trong project)",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "description": "character/location/prop/… (asset_kind.key)",
+          "title": "Kind",
+          "type": "string"
+        },
+        "locked": {
+          "default": false,
+          "title": "Locked",
+          "type": "boolean"
+        },
+        "looks": {
+          "items": {
+            "$ref": "#/$defs/LookSpec"
+          },
+          "title": "Looks",
+          "type": "array"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "tags": {
+          "items": {},
+          "title": "Tags",
+          "type": "array"
+        },
+        "voice": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key hồ sơ giọng",
+          "title": "Voice"
+        }
+      },
+      "required": [
+        "key",
+        "kind",
+        "name"
+      ],
+      "title": "AssetSpec",
+      "type": "object"
+    },
+    "ClipAssetRef": {
+      "additionalProperties": true,
+      "properties": {
+        "asset": {
+          "description": "Key tài sản",
+          "title": "Asset",
+          "type": "string"
+        },
+        "look": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key look gắn rõ (bỏ trống = tự chọn theo tập)",
+          "title": "Look"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        }
+      },
+      "required": [
+        "asset"
+      ],
+      "title": "ClipAssetRef",
+      "type": "object"
+    },
+    "ClipSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "angle": {
+          "default": "",
+          "title": "Angle",
+          "type": "string"
+        },
+        "assets": {
+          "items": {
+            "$ref": "#/$defs/ClipAssetRef"
+          },
+          "title": "Assets",
+          "type": "array"
+        },
+        "beats": {
+          "items": {},
+          "title": "Beats",
+          "type": "array"
+        },
+        "camera_move": {
+          "default": "",
+          "title": "Camera Move",
+          "type": "string"
+        },
+        "composition": {
+          "default": "",
+          "title": "Composition",
+          "type": "string"
+        },
+        "custom": {
+          "additionalProperties": true,
+          "title": "Custom",
+          "type": "object"
+        },
+        "dialogue": {
+          "description": "Theo thứ tự; khoá = <clip>#<n>",
+          "items": {
+            "$ref": "#/$defs/DialogueSpec"
+          },
+          "title": "Dialogue",
+          "type": "array"
+        },
+        "duration_ms": {
+          "default": 6000,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "engine": {
+          "default": "ai_video",
+          "title": "Engine",
+          "type": "string"
+        },
+        "extra_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Extra Refs",
+          "type": "array"
+        },
+        "eyeline": {
+          "default": "",
+          "title": "Eyeline",
+          "type": "string"
+        },
+        "first_frame_desc": {
+          "default": "",
+          "title": "First Frame Desc",
+          "type": "string"
+        },
+        "grok_audio": {
+          "default": "ambient",
+          "title": "Grok Audio",
+          "type": "string"
+        },
+        "image_prompt": {
+          "default": "",
+          "description": "Nguyên văn",
+          "title": "Image Prompt",
+          "type": "string"
+        },
+        "image_prompt_src": {
+          "additionalProperties": true,
+          "title": "Image Prompt Src",
+          "type": "object"
+        },
+        "input": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input"
+        },
+        "key": {
+          "description": "Key clip (duy nhất trong tập)",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "last_frame_desc": {
+          "default": "",
+          "title": "Last Frame Desc",
+          "type": "string"
+        },
+        "lens": {
+          "default": "",
+          "title": "Lens",
+          "type": "string"
+        },
+        "link": {
+          "default": "cut",
+          "title": "Link",
+          "type": "string"
+        },
+        "motion_preset": {
+          "default": "",
+          "title": "Motion Preset",
+          "type": "string"
+        },
+        "motion_prompt": {
+          "default": "",
+          "description": "Nguyên văn",
+          "title": "Motion Prompt",
+          "type": "string"
+        },
+        "motion_prompt_src": {
+          "additionalProperties": true,
+          "title": "Motion Prompt Src",
+          "type": "object"
+        },
+        "notes": {
+          "default": "",
+          "title": "Notes",
+          "type": "string"
+        },
+        "prompt_mode": {
+          "default": "synced",
+          "title": "Prompt Mode",
+          "type": "string"
+        },
+        "scene": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key cảnh",
+          "title": "Scene"
+        },
+        "screen_dir": {
+          "default": "",
+          "title": "Screen Dir",
+          "type": "string"
+        },
+        "settings": {
+          "additionalProperties": true,
+          "title": "Settings",
+          "type": "object"
+        },
+        "sfx_desc": {
+          "default": "",
+          "title": "Sfx Desc",
+          "type": "string"
+        },
+        "shot_size": {
+          "default": "",
+          "title": "Shot Size",
+          "type": "string"
+        },
+        "speed": {
+          "default": 1.0,
+          "title": "Speed",
+          "type": "number"
+        },
+        "subtitle_mode": {
+          "default": "auto",
+          "title": "Subtitle Mode",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        },
+        "transition": {
+          "additionalProperties": true,
+          "title": "Transition",
+          "type": "object"
+        },
+        "trim_in_ms": {
+          "default": 0,
+          "title": "Trim In Ms",
+          "type": "integer"
+        },
+        "trim_out_ms": {
+          "default": 0,
+          "title": "Trim Out Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "title": "ClipSpec",
+      "type": "object"
+    },
+    "DialogueSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "emotion": {
+          "default": "",
+          "title": "Emotion",
+          "type": "string"
+        },
+        "offset_ms": {
+          "default": 0,
+          "title": "Offset Ms",
+          "type": "integer"
+        },
+        "source": {
+          "default": "tts",
+          "title": "Source",
+          "type": "string"
+        },
+        "speaker": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key tài sản người nói; null = người kể",
+          "title": "Speaker"
+        },
+        "subtitle": {
+          "default": true,
+          "title": "Subtitle",
+          "type": "boolean"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "translations": {
+          "additionalProperties": true,
+          "title": "Translations",
+          "type": "object"
+        },
+        "voice_override": {
+          "additionalProperties": true,
+          "title": "Voice Override",
+          "type": "object"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "DialogueSpec",
+      "type": "object"
+    },
+    "GroupSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "Key nhóm tập",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "description": "series/season/arc",
+          "title": "Kind",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key nhóm cha",
+          "title": "Parent"
+        },
+        "synopsis": {
+          "default": "",
+          "title": "Synopsis",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "kind",
+        "title"
+      ],
+      "title": "GroupSpec",
+      "type": "object"
+    },
+    "LibrarySpec": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_kinds": {
+          "items": {
+            "$ref": "#/$defs/AssetKindSpec"
+          },
+          "title": "Asset Kinds",
+          "type": "array"
+        },
+        "assets": {
+          "items": {
+            "$ref": "#/$defs/AssetSpec"
+          },
+          "title": "Assets",
+          "type": "array"
+        },
+        "sounds": {
+          "items": {
+            "$ref": "#/$defs/SoundSpec"
+          },
+          "title": "Sounds",
+          "type": "array"
+        },
+        "voices": {
+          "items": {
+            "$ref": "#/$defs/VoiceSpec"
+          },
+          "title": "Voices",
+          "type": "array"
+        }
+      },
+      "title": "LibrarySpec",
+      "type": "object"
+    },
+    "LookSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "anchor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Anchor"
+        },
+        "description_delta": {
+          "default": "",
+          "title": "Description Delta",
+          "type": "string"
+        },
+        "is_default": {
+          "default": false,
+          "title": "Is Default",
+          "type": "boolean"
+        },
+        "keep_features": {
+          "items": {},
+          "title": "Keep Features",
+          "type": "array"
+        },
+        "key": {
+          "description": "Key look (duy nhất trong tài sản)",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "lock_word": {
+          "default": "",
+          "description": "Chèn nguyên văn vào prompt",
+          "title": "Lock Word",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Refs",
+          "type": "array"
+        },
+        "sheet": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "{góc nhìn: media}",
+          "title": "Sheet",
+          "type": "object"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tập bắt đầu (số tập)",
+          "title": "Valid From"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tập kết thúc (số tập)",
+          "title": "Valid To"
+        }
+      },
+      "required": [
+        "key",
+        "name"
+      ],
+      "title": "LookSpec",
+      "type": "object"
+    },
+    "MediaEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        },
+        "kind": {
+          "description": "image/video/audio/…",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mime": {
+          "default": "",
+          "title": "Mime",
+          "type": "string"
+        },
+        "path": {
+          "description": "Đường dẫn tương đối so với thư mục data/ (vd. media/2026/11/ab/<sha>.png)",
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "sha256 nội dung file",
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size": {
+          "default": 0,
+          "title": "Size",
+          "type": "integer"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        }
+      },
+      "required": [
+        "sha256",
+        "path",
+        "kind"
+      ],
+      "title": "MediaEntry",
+      "type": "object"
+    },
+    "PresetSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        },
+        "key": {
+          "description": "Key preset (duy nhất theo kind trong project)",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "key",
+        "name"
+      ],
+      "title": "PresetSpec",
+      "type": "object"
+    },
+    "ProjectBlock": {
+      "additionalProperties": false,
+      "properties": {
+        "aspect": {
+          "default": "9:16",
+          "title": "Aspect",
+          "type": "string"
+        },
+        "budget": {
+          "additionalProperties": true,
+          "title": "Budget",
+          "type": "object"
+        },
+        "cover": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cover"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "fps": {
+          "default": 30,
+          "title": "Fps",
+          "type": "integer"
+        },
+        "genre_key": {
+          "default": "series",
+          "title": "Genre Key",
+          "type": "string"
+        },
+        "key": {
+          "description": "Mã project (khoá ổn định)",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "language": {
+          "default": "vi",
+          "title": "Language",
+          "type": "string"
+        },
+        "languages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Languages",
+          "type": "array"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "negative_block": {
+          "default": "",
+          "title": "Negative Block",
+          "type": "string"
+        },
+        "resolution": {
+          "default": "1080p",
+          "title": "Resolution",
+          "type": "string"
+        },
+        "settings": {
+          "additionalProperties": true,
+          "description": "Cài đặt project (trừ *.connection → providers)",
+          "title": "Settings",
+          "type": "object"
+        },
+        "style_block": {
+          "default": "",
+          "title": "Style Block",
+          "type": "string"
+        },
+        "style_pack": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key preset style_pack (của project hoặc toàn cục)",
+          "title": "Style Pack"
+        },
+        "target_platforms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Target Platforms",
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "name"
+      ],
+      "title": "ProjectBlock",
+      "type": "object"
+    },
+    "SceneSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "Key cảnh (duy nhất trong tập)",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key tài sản bối cảnh",
+          "title": "Location"
+        },
+        "settings": {
+          "additionalProperties": true,
+          "title": "Settings",
+          "type": "object"
+        },
+        "state": {
+          "additionalProperties": true,
+          "title": "State",
+          "type": "object"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "title": "SceneSpec",
+      "type": "object"
+    },
+    "SequenceSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "clips": {
+          "items": {
+            "$ref": "#/$defs/ClipSpec"
+          },
+          "title": "Clips",
+          "type": "array"
+        },
+        "gates": {
+          "additionalProperties": true,
+          "title": "Gates",
+          "type": "object"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key nhóm tập",
+          "title": "Group"
+        },
+        "key": {
+          "description": "Key tập (duy nhất trong project)",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "number": {
+          "default": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "scenes": {
+          "items": {
+            "$ref": "#/$defs/SceneSpec"
+          },
+          "title": "Scenes",
+          "type": "array"
+        },
+        "script": {
+          "default": "",
+          "title": "Script",
+          "type": "string"
+        },
+        "settings": {
+          "additionalProperties": true,
+          "title": "Settings",
+          "type": "object"
+        },
+        "synopsis": {
+          "default": "",
+          "title": "Synopsis",
+          "type": "string"
+        },
+        "target_platforms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Target Platforms",
+          "type": "array"
+        },
+        "timeline": {
+          "items": {
+            "$ref": "#/$defs/TimelineSpec"
+          },
+          "title": "Timeline",
+          "type": "array"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "workflow_key": {
+          "default": "",
+          "title": "Workflow Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "title"
+      ],
+      "title": "SequenceSpec",
+      "type": "object"
+    },
+    "SoundSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "attribution": {
+          "default": "",
+          "title": "Attribution",
+          "type": "string"
+        },
+        "key": {
+          "description": "Nhãn để mục timeline tham chiếu (âm thanh nhận diện theo kind + sha256 media)",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "description": "music/sfx/ambience",
+          "title": "Kind",
+          "type": "string"
+        },
+        "license": {
+          "default": "",
+          "title": "License",
+          "type": "string"
+        },
+        "media": {
+          "title": "Media",
+          "type": "string"
+        },
+        "source": {
+          "default": "",
+          "title": "Source",
+          "type": "string"
+        },
+        "tags": {
+          "items": {},
+          "title": "Tags",
+          "type": "array"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "kind",
+        "title",
+        "media"
+      ],
+      "title": "SoundSpec",
+      "type": "object"
+    },
+    "TimelineSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "anchor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key clip neo (null = đầu tập)",
+          "title": "Anchor"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        },
+        "end_anchor": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "{\"clip\": key} | {\"sequence_end\": true} | null",
+          "title": "End Anchor"
+        },
+        "media": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media"
+        },
+        "offset_ms": {
+          "default": 0,
+          "title": "Offset Ms",
+          "type": "integer"
+        },
+        "params": {
+          "additionalProperties": true,
+          "title": "Params",
+          "type": "object"
+        },
+        "sound": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key âm thanh trong library.sounds",
+          "title": "Sound"
+        },
+        "track": {
+          "description": "music/sfx/title",
+          "title": "Track",
+          "type": "string"
+        }
+      },
+      "required": [
+        "track"
+      ],
+      "title": "TimelineSpec",
+      "type": "object"
+    },
+    "VoiceSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "connection": {
+          "default": "",
+          "description": "Tên kết nối TTS",
+          "title": "Connection",
+          "type": "string"
+        },
+        "key": {
+          "description": "Key hồ sơ giọng",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "per_lang": {
+          "additionalProperties": true,
+          "title": "Per Lang",
+          "type": "object"
+        },
+        "pitch": {
+          "default": "+0Hz",
+          "title": "Pitch",
+          "type": "string"
+        },
+        "rate": {
+          "default": "+0%",
+          "title": "Rate",
+          "type": "string"
+        },
+        "sample": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample"
+        },
+        "style": {
+          "default": "",
+          "title": "Style",
+          "type": "string"
+        },
+        "voice": {
+          "default": "",
+          "title": "Voice",
+          "type": "string"
+        },
+        "volume": {
+          "default": "+0%",
+          "title": "Volume",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "name"
+      ],
+      "title": "VoiceSpec",
+      "type": "object"
+    }
+  },
+  "$id": "https://sagareel.local/schema/project-spec.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "File khai báo project SagaReel (spec §17).",
+  "properties": {
+    "groups": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/GroupSpec"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Groups"
+    },
+    "library": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LibrarySpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "media": {
+      "additionalProperties": {
+        "$ref": "#/$defs/MediaEntry"
+      },
+      "description": "Media được tham chiếu, theo khoá",
+      "title": "Media",
+      "type": "object"
+    },
+    "presets": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/PresetSpec"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Preset riêng của project; null = không đụng",
+      "title": "Presets"
+    },
+    "project": {
+      "$ref": "#/$defs/ProjectBlock"
+    },
+    "providers": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Kết nối provider theo loại (image/video/tts/…) — tên kết nối, không có khoá",
+      "title": "Providers",
+      "type": "object"
+    },
+    "sequences": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/SequenceSpec"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sequences"
+    },
+    "spec_version": {
+      "const": 1,
+      "description": "Phiên bản định dạng (hiện là 1)",
+      "title": "Spec Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "spec_version",
+    "project"
+  ],
+  "title": "SagaReel project spec",
+  "type": "object"
+}
