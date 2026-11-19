@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Music, Plus, TriangleAlert, Upload, Waves } from 'lucide-react';
 import { useId, useState } from 'react';
 import { callOpLoose } from '../../api/opsLoose';
+import { cn, focusRing } from '../../lib/cn';
 import { errorText, sk, type SoundRow } from '../../lib/studioData';
 import { uploadFile } from '../../lib/studioUpload';
 import { toast } from '../../stores/toast';
@@ -119,7 +120,7 @@ function AddSoundForm({ projectId, onDone }: { projectId: number; onDone: () => 
             setFile(f);
             if (f && !title) setTitle(f.name.replace(/\.[^.]+$/, ''));
           }}
-          className="text-sm file:mr-2 file:h-control file:rounded-md file:border file:border-line-2 file:bg-bg-2 file:px-3 file:text-fg-1"
+          className={cn("text-sm file:mr-2 file:h-control file:rounded-md file:border file:border-line-2 file:bg-bg-2 file:px-3 file:text-fg-1", focusRing)}
           aria-invalid={touched && missing.file}
         />
         {touched && missing.file ? <p className="text-xs text-state-failed" role="alert">Chọn một file âm thanh.</p> : null}

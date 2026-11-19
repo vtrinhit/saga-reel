@@ -76,8 +76,8 @@ export function AudioPage() {
   const lang = langSel && langs.includes(langSel) ? langSel : primaryLang;
   const primary = lang === primaryLang;
 
-  const clips = clipsQ.data ?? [];
-  const lines = linesQ.data ?? [];
+  const clips = useMemo(() => clipsQ.data ?? [], [clipsQ.data]);
+  const lines = useMemo(() => linesQ.data ?? [], [linesQ.data]);
   const voices = voicesQ.data ?? [];
   const assets = assetsQ.data ?? [];
   const voiceById = new Map(voices.map((v) => [v.id, v]));

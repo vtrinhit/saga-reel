@@ -133,9 +133,11 @@ export interface ClipInspectorProps {
   onUpdate: (values: Record<string, unknown>, label: string) => void;
   onRegenerate: () => void;
   regenerating?: boolean;
+  /** Mất kết nối: khoá nút tốn phí (DESIGN §5.5 OfflineBanner). */
+  offline?: boolean;
 }
 
-export function ClipInspector({ clip, slot, prevKey, lines, transitions, readOnly, audioHref, onUpdate, onRegenerate, regenerating }: ClipInspectorProps) {
+export function ClipInspector({ clip, slot, prevKey, lines, transitions, readOnly, audioHref, onUpdate, onRegenerate, regenerating, offline }: ClipInspectorProps) {
   const st = clipStatus(clip);
   const tr = (clip.transition ?? {}) as { name?: string; duration_ms?: number | null };
   const trName = tr.name || (clip.link === 'fade' ? 'fade' : 'cut');
@@ -244,7 +246,15 @@ export function ClipInspector({ clip, slot, prevKey, lines, transitions, readOnl
       </div>
       {!readOnly ? (
         <div className="flex justify-end gap-2 border-t border-line-1 bg-bg-1 px-3 py-2">
-          <Button variant="primary" icon={RefreshCw} loading={regenerating} onClick={onRegenerate}>
+          <Button
+            variant="primary"
+            icon={RefreshCw}
+            loading={regenerating}
+            disabled={offline}
+            title={offline ? 'Mất kết nối: tạm khoá thao tác tốn phí' : undefined}
+            onClick={onRegenerate}
+            cost={<span className="font-mono text-2xs opacity-80">ước tính trước</span>}
+          >
             Tạo lại video
           </Button>
         </div>

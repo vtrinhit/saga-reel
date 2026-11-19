@@ -69,6 +69,7 @@ import {
   transitionTable,
   type ClipRow,
 } from '../../lib/timeline';
+import { useConnection } from '../../stores/connection';
 import { toast } from '../../stores/toast';
 
 type View = 'timeline' | 'storyboard' | 'script';
@@ -98,6 +99,7 @@ export function StudioPage() {
   const [search, setSearch] = useSearchParams();
   const view = (['timeline', 'storyboard', 'script'].includes(search.get('view') ?? '') ? search.get('view') : 'timeline') as View;
   const viewer = useIsViewer();
+  const offline = useConnection((s) => s.state === 'offline' || s.state === 'reconnecting');
   const isXl = useMediaQuery('(min-width: 1280px)');
   const isMd = useMediaQuery('(min-width: 768px)');
   const qc = useQueryClient();
@@ -235,7 +237,9 @@ export function StudioPage() {
       const k = e.key;
       const frame = 1000 / FPS;
       if (k === ' ' && !e.ctrlKey && !e.altKey) {
-        if ((e.target as HTMLElement)?.tagName === 'BUTTON') return;
+        // Space trên nút thường = bấm nút; trên item timeline (đã chọn bằng click/Enter) = phát/dừng.
+        const tgt = e.target as HTMLElement;
+        if (tgt?.tagName === 'BUTTON' && !tgt.classList.contains('sr-tl-item')) return;
         e.preventDefault();
         p?.toggle();
       } else if ((k === 'ArrowLeft' || k === 'ArrowRight') && !e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -341,6 +345,7 @@ export function StudioPage() {
           onUpdate={(values, label) => void m.updateClip(selectedClip, values, label)}
           onRegenerate={() => regen.mutate({ clip: selectedClip, dry: true })}
           regenerating={regen.isPending}
+          offline={offline}
         />
       );
     }
@@ -481,7 +486,7 @@ export function StudioPage() {
             max={400}
             value={Math.round(zoom)}
             onChange={(e) => setPps(Number(e.target.value))}
-            className="hidden w-24 accent-[rgb(var(--c-accent))] md:block"
+            className={cn("hidden w-24 accent-[rgb(var(--c-fg-2))] md:block", focusRing)}
           />
           <IconButton icon={Plus} label="Phóng timeline (+)" onClick={() => setPps(clampZoom(zoom * 1.5))} />
           <Button variant="ghost" onClick={() => setPps(fitZoom(tl.total_ms, (timelineBox.current?.clientWidth ?? 800) - 60))}>
@@ -632,6 +637,7 @@ export function StudioPage() {
           rows={estimate.rows}
           warnings={estimate.warnings}
           running={regen.isPending}
+          offline={offline}
           onClose={() => setEstimate(null)}
           onRun={() => regen.mutate({ clip: estimate.clip, dry: false })}
         />

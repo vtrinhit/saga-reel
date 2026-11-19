@@ -40,6 +40,7 @@ import {
   useStudioLiveRefresh,
   type PlatformData,
 } from '../../lib/studioData';
+import { cn, focusRing } from '../../lib/cn';
 import { toast } from '../../stores/toast';
 
 export function ExportPage() {
@@ -56,7 +57,7 @@ export function ExportPage() {
   const platQ = usePresets<PlatformData>('platform', pid);
   const exportsQ = useExports(pid);
 
-  const seqs = seqsQ.data ?? [];
+  const seqs = useMemo(() => seqsQ.data ?? [], [seqsQ.data]);
   const seqById = useMemo(() => new Map(seqs.map((s) => [s.id, s])), [seqs]);
   const seqParam = numId(search.get('seq'));
   const sid = seqParam ?? seqs[0]?.id ?? null;
@@ -169,7 +170,7 @@ export function ExportPage() {
         />
         {targetKeys.size > 0 && allPlatforms.length > targetKeys.size ? (
           <label className="flex min-h-control items-center gap-2 text-sm text-fg-2">
-            <input type="checkbox" className="size-4 accent-[rgb(var(--c-accent))]" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+            <input type="checkbox" className={cn("size-4 accent-[rgb(var(--c-fg-2))]", focusRing)} checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
             Hiện mọi nền tảng ({allPlatforms.length})
           </label>
         ) : null}

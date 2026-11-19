@@ -385,7 +385,7 @@ export function Timeline(props: TimelineProps) {
                             onLostPointerCapture={onCancel}
                           >
                             <span className="flex min-w-0 items-center gap-1 py-px">
-                              {dot ? <span className={cn('size-1.5 shrink-0 rounded-full', dot.cls)} aria-hidden /> : null}
+                              {dot ? <span className={cn('size-1.5 shrink-0 rounded-full', dot.cls)} title={dot.label} aria-hidden /> : null}
                               <span className="truncate font-medium">
                                 {c?.key ?? `Clip ${s.index + 1}`}
                                 {c?.shot_size ? ` · ${c.shot_size}` : ''}

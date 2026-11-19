@@ -5,7 +5,7 @@
  */
 import { Film, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from 'react';
-import { cn } from '../../lib/cn';
+import { cn, focusRing } from '../../lib/cn';
 import { safeInsets } from '../../lib/studioSafeZone';
 import type { PlatformData } from '../../lib/studioData';
 import { timecode } from '../../lib/timeline';
@@ -178,7 +178,7 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
         </label>
         <select
           id="sr-player-rate"
-          className="ml-1 hidden h-control rounded-sm border border-line-3 bg-bg-2 px-1 font-mono text-xs sm:block"
+          className={cn("ml-1 hidden h-control rounded-sm border border-line-3 bg-bg-2 px-1 font-mono text-xs sm:block", focusRing)}
           value={rate}
           onChange={(e) => {
             const r = Number(e.target.value);
