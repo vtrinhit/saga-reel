@@ -19,6 +19,7 @@ from sagareel import ops as ops_pkg
 from sagareel.api.middleware import SecurityMiddleware
 from sagareel.api.routes_auth import build_router as build_auth_router
 from sagareel.api.routes_events import build_router as build_events_router
+from sagareel.api.routes_export import router as export_router
 from sagareel.api.routes_media import router as media_router
 from sagareel.api.routes_ops import build_router
 from sagareel.api.static import build_static_router
@@ -148,6 +149,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.include_router(build_router())
     app.include_router(build_events_router())
     app.include_router(media_router)
+    app.include_router(export_router)
     app.include_router(build_auth_router())
     app.include_router(build_static_router(settings.frontend_dist))  # SPA fallback: luôn để include này cuối cùng
     return app

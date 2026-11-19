@@ -1,0 +1,54 @@
+# Preset nền tảng: Facebook Reels (API /{page-id}/video_reels). Ngày tra: 2026-11-19.
+# Nguồn: docs/research/platform-specs.md §1 (+ post-production.md §5.3 cho tham số mã hoá).
+#   - https://developers.facebook.com/docs/video-api/guides/reels-publishing (aspect/fps/codec/duration/audio; chính thức)
+#   - https://www.facebook.com/business/ads-guide/update/video/facebook-facebook-reels (safe zone 14%/35%/6%; chính thức, ads)
+#   - https://developers.facebook.com/docs/graph-api/reference/video/thumbnails (cover <= 10 MB; chính thức)
+#   - https://about.fb.com/news/2024/02/labeling-ai-generated-images-on-facebook-instagram-and-threads/ (nhãn AI)
+# Mục ghi "unverified" = giá trị ước lượng/chưa đối chiếu được nguồn (xem danh sách `unverified`).
+key: fb-reels
+name: Facebook Reels
+data:
+  label: Facebook Reels (9:16)
+  aspect: "9:16"
+  width: 1080          # khuyến nghị 1080x1920, tối thiểu 540x960 (chính thức)
+  height: 1920
+  min_width: 540
+  min_height: 960
+  fps: 30              # API: 24-60, frame rate cố định (chính thức)
+  fps_range: [24, 60]
+  encode:
+    container: mp4
+    video_codec: libx264        # H.264/H.265 đều nhận, closed GOP 2-5 s, 4:2:0 (chính thức)
+    profile: high
+    pix_fmt: yuv420p
+    preset: slow
+    crf: 18                     # post-production.md §5.3 (unverified: platform-specs.md không công bố bitrate)
+    maxrate_kbps: 10000
+    bufsize_kbps: 20000
+    gop_s: 2                    # -g 60 ở 30 fps
+    bframes: 2
+    audio_codec: aac            # AAC-LC stereo 48 kHz >= 128 kbps (chính thức)
+    audio_bitrate_kbps: 192
+    sample_rate: 48000
+    channels: 2
+    colorspace: bt709
+    faststart: true
+  loudness: {target_lufs: -14, true_peak_db: -1.0, tolerance_lu: 1.5}   # unverified: Meta không công bố
+  max_size_mb: 4096              # unverified: API Reels không công bố; 4 GB là mức ads
+  duration_s: {min: 3, max: 90, recommended: [15, 60]}   # min/max: API (chính thức); recommended: unverified
+  safe_zone_px: {top: 269, bottom: 672, left: 65, right: 65}   # trên 1080x1920 (14%/35%/6%; chính thức, ads)
+  safe_zone_ref: {width: 1080, height: 1920}
+  title: {max_chars: null, max_bytes: null}       # Meta không công bố (unverified); dùng mặc định chung 100 ký tự
+  caption: {max_chars: 2200, max_bytes: null}     # unverified: mức an toàn
+  hashtags: {max: 5, max_shown: null}             # unverified
+  tags: {max_chars: null}
+  cover: {supported: true, method: upload, width: 1080, height: 1920, format: jpg, max_mb: 10}   # chính thức
+  chapters: {supported: false}
+  subtitles: {upload: true, formats: [srt, vtt]}  # unverified (memory): Page hỗ trợ .srt
+  ai_label: {required: true, mechanism: "Công cụ tự khai báo khi đăng (nhãn AI info)"}   # chính thức
+  checked_at: "2026-11-19"
+  sources:
+    - {url: "https://developers.facebook.com/docs/video-api/guides/reels-publishing", official: true}
+    - {url: "https://www.facebook.com/business/ads-guide/update/video/facebook-facebook-reels", official: true}
+    - {url: "https://developers.facebook.com/docs/graph-api/reference/video/thumbnails", official: true}
+  unverified: [encode.crf, encode.maxrate_kbps, loudness, max_size_mb, duration_s.recommended, title, caption, hashtags, subtitles]

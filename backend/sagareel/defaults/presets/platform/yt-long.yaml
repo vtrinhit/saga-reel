@@ -1,0 +1,59 @@
+# Preset nền tảng: YouTube video dài (16:9). Ngày tra: 2026-11-19.
+# Nguồn: docs/research/platform-specs.md §4.
+#   - https://support.google.com/youtube/answer/6375112 (16:9, 1920x1080/3840x2160; chính thức)
+#   - https://support.google.com/youtube/answer/1722171 (H.264 High, closed GOP 1/2 fps, moov ở đầu, audio 384 kbps; chính thức)
+#   - https://support.google.com/youtube/answer/71673 (<= 256 GB hoặc 12 giờ; > 15 phút cần tài khoản xác minh; chính thức)
+#   - https://developers.google.com/youtube/v3/docs/videos (title <= 100, description <= 5000 bytes, tags <= 500; chính thức)
+#   - https://support.google.com/youtube/answer/9884579 (chương: 00:00, >= 3 mốc, mỗi chương >= 10 s; chính thức)
+#   - https://support.google.com/youtube/answer/72431 (thumbnail 3840x2160, rộng >= 640 px; chính thức)
+key: yt-long
+name: YouTube dài
+data:
+  label: YouTube video dài (16:9)
+  aspect: "16:9"
+  width: 1920
+  height: 1080
+  min_width: 640
+  min_height: 360
+  fps: 30              # giữ fps gốc (24/25/30/48/50/60)
+  fps_range: [24, 60]
+  encode:
+    container: mp4
+    video_codec: libx264
+    profile: high
+    pix_fmt: yuv420p
+    preset: slow
+    crf: 17                     # post-production.md §5.3 (YT 1080p30 ~ 8 Mbps; không bắt cap chặt)
+    maxrate_kbps: 12000
+    bufsize_kbps: 24000
+    gop_s: 0.5                  # closed GOP = 1/2 fps -> -g 15 ở 30 fps (chính thức)
+    bframes: 2
+    closed_gop: true
+    audio_codec: aac
+    audio_bitrate_kbps: 384     # stereo 384 kbps (chính thức)
+    sample_rate: 48000
+    channels: 2
+    colorspace: bt709
+    faststart: true             # moov ở đầu file (chính thức)
+  loudness: {target_lufs: -14, true_peak_db: -1.0, tolerance_lu: 1.5}   # -14 LUFS chỉ "thường được nhắc", không chính thức
+  max_size_mb: 262144            # 256 GB (chính thức)
+  duration_s: {min: 1, max: 43200, recommended: [180, 900]}   # <= 12 giờ (chính thức; 15 phút nếu chưa xác minh); recommended unverified
+  safe_zone_px: null
+  safe_zone_ref: {width: 1920, height: 1080}
+  title: {max_chars: 100, max_bytes: null}        # chính thức; không chứa < >
+  caption: {max_chars: null, max_bytes: 5000}     # description <= 5000 bytes UTF-8 (tiếng Việt 2-3 byte/ký tự có dấu)
+  hashtags: {max: 60, max_shown: 3}               # > 60 bị bỏ qua tất cả; 3 hiện cạnh tiêu đề (chính thức)
+  tags: {max_chars: 500}
+  cover: {supported: true, method: upload, width: 1920, height: 1080, format: jpg, max_mb: 2}   # khuyến nghị 3840x2160; mobile <= 2 MB
+  chapters: {supported: true, first: "00:00", min_count: 3, min_seconds: 10}   # chính thức
+  subtitles: {upload: true, formats: [srt, vtt]}  # chính thức
+  ai_label: {required: true, mechanism: "Studio AI use / API status.containsSyntheticMedia"}   # chính thức
+  checked_at: "2026-11-19"
+  sources:
+    - {url: "https://support.google.com/youtube/answer/6375112", official: true}
+    - {url: "https://support.google.com/youtube/answer/1722171", official: true}
+    - {url: "https://support.google.com/youtube/answer/71673", official: true}
+    - {url: "https://developers.google.com/youtube/v3/docs/videos", official: true}
+    - {url: "https://support.google.com/youtube/answer/9884579", official: true}
+    - {url: "https://support.google.com/youtube/answer/72431", official: true}
+  unverified: [loudness, duration_s.recommended]
