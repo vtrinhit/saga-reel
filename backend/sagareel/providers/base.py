@@ -183,6 +183,7 @@ class LLMResult:
     text: str
     model: str
     usage: dict = field(default_factory=dict)
+    finish_reason: str | None = None  # "stop" | "length" (bị cắt vì hết token) | … — None nếu provider không báo
 
 
 @dataclass(kw_only=True)

@@ -332,3 +332,103 @@ def test_default_templates_render_with_input_only():
         assert msgs[0]["content"].isascii(), t["key"]  # system prompt tiếng Anh
         if t["json_mode"]:
             assert "JSON" in msgs[0]["content"], t["key"]
+
+
+# --- Fix round 1 -----------------------------------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_stream_request_answered_with_plain_json(adapter):
+    respx.post(f"{BASE}/chat/completions").mock(return_value=httpx.Response(
+        200, json={**_completion("trả lời thường"), "choices": [
+            {"index": 0, "message": {"role": "assistant", "content": "trả lời thường"}, "finish_reason": "stop"}]}))
+    deltas: list[str] = []
+    res = await adapter.chat(_req(), deltas.append)
+    assert res.text == "trả lời thường" and deltas == ["trả lời thường"] and res.finish_reason == "stop"
+
+
+@pytest.mark.parametrize("response", [
+    httpx.Response(200, content=b""),  # stream: body rỗng
+    httpx.Response(200, content=b"data: [DONE]\n\n", headers={"content-type": "text/event-stream"}),
+    httpx.Response(200, json={"choices": [{"index": 0, "message": {"role": "assistant", "content": None}}]}),
+])
+@respx.mock
+async def test_empty_response_is_provider_error(adapter, response):
+    respx.post(f"{BASE}/chat/completions").mock(return_value=response)
+    with pytest.raises(ProviderJobError) as e:
+        await adapter.chat(_req(), lambda _: None)
+    assert e.value.code == "provider_empty_response"
+
+
+@respx.mock
+async def test_empty_non_stream_response_is_provider_error(adapter):
+    respx.post(f"{BASE}/chat/completions").mock(return_value=httpx.Response(200, json={
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": None}}]}))
+    with pytest.raises(ProviderJobError) as e:
+        await adapter.chat(_req(), None)
+    assert e.value.code == "provider_empty_response"
+
+
+@respx.mock
+async def test_stream_requests_usage_by_default_and_option_disables_it():
+    route = respx.post(f"{BASE}/chat/completions").mock(side_effect=[
+        httpx.Response(200, content=_sse("a")), httpx.Response(200, content=_sse("a")),
+        httpx.Response(200, json=_completion("a"))])
+    await registry.get("openai_compat")(_conn()).chat(_req(), lambda _: None)
+    assert _body(route.calls[0])["stream_options"] == {"include_usage": True}
+    await registry.get("openai_compat")(_conn(options={"stream_usage": False})).chat(_req(), lambda _: None)
+    assert "stream_options" not in _body(route.calls[1])
+    await registry.get("openai_compat")(_conn()).chat(_req(), None)  # không stream → không gửi stream_options
+    assert "stream_options" not in _body(route.calls[2])
+
+
+@respx.mock
+async def test_stream_options_rejected_is_retried_without_it_only(adapter, caplog):
+    route = respx.post(f"{BASE}/chat/completions").mock(side_effect=[
+        httpx.Response(400, json={"error": {"message": "Unrecognized request argument supplied: stream_options"}}),
+        httpx.Response(200, content=_sse("{}")),
+    ])
+    with caplog.at_level(logging.WARNING, logger="sagareel.providers"):
+        res = await adapter.chat(_req(json_mode=True), lambda _: None)
+    assert res.text == "{}" and len(route.calls) == 2
+    first, second = _body(route.calls[0]), _body(route.calls[1])
+    assert "stream_options" in first and "stream_options" not in second
+    assert second["response_format"] == {"type": "json_object"}  # response_format không bị gỡ nhầm
+    assert any("stream_options" in r.getMessage() for r in caplog.records)
+
+
+@respx.mock
+async def test_both_fields_rejected_in_turn(adapter):
+    route = respx.post(f"{BASE}/chat/completions").mock(side_effect=[
+        httpx.Response(400, json={"error": {"message": "unknown field stream_options"}}),
+        httpx.Response(400, json={"error": {"message": "response_format not supported"}}),
+        httpx.Response(200, content=_sse("ok")),
+    ])
+    res = await adapter.chat(_req(json_mode=True), lambda _: None)
+    assert res.text == "ok" and len(route.calls) == 3
+    last = _body(route.calls[2])
+    assert "stream_options" not in last and "response_format" not in last
+
+
+@respx.mock
+async def test_finish_reason_reported(adapter):
+    raw = (b'data: {"choices":[{"index":0,"delta":{"content":"ab"}}]}\n\n'
+           b'data: {"choices":[{"index":0,"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n')
+    respx.post(f"{BASE}/chat/completions").mock(return_value=httpx.Response(200, content=raw))
+    res = await adapter.chat(_req(), lambda _: None)
+    assert res.text == "ab" and res.finish_reason == "length"
+
+
+def test_render_time_errors_are_422_not_500():
+    with pytest.raises(AppError) as e:
+        templating.render("{{ input + 1 }}", {"input": "x"})
+    assert e.value.code == "template_render_failed" and e.value.status == 422
+    for body in ('{% include "other.md" %}', '{% import "m" as m %}', '{% extends "base" %}'):
+        with pytest.raises(AppError) as e:
+            templating.render(body, {})
+        assert e.value.code == "template_syntax_error" and e.value.status == 422, body
+
+
+def test_fake_llm_fail_options_are_bool():
+    fields = {f.name: f for f in registry.get("fake_llm").config_fields}
+    assert fields["fail"].type == "bool" and fields["fail_transient"].type == "bool"

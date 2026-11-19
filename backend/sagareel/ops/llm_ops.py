@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from sagareel.core import templating
 from sagareel.core.context import OpContext
-from sagareel.core.errors import AppError, Conflict, Forbidden, NotFound
+from sagareel.core.errors import AppError, Conflict, Forbidden, NotFound, ValidationFailed
 from sagareel.core.ops import op
 from sagareel.core.secrets import mask
 from sagareel.db.models import LlmTask, Template
@@ -105,6 +105,19 @@ def _checked_route(s: Session, spec: RouteSpec | None) -> dict[str, Any]:
     return {"connection": row.name, "model": spec.model or None, "params": dict(spec.params)}
 
 
+def _checked_fallbacks(s: Session, specs: list[RouteSpec]) -> list[dict[str, Any]]:
+    """Mỗi route dự phòng phải chỉ rõ kết nối (không có thì 422, không lặng lẽ bỏ)."""
+    bad = [i for i, f in enumerate(specs) if f.connection in (None, "")]
+    if bad:
+        raise ValidationFailed(
+            "Route dự phòng phải có kết nối.",
+            hint="Điền connection cho mọi route trong fallbacks (provider.list kind=llm).",
+            extra={"errors": [{"loc": ["fallbacks", i, "connection"], "msg": "Thiếu kết nối", "type": "missing"}
+                              for i in bad]},
+        )
+    return [_checked_route(s, f) for f in specs]
+
+
 def _check_template_exists(s: Session, key: str) -> None:
     llm.get_template(s, key)
 
@@ -155,8 +168,7 @@ def llm_task_update(ctx: OpContext, p: TaskUpdateParams) -> dict:
         if "route" in fields:
             row.route = _checked_route(s, p.route)
         if "fallbacks" in fields:
-            row.fallbacks = [_checked_route(s, f) for f in (p.fallbacks or [])
-                             if f.connection not in (None, "")]
+            row.fallbacks = _checked_fallbacks(s, p.fallbacks or [])
         if p.label is not None:
             row.label = p.label
         if p.description is not None:
@@ -190,7 +202,7 @@ def llm_task_create(ctx: OpContext, p: TaskCreateParams) -> dict:
         _check_template_exists(s, p.template_key)
         row = LlmTask(key=p.key, label=p.label, description=p.description, template_key=p.template_key,
                       needs_vision=p.needs_vision, json_mode=p.json_mode, route=_checked_route(s, p.route),
-                      fallbacks=[_checked_route(s, f) for f in p.fallbacks if f.connection not in (None, "")])
+                      fallbacks=_checked_fallbacks(s, p.fallbacks))
         s.add(row)
         s.flush()
         return task_dict(row)

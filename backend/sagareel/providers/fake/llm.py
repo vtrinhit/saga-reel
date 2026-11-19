@@ -1,7 +1,7 @@
 """`fake_llm`: trả lời theo `options.replies` (khoá = `params["template_key"]` hoặc `"default"`), stream theo từ.
 
-`options.fail` giả lập lỗi provider (thử chuỗi dự phòng): `true`/`"unavailable"` → `ProviderUnavailable`,
-`"transient"` → `TransientError`.
+Giả lập lỗi provider (thử chuỗi dự phòng): `options.fail=true` → `ProviderUnavailable`, `options.fail_transient=true`
+→ `TransientError`. `options.finish_reason` (vd. `"length"`) được trả trong `LLMResult.finish_reason`.
 """
 
 from __future__ import annotations
@@ -41,8 +41,9 @@ class FakeLLMAdapter(LLMAdapter):
                     help='JSON {"<template_key>|default": "câu trả lời"}; khoá lấy từ params.template_key.'),
         ConfigField("models", "Danh sách model", "str", False, None, help="Mặc định [\"fake-llm\"]."),
         ConfigField("delay_ms", "Trễ mỗi từ (ms)", "int", False, 0),
-        ConfigField("fail", "Giả lập lỗi", "str", False, None,
-                    help='true/"unavailable" → provider không dùng được; "transient" → lỗi tạm thời.'),
+        ConfigField("fail", "Giả lập lỗi không dùng được", "bool", False, False),
+        ConfigField("fail_transient", "Giả lập lỗi tạm thời", "bool", False, False),
+        ConfigField("finish_reason", "finish_reason trả về", "str", False, "stop"),
         HEALTH_FIELD,
     ]
     default_capabilities: ClassVar[dict] = {"vision": True, "json_mode": True, "stream": True}
@@ -58,10 +59,9 @@ class FakeLLMAdapter(LLMAdapter):
         return list(models) if isinstance(models, list) and models else ["fake-llm"]
 
     async def chat(self, req: LLMRequest, on_delta: Callable[[str], None] | None = None) -> LLMResult:
-        fail = self.conn.options.get("fail")
-        if fail == "transient":
+        if self.conn.options.get("fail_transient") is True:
             raise TransientError(f"LLM giả '{self.conn.name}' đang giả lập lỗi tạm thời.", retry_after=0)
-        if fail is True or fail == "unavailable":
+        if self.conn.options.get("fail") is True:
             raise ProviderUnavailable(f"LLM giả '{self.conn.name}' đang giả lập lỗi không dùng được.")
         replies = self.conn.options.get("replies") or {}
         key = req.params.get("template_key")
@@ -79,4 +79,5 @@ class FakeLLMAdapter(LLMAdapter):
             text=text,
             model=req.model or self.conn.default_model or "fake-llm",
             usage={"prompt_tokens": prompt_chars // 4, "completion_tokens": len(parts), "images": len(req.images)},
+            finish_reason=str(self.conn.options.get("finish_reason") or "stop"),
         )

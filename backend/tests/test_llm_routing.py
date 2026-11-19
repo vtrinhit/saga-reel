@@ -205,7 +205,7 @@ async def test_transient_failure_also_falls_back_and_all_failed_raises(services)
     def setup():
         with services.db.session() as s:
             seed_llm_defaults(s)
-            add_llm(s, "flaky", options={"fail": "transient"})
+            add_llm(s, "flaky", options={"fail_transient": True})
             add_llm(s, "dead", options={"fail": True})
             task = s.scalars(select(LlmTask).where(LlmTask.key == "write_script")).one()
             task.route = {"connection": "flaky", "model": None, "params": {}}
@@ -464,7 +464,7 @@ async def test_delta_throttle_limits_rate_and_keeps_text():
 async def test_llm_run_logs_llm_call_and_resets_deltas_on_fallback(client_with_bus, run_jobs):
     client = client_with_bus
     ok(client, "provider.create", {"kind": "llm", "adapter": "fake_llm", "name": "broken",
-                                   "options": {"fail": "unavailable"}})
+                                   "options": {"fail": True}})
     ok(client, "provider.create", {"kind": "llm", "adapter": "fake_llm", "name": "fake-llm",
                                    "options": {"replies": FAKE_REPLIES}})
     ok(client, "llm.task_update", {"key": "write_script", "route": {"connection": "broken"},
@@ -517,3 +517,58 @@ async def test_app_input_error_stops_chain(services):
     with pytest.raises(AppError) as e:
         await llm.run_task(services, "write_script", {})
     assert e.value.code == "template_variable_missing"
+
+
+# --- Fix round 1 -----------------------------------------------------------------------------------------------------
+
+
+async def test_empty_response_moves_to_fallback(services):
+    import httpx
+    import respx
+
+    def setup():
+        with services.db.session() as s:
+            seed_llm_defaults(s)
+            add_llm(s, "real", adapter="openai_compat", base_url="http://llm.test/v1", default_model="m")
+            add_llm(s, "backup", options={"replies": {"write_script": "dự phòng"}})
+            task = s.scalars(select(LlmTask).where(LlmTask.key == "write_script")).one()
+            task.route = {"connection": "real", "model": None, "params": {}}
+            task.fallbacks = [{"connection": "backup", "model": None, "params": {}}]
+
+    await anyio.to_thread.run_sync(setup)
+    with respx.mock:
+        respx.post("http://llm.test/v1/chat/completions").mock(return_value=httpx.Response(200, content=b""))
+        out = await llm.run_task(services, "write_script", {"input": "x"}, on_delta=lambda _: None)
+    assert out.text == "dự phòng"
+    assert [a.get("error_code") for a in out.attempts] == ["provider_empty_response", None]
+
+
+async def test_truncated_json_moves_to_fallback_and_text_is_flagged(services):
+    def setup():
+        with services.db.session() as s:
+            seed_llm_defaults(s)
+            add_llm(s, "short", options={"replies": {"caption": '{"captions": ["a"]}', "write_script": "cụt"},
+                                         "finish_reason": "length"})
+            add_llm(s, "long", options={"replies": {"caption": '{"captions": ["b"]}'}})
+            for key in ("caption", "write_script"):
+                task = s.scalars(select(LlmTask).where(LlmTask.key == key)).one()
+                task.route = {"connection": "short", "model": None, "params": {}}
+                task.fallbacks = [{"connection": "long", "model": None, "params": {}}]
+
+    await anyio.to_thread.run_sync(setup)
+    out = await llm.run_task(services, "caption", {"input": "x"})
+    assert out.data == {"captions": ["b"]} and out.truncated is False
+    assert out.attempts[0]["error_code"] == "llm_truncated" and out.attempts[0]["truncated"] is True
+    out = await llm.run_task(services, "write_script", {"input": "x"})  # không phải JSON: giữ, đánh dấu bị cắt
+    assert out.text == "cụt" and out.truncated is True and out.attempts[0]["finish_reason"] == "length"
+    assert out.to_dict()["truncated"] is True
+
+
+def test_fallback_without_connection_is_rejected(client, app_services):
+    ok(client, "provider.create", {"kind": "llm", "adapter": "fake_llm", "name": "fake-llm"})
+    r = call(client, "llm.task_update", {"key": "caption", "fallbacks": [{"connection": "fake-llm"}, {"model": "m"}]})
+    assert r.status_code == 422 and r.json()["error_code"] == "validation_failed"
+    assert r.json()["extra"]["errors"][0]["loc"] == ["fallbacks", 1, "connection"]
+    r = call(client, "llm.task_create", {"key": "x_task", "label": "x", "template_key": "caption",
+                                         "fallbacks": [{"model": "m"}]})
+    assert r.status_code == 422

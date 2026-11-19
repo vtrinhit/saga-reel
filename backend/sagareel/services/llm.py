@@ -10,7 +10,8 @@
   không có) hoặc JSON hỏng (task `json_mode`) → route kế. Lỗi đầu vào của app (biến template thiếu, template hỏng,
   ảnh không đọc được) dừng ngay.
 - Job `llm.run` (tạo bởi op `llm.run`) phát `llm.delta {job_id, text}` đã gộp (≤ 10 sự kiện/giây) và trả
-  `{text, data, route, usage, model, attempts}`. Mỗi lần gọi LLM ghi một dòng `llm_call` vào nhật ký job.
+  `{text, data, route, usage, model, truncated, attempts}`. `finish_reason == "length"` → `truncated: true`; với task
+  `json_mode` thì coi là lỗi provider (`llm_truncated`) và thử route kế. Mỗi lần gọi LLM ghi một dòng `llm_call` vào nhật ký job.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from sagareel.core import templating
 from sagareel.core.errors import AppError, NotFound
 from sagareel.db.models import LlmTask, ProviderConnection, Template
 from sagareel.providers import registry
-from sagareel.providers.base import CapabilityError, Connection, LLMRequest, ProviderUnavailable
+from sagareel.providers.base import CapabilityError, Connection, LLMRequest, LLMResult, ProviderUnavailable
 from sagareel.services import jobs, media
 from sagareel.services.jobs import JobFailed, TransientError, job_handler
 from sagareel.services.providers import to_connection
@@ -111,10 +112,11 @@ class LLMOutcome:
     attempts: list[dict]
     usage: dict
     model: str = ""
+    truncated: bool = False  # finish_reason == "length": câu trả lời bị cắt vì hết token
 
     def to_dict(self) -> dict[str, Any]:
         return {"text": self.text, "data": self.data, "route": self.route.to_dict(), "usage": dict(self.usage),
-                "model": self.model, "attempts": list(self.attempts)}
+                "model": self.model, "truncated": self.truncated, "attempts": list(self.attempts)}
 
 
 @dataclass
@@ -314,12 +316,14 @@ def _plan_sync(services: Services, task_key: str, variables: dict, override: dic
         return plan(s, task_key, variables, override, images=images)
 
 
-def _attempt(route: Route, *, ok: bool, started: float, model: str | None = None, usage: dict | None = None,
+def _attempt(route: Route, *, ok: bool, started: float, result: LLMResult | None = None,
              error_code: str | None = None, error: str | None = None) -> dict:
-    out: dict[str, Any] = {"connection": route.connection, "model": model if model is not None else route.model,
+    out: dict[str, Any] = {"connection": route.connection, "model": result.model if result else route.model,
                            "ok": ok, "ms": int((time.monotonic() - started) * 1000)}
-    if usage is not None:
-        out["usage"] = dict(usage)
+    if result is not None:
+        out["usage"] = dict(result.usage)
+        out["finish_reason"] = result.finish_reason
+        out["truncated"] = result.finish_reason == "length"
     if error_code is not None:
         out["error_code"] = error_code
         out["error"] = error
@@ -337,7 +341,8 @@ def _call_line(task_key: str, a: dict) -> str:
     if a["ok"]:
         usage = a.get("usage") or {}
         tokens = " ".join(f"{k}={v}" for k, v in usage.items() if isinstance(v, int | float))
-        return f"{base} ok {tokens}".rstrip()
+        cut = " truncated" if a.get("truncated") else ""
+        return f"{base} ok{cut} {tokens}".rstrip()
     return f"{base} lỗi {a.get('error_code')}: {a.get('error')}"
 
 
@@ -390,17 +395,22 @@ async def run_task(
                 raise
             record(_attempt(route, ok=False, started=started, error_code=e.code, error=e.detail))
             continue
+        truncated = result.finish_reason == "length"
         data = None
         if p.json_mode:
+            if truncated:  # JSON bị cắt giữa chừng không dùng được → lỗi provider, thử route kế
+                record(_attempt(route, ok=False, started=started, result=result, error_code="llm_truncated",
+                                error="Câu trả lời bị cắt vì hết token (finish_reason=length)."))
+                continue
             try:
                 data = parse_json(result.text)
             except ValueError as e:
-                record(_attempt(route, ok=False, started=started, model=result.model, usage=result.usage,
-                                error_code="llm_invalid_json", error=f"Câu trả lời không phải JSON hợp lệ: {e}"))
+                record(_attempt(route, ok=False, started=started, result=result, error_code="llm_invalid_json",
+                                error=f"Câu trả lời không phải JSON hợp lệ: {e}"))
                 continue
-        record(_attempt(route, ok=True, started=started, model=result.model, usage=result.usage))
+        record(_attempt(route, ok=True, started=started, result=result))
         return LLMOutcome(text=result.text, data=data, route=route, attempts=attempts, usage=dict(result.usage),
-                          model=result.model)
+                          model=result.model, truncated=truncated)
 
     summary = "; ".join(f"{a['connection']}: {a.get('error')}" for a in attempts)
     if any(a.get("error_code") == "transient" for a in attempts):

@@ -5,6 +5,11 @@
   "data:image/jpeg;base64,…"}}` gắn vào tin nhắn `user` cuối — không bao giờ gửi đường dẫn file.
 - `json_mode` → `response_format={"type": "json_object"}`; provider trả 400 (không hỗ trợ) → gửi lại một lần không có
   `response_format` và ghi log cảnh báo.
+- Stream gửi kèm `stream_options={"include_usage": true}` (tắt bằng `options.stream_usage=false`); 400 nhắc tới
+  `stream_options`/trường lạ → gửi lại một lần không có nó (tách riêng với `response_format`) và ghi log cảnh báo.
+- Proxy bỏ qua `stream: true` và trả JSON thường → đọc như completion thường. Câu trả lời rỗng (body rỗng,
+  `content: null`, stream không có chữ) → `ProviderJobError("empty_response")` để chuỗi dự phòng thử route kế.
+- `finish_reason` trả trong `LLMResult.finish_reason` (`"length"` = bị cắt vì hết token).
 - Lỗi: 429/5xx/timeout/mất kết nối → `TransientError`; 401/403 → `ProviderUnavailable`; 4xx khác →
   `ProviderJobError("rejected")`. Thông báo lỗi không bao giờ chứa khoá API.
 - Nội dung tin nhắn gửi nguyên văn; khoá nội bộ trong `params` (`template_key`, `task_key`) không gửi lên provider.
@@ -16,7 +21,9 @@ import base64
 import io
 import json
 import logging
+import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -69,6 +76,16 @@ def image_data_url(path: Path) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+_UNKNOWN_FIELD_RE = re.compile(r"unknown|unrecogni[sz]ed|not permitted|extra (field|input)|additional propert")
+
+
+@dataclass
+class _Reply:
+    text: str
+    usage: dict
+    finish_reason: str | None
+
+
 class _BadRequest(Exception):
     """400 từ provider (nội bộ): để thử lại không có `response_format`."""
 
@@ -90,6 +107,8 @@ class OpenAICompatAdapter(LLMAdapter):
                     help="Tắt nếu model không đọc được ảnh; công việc cần ảnh sẽ bỏ qua kết nối này."),
         ConfigField("json_mode", "Hỗ trợ JSON mode", "bool", False, True),
         ConfigField("timeout_s", "Thời gian chờ tối đa (giây)", "int", False, DEFAULT_TIMEOUT_S),
+        ConfigField("stream_usage", "Xin số token khi stream", "bool", False, True,
+                    help='Gửi stream_options {"include_usage": true}; máy chủ từ chối thì tự gửi lại không có.'),
     ]
     default_capabilities: ClassVar[dict] = {"vision": True, "json_mode": True, "stream": True}
     http_timeout: ClassVar[float] = float(DEFAULT_TIMEOUT_S)
@@ -185,7 +204,7 @@ class OpenAICompatAdapter(LLMAdapter):
 
     # --- Gửi ---------------------------------------------------------------------------------------------------
 
-    async def _send(self, body: dict, on_delta: Callable[[str], None] | None) -> tuple[str, dict]:
+    async def _send(self, body: dict, on_delta: Callable[[str], None] | None, stream_usage: bool) -> _Reply:
         url = self._url("chat/completions")
         try:
             async with self.client() as c:
@@ -194,32 +213,53 @@ class OpenAICompatAdapter(LLMAdapter):
                     if resp.status_code >= 400:
                         err = self._status_error(resp)
                         raise _BadRequest(err) if resp.status_code == 400 else err
-                    return self._parse_completion(resp)
-                async with c.stream("POST", url, json={**body, "stream": True},
+                    return self._checked(self._parse_completion(resp))
+                stream_body = {**body, "stream": True}
+                if stream_usage:
+                    stream_body["stream_options"] = {"include_usage": True}
+                async with c.stream("POST", url, json=stream_body,
                                     headers={**self._headers(), "Accept": "text/event-stream"},
                                     timeout=self._timeout()) as resp:
                     if resp.status_code >= 400:
                         await resp.aread()
                         err = self._status_error(resp)
                         raise _BadRequest(err) if resp.status_code == 400 else err
-                    return await self._read_stream(resp, on_delta)
+                    if "application/json" in resp.headers.get("content-type", "").lower():
+                        # Proxy bỏ qua stream:true và trả completion JSON thường → đọc như không stream.
+                        await resp.aread()
+                        reply = self._checked(self._parse_completion(resp))
+                        on_delta(reply.text)
+                        return reply
+                    return self._checked(await self._read_stream(resp, on_delta))
         except httpx.HTTPError as e:
             raise self._network_error(e) from None
 
-    def _parse_completion(self, resp: httpx.Response) -> tuple[str, dict]:
+    def _checked(self, reply: _Reply) -> _Reply:
+        """Câu trả lời rỗng (body rỗng, `content: null`, stream không có chữ) là lỗi provider → thử route kế."""
+        if reply.text == "":
+            raise ProviderJobError("empty_response", f"LLM '{self.conn.name}' trả về câu trả lời rỗng.",
+                                   hint="Kiểm tra model/proxy; công việc sẽ thử kết nối dự phòng nếu có.")
+        return reply
+
+    def _parse_completion(self, resp: httpx.Response) -> _Reply:
+        if not resp.content.strip():
+            return _Reply("", {}, None)
         try:
             data = resp.json()
-            msg = data["choices"][0]["message"]
+            choice = data["choices"][0]
+            msg = choice["message"]
         except (ValueError, KeyError, IndexError, TypeError):
             raise ProviderJobError("bad_response", f"LLM '{self.conn.name}' trả về dữ liệu không đúng định dạng.",
                                    hint="Kiểm tra địa chỉ API có đúng chuẩn OpenAI không.") from None
         content = msg.get("content") if isinstance(msg, dict) else None
         usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-        return ("" if content is None else str(content)), dict(usage)
+        finish = choice.get("finish_reason") if isinstance(choice, dict) else None
+        return _Reply("" if content is None else str(content), dict(usage), finish)
 
-    async def _read_stream(self, resp: httpx.Response, on_delta: Callable[[str], None]) -> tuple[str, dict]:
+    async def _read_stream(self, resp: httpx.Response, on_delta: Callable[[str], None]) -> _Reply:
         parts: list[str] = []
         usage: dict = {}
+        finish: str | None = None
         async for line in resp.aiter_lines():
             line = line.rstrip("\r")
             if not line.startswith("data:"):
@@ -244,12 +284,16 @@ class OpenAICompatAdapter(LLMAdapter):
             if isinstance(chunk.get("usage"), dict):
                 usage = dict(chunk["usage"])
             for choice in chunk.get("choices") or []:
-                delta = (choice or {}).get("delta") or {}
+                if not isinstance(choice, dict):
+                    continue
+                if choice.get("finish_reason"):
+                    finish = str(choice["finish_reason"])
+                delta = choice.get("delta") or {}
                 text = delta.get("content") if isinstance(delta, dict) else None
                 if text:
                     parts.append(text)
                     on_delta(text)
-        return "".join(parts), usage
+        return _Reply("".join(parts), usage, finish)
 
     # --- API adapter --------------------------------------------------------------------------------------------
 
@@ -264,22 +308,28 @@ class OpenAICompatAdapter(LLMAdapter):
         body: dict[str, Any] = {k: v for k, v in req.params.items() if k not in INTERNAL_PARAMS}
         body["model"] = model
         body["messages"] = await self._messages(req)
-        use_format = req.json_mode and self.capabilities().get("json_mode") is not False
-        if use_format:
+        if req.json_mode and self.capabilities().get("json_mode") is not False:
             body["response_format"] = {"type": "json_object"}
-        try:
-            text, usage = await self._send(body, on_delta)
-        except _BadRequest as bad:
-            if not use_format:
-                raise bad.error from None
-            logger.warning("LLM '%s' (model %s) từ chối response_format (400: %s); gửi lại không có response_format",
-                           self.conn.name, model, bad.error)
-            body.pop("response_format", None)
+        stream_usage = on_delta is not None and self.conn.options.get("stream_usage", True) is not False
+        while True:  # mỗi vòng gỡ tối đa một trường bị từ chối → dừng sau ≤ 3 lần gửi
             try:
-                text, usage = await self._send(body, on_delta)
-            except _BadRequest as again:
-                raise again.error from None
-        return LLMResult(text=text, model=model, usage=usage)
+                reply = await self._send(body, on_delta, stream_usage)
+                break
+            except _BadRequest as bad:
+                msg = bad.error.msg.lower()
+                if stream_usage and ("stream_options" in msg or "include_usage" in msg
+                                     or (_UNKNOWN_FIELD_RE.search(msg) and "response_format" not in msg)):
+                    logger.warning("LLM '%s' (model %s) từ chối stream_options (400: %s); gửi lại không có "
+                                   "stream_options", self.conn.name, model, bad.error.msg)
+                    stream_usage = False
+                    continue
+                if "response_format" in body:
+                    logger.warning("LLM '%s' (model %s) từ chối response_format (400: %s); gửi lại không có "
+                                   "response_format", self.conn.name, model, bad.error.msg)
+                    body.pop("response_format")
+                    continue
+                raise bad.error from None
+        return LLMResult(text=reply.text, model=model, usage=reply.usage, finish_reason=reply.finish_reason)
 
     async def list_models(self) -> list[str]:
         url = self._url("models")
