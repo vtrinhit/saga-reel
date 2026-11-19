@@ -149,8 +149,8 @@ Worker (`_final_values`): lần chạy không thành công (kể cả `Transient
   `TransientError`; 401/403, thiếu `base_url`/model → `provider_unavailable`; ảnh mà kết nối tắt `vision` →
   `capability_mismatch`; 4xx khác → `provider_rejected`; trả lời rỗng → `provider_empty_response`. Job `llm.run`
   (`services/llm.py`) thử route kế trong chuỗi dự phòng với mọi lỗi phía provider; hết route thì job lỗi theo lỗi cuối.
-- **Sức khoẻ**: `GET /models`; thiếu `base_url` → `not_configured`; có model → `alive`; mọi lỗi (kể cả 429/5xx) hoặc
-  danh sách rỗng → `dead` (quy tắc 429/5xx → `unknown` chưa áp dụng cho adapter này).
+- **Sức khoẻ**: `GET /models`; thiếu `base_url` → `not_configured`; có model → `alive`; 429 và 5xx/cổng → `unknown`;
+  401/403, 4xx khác, không kết nối được/quá giờ, danh sách rỗng hoặc sai định dạng → `dead`.
 
 ### `edge_tts` — Microsoft Edge TTS (miễn phí)
 

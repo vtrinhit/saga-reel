@@ -253,6 +253,21 @@ async def test_health_dead_without_models(adapter):
     assert health.status == "dead" and "SECRET" not in health.detail
 
 
+@respx.mock
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504, 521, 530])
+async def test_health_rate_limit_or_server_error_is_unknown(adapter, status):
+    respx.get(f"{BASE}/models").mock(return_value=httpx.Response(status, json={"error": {"message": f"lỗi {KEY}"}}))
+    health = await adapter.check_health()
+    assert health.status == "unknown" and str(status) in health.detail and KEY not in health.detail
+
+
+@respx.mock
+@pytest.mark.parametrize("status", [401, 403, 404])
+async def test_health_auth_or_other_4xx_is_dead(adapter, status):
+    respx.get(f"{BASE}/models").mock(return_value=httpx.Response(status, json={"error": {"message": "no"}}))
+    assert (await adapter.check_health()).status == "dead"
+
+
 # --- Template -----------------------------------------------------------------------------------------------------
 
 

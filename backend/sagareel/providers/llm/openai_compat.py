@@ -12,6 +12,7 @@
 - `finish_reason` trả trong `LLMResult.finish_reason` (`"length"` = bị cắt vì hết token).
 - Lỗi: 429/5xx/timeout/mất kết nối → `TransientError`; 401/403 → `ProviderUnavailable`; 4xx khác →
   `ProviderJobError("rejected")`. Thông báo lỗi không bao giờ chứa khoá API.
+- Sức khoẻ: `GET /models` — 429 và 5xx/cổng → `unknown`; 401/403, 4xx khác, mất kết nối, không có model → `dead`.
 - Nội dung tin nhắn gửi nguyên văn; khoá nội bộ trong `params` (`template_key`, `task_key`) không gửi lên provider.
 """
 
@@ -331,15 +332,21 @@ class OpenAICompatAdapter(LLMAdapter):
                 raise bad.error from None
         return LLMResult(text=reply.text, model=model, usage=reply.usage, finish_reason=reply.finish_reason)
 
-    async def list_models(self) -> list[str]:
+    async def _get_models(self) -> httpx.Response:
         url = self._url("models")
         try:
             async with self.client() as c:
-                resp = await c.get(url, headers=self._headers(), timeout=self._timeout())
+                return await c.get(url, headers=self._headers(), timeout=self._timeout())
         except httpx.HTTPError as e:
             raise self._network_error(e) from None
+
+    async def list_models(self) -> list[str]:
+        resp = await self._get_models()
         if resp.status_code >= 400:
             raise self._status_error(resp)
+        return self._parse_models(resp)
+
+    def _parse_models(self, resp: httpx.Response) -> list[str]:
         try:
             data = resp.json()
             items = data.get("data") if isinstance(data, dict) else data
@@ -352,7 +359,13 @@ class OpenAICompatAdapter(LLMAdapter):
         if not (self.conn.base_url or "").strip():
             return Health(status="not_configured", detail="Chưa điền địa chỉ API (base_url).")
         try:
-            models = await self.list_models()
+            resp = await self._get_models()
+            if resp.status_code >= 400:
+                err = self._status_error(resp)
+                # 429 và 5xx/cổng: có thể chỉ tạm thời → "unknown"; 401/403 và 4xx khác → "dead".
+                status = "unknown" if resp.status_code == 429 or resp.status_code >= 500 else "dead"
+                return Health(status=status, detail=self._redact(err.msg))
+            models = self._parse_models(resp)
         except (TransientError, ProviderUnavailable, ProviderJobError) as e:
             return Health(status="dead", detail=self._redact(e.msg))
         if not models:
