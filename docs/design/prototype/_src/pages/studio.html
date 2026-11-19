@@ -1,0 +1,79 @@
+<!--{"title": "Studio · Tập 12", "desc": "Player bản nháp có lớp vùng an toàn, timeline 5 track, inspector.", "rail": "overview", "phone": "episodes", "stage": 4}-->
+<div class="toolbar">
+  <div class="seg" role="radiogroup" aria-label="Chế độ Studio">
+    <button type="button" role="radio" aria-checked="false">Storyboard</button>
+    <button type="button" role="radio" aria-checked="true">Timeline</button>
+    <button type="button" role="radio" aria-checked="false">Kịch bản</button>
+  </div>
+  <span class="pill wait">{{i:gate}}Gate animatic chờ bạn</span>
+  <span class="spacer"></span>
+  <span class="xs muted phone-hide">Bản animatic · 540p · dựng 12 phút trước</span>
+  <button class="btn" type="button" data-toast="Đã xếp dựng xem trước 30 giây đầu">{{i:play}}Xem trước 30 s</button>
+  <a class="btn primary" href="activity.html">{{i:gate}}Duyệt animatic</a>
+</div>
+
+<div class="studio">
+  <div class="center">
+    <div class="player">
+      <div class="frame ft-7">
+        <div class="safezone" aria-hidden="true"><span class="top"></span><span class="rt"></span><span class="bot"></span><span class="lb">TikTok · vùng an toàn</span></div>
+        <p class="subline">Chàng không nên tới đây đêm nay.</p>
+      </div>
+    </div>
+    <div class="transport">
+      <button class="icon-btn" type="button" aria-label="Clip trước">{{i:skipb}}</button>
+      <button class="icon-btn" type="button" aria-label="Phát">{{i:play}}</button>
+      <button class="icon-btn" type="button" aria-label="Clip kế">{{i:skipf}}</button>
+      <span class="tc">00:01:12:04</span><span class="tc faint">/ 00:06:12:00</span>
+      <span class="spacer"></span>
+      <select class="select" style="width:auto" aria-label="Nền tảng cho vùng an toàn"><option>TikTok</option><option>Reels</option><option>Shorts</option></select>
+      <button class="icon-btn" type="button" aria-pressed="true" aria-label="Lớp vùng an toàn (G)">{{i:grid}}</button>
+    </div>
+    <div class="tl studio-desk">
+      <div class="tl-scroll region" role="region" aria-label="Timeline — cuộn ngang được" tabindex="0">
+        <div class="tl-inner">
+          <div class="ruler"><span>00:50</span><span>00:55</span><span>01:00</span><span>01:05</span><span>01:10</span><span>01:15</span><span>01:20</span><span>01:25</span><span>01:30</span><span>01:35</span><span>01:40</span><span>01:45</span><span>01:50</span></div>
+          <div class="track v"><span class="hd" title="Hình">V</span><div class="lane">
+            <span class="item" style="left:0;width:118px">Clip 14 · WS</span>
+            <span class="item" style="left:118px;width:80px">Clip 15</span>
+            <span class="item" style="left:198px;width:118px"><span class="dot" style="background:rgb(var(--c-ok))"></span>Clip 16</span>
+            <span class="item" style="left:316px;width:118px">Clip 17</span>
+            <span class="item sel" style="left:434px;width:118px"><span class="dot" style="background:rgb(var(--c-drifted))"></span>Clip 18 · MCU</span>
+            <span class="item" style="left:552px;width:198px"><span class="dot" style="background:rgb(var(--c-stale))"></span>Clip 19 · MS</span>
+            <span class="item" style="left:750px;width:118px"><span class="dot" style="background:rgb(var(--c-failed))"></span>Clip 20</span>
+            <span class="item" style="left:868px;width:118px">Clip 21</span>
+            <span class="item" style="left:986px;width:118px">Clip 22</span>
+          </div></div>
+          <div class="track"><span class="hd" title="Thoại">T</span><div class="lane">
+            <span class="item d" style="left:40px;width:150px">Bà Tư: Đừng gõ chuông…</span>
+            <span class="item d" style="left:450px;width:96px">An: Chàng không…</span>
+            <span class="item d" style="left:600px;width:170px">Khang: Ta đi tìm người…</span>
+          </div></div>
+          <div class="track"><span class="hd" title="Phụ đề">P</span><div class="lane">
+            <span class="item p" style="left:40px;width:150px">Đừng gõ chuông</span>
+            <span class="item p" style="left:450px;width:96px">Chàng không nên…</span>
+            <span class="item p" style="left:600px;width:170px">Ta đi tìm người</span>
+          </div></div>
+          <div class="track"><span class="hd" title="Nhạc">N</span><div class="lane">
+            <span class="item n" style="left:0;width:860px">Nhạc nền · Sáo trúc đêm (CC BY 4.0) · duck −12 dB</span>
+          </div></div>
+          <div class="track"><span class="hd" title="Hiệu ứng âm">S</span><div class="lane">
+            <span class="item s" style="left:150px;width:40px">chuông</span>
+            <span class="item s" style="left:560px;width:120px">mưa đêm</span>
+          </div></div>
+          <div class="playhead" style="left:530px"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel-b phone-only">
+      <p class="sm muted">Timeline nhiều track chỉ có trên màn từ 768px. Trên điện thoại bạn xem bản nháp, duyệt gate và sửa prompt, thoại của từng clip.</p>
+    </div>
+  </div>
+  <aside class="studio-desk" style="border-left:1px solid rgb(var(--c-line-1)); background: rgb(var(--c-bg-1))" aria-label="Inspector clip 18">
+    <div class="insp-sec"><h2 class="sm b">Clip 18 · 6,0 s</h2><div class="row"><span class="pill drifted">{{i:face}}Lệch</span><span class="xs muted">nối: cắt · chuyển cảnh: không</span></div></div>
+    <div class="insp-sec"><h3>Thời lượng</h3><div class="row"><div class="seg" role="radiogroup" aria-label="Thời lượng video"><button type="button" role="radio" aria-checked="true">6 s</button><button type="button" role="radio" aria-checked="false">10 s</button><button type="button" role="radio" aria-checked="false">15 s</button></div><span class="src"><span class="ladder"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></span>từ Dự án</span></div></div>
+    <div class="insp-sec"><h3>Prompt chuyển động</h3><textarea class="textarea" aria-label="Prompt chuyển động">0–2s: An still, rain sound. 2–5s: slow turn to camera, tails unfurl. 5–6s: hold on eyes.</textarea></div>
+    <div class="insp-sec"><h3>Âm gốc Grok</h3><div class="seg" role="radiogroup" aria-label="Âm gốc"><button type="button" role="radio" aria-checked="false">Giữ</button><button type="button" role="radio" aria-checked="true">Nền −18 dB</button><button type="button" role="radio" aria-checked="false">Tắt</button></div></div>
+    <div class="insp-foot"><button class="btn primary" type="button" data-toast="Đã xếp tạo lại video Clip 18">{{i:redo}}Tạo lại video</button></div>
+  </aside>
+</div>

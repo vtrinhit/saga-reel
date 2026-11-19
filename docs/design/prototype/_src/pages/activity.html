@@ -1,0 +1,94 @@
+<!--{"title": "Cần bạn và hoạt động", "desc": "Gate chờ duyệt kèm giá bước kế, agent đang làm gì, việc, lịch sử thay đổi.", "rail": "activity", "phone": "inbox"}-->
+<style>
+  .act { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+  @media (min-width: 1280px) { .act { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; } }
+</style>
+<div class="page-head">
+  <div class="stack-sm"><h1>Cần bạn</h1><p class="sub">5 việc chờ quyết định · 2 agent đang làm · 12 việc đang chạy</p></div>
+  <div class="seg phone-hide" role="radiogroup" aria-label="Phạm vi"><button type="button" role="radio" aria-checked="true">Kiếp Hồ Ly</button><button type="button" role="radio" aria-checked="false">Mọi dự án</button></div>
+</div>
+
+<div class="act">
+  <div class="stack">
+    <article class="gatecard waiting" aria-labelledby="g1">
+      <div class="gh">
+        <span class="ring">{{i:gate}}</span>
+        <div class="stack-sm grow">
+          <h2 id="g1" class="sm b">Duyệt animatic · Tập 12 · Đêm trăng máu</h2>
+          <span class="xs muted">Yêu cầu bởi <span class="actor">{{i:bot}}biên-tập</span> lúc 13:40 · agent không được tự vượt gate</span>
+        </div>
+      </div>
+      <div class="gbody">
+        <div class="preview"><span class="img ft-7" style="position:absolute;inset:0"></span><button class="play" type="button" aria-label="Xem animatic tập 12">{{i:play}}</button></div>
+        <div class="stack">
+          <ul class="checklist">
+            <li class="ok">{{i:check}}48 / 48 khung hình đã chọn · 6 ph 12 s</li>
+            <li class="ok">{{i:check}}Thoại 41 / 64 câu · phần còn lại dùng giọng tạm</li>
+            <li class="bad">{{i:face}}3 khung lệch nhân vật An (Clip 9, 18, 31)</li>
+            <li class="bad">{{i:history}}3 khung đã cũ sau khi sửa look</li>
+          </ul>
+          <div class="nextcost" aria-label="Chi phí nếu duyệt">
+            <span class="xs muted">Nếu duyệt, chạy tiếp chặng Video</span>
+            <span class="big">48 video · 0 lượt</span>
+            <span class="xs muted">GrokTele không tính lượt · ≈ 35 phút · thử 2 clip trước (gate thử) đang bật</span>
+          </div>
+        </div>
+      </div>
+      <div class="gf">
+        <button class="btn" type="button" data-open="reject">{{i:msg}}Trả lại<span class="phone-hide"> kèm góp ý</span></button>
+        <button class="btn primary" type="button" data-toast="Đã duyệt animatic tập 12 — đang tạo 2 clip thử">{{i:check}}Duyệt<span class="phone-hide"> và chạy tiếp</span><span class="phone-only"> · chạy tiếp</span></button>
+      </div>
+    </article>
+
+    <article class="gatecard waiting" aria-labelledby="g2">
+      <div class="gh">
+        <span class="ring">{{i:gate}}</span>
+        <div class="stack-sm grow"><h2 id="g2" class="sm b">Duyệt bản cuối · Tập 10 · Người đưa đò</h2><span class="xs muted">6 ph 40 s · −14,1 LUFS · phụ đề trong vùng an toàn</span></div>
+      </div>
+      <div class="gf"><a class="btn" href="studio.html">{{i:eye}}Xem</a><button class="btn primary" type="button" data-toast="Đã duyệt bản cuối tập 10 — xuất 3 gói">{{i:check}}Duyệt · xuất 3 gói</button></div>
+    </article>
+
+    <div class="inbox">
+      <a class="need-item" href="review.html"><span class="ic drift">{{i:face}}</span><span class="stack-sm"><span class="t">An lệch ở 3 clip · Tập 12</span><span class="d">kiểm-định · tóc ngắn hơn mỏ neo · điểm 58–64</span></span>{{i:right}}</a>
+      <a class="need-item" href="episode.html"><span class="ic fail">{{i:alert}}</span><span class="stack-sm"><span class="t">Không chắc MaiVideo đã nhận ảnh Clip 7 · Tập 13</span><span class="d">Máy nhà khởi động lại lúc đang gửi. Gửi lại có thể tốn thêm 1 lượt.</span></span>{{i:right}}</a>
+      <a class="need-item" href="settings.html"><span class="ic warn">{{i:gauge}}</span><span class="stack-sm"><span class="t">18 việc chờ vì vượt ngân sách tháng</span><span class="d">Tập 41–43 · cần thêm 136 lượt ảnh</span></span>{{i:right}}</a>
+    </div>
+  </div>
+
+  <div class="stack">
+    <section class="panel" aria-labelledby="ag-h">
+      <div class="panel-h"><h2 id="ag-h" class="sm b">Agent</h2><a class="btn ghost" href="settings.html">Token</a></div>
+      <div class="divide">
+        <div class="agent"><span class="av">{{i:bot}}</span><span class="nm">biên-tập</span><button class="btn ghost" type="button" data-toast="Đã tạm dừng agent biên-tập">{{i:pause}}Tạm dừng</button><span class="doing">Viết kịch bản Tập 14</span><span class="meta"><span>40 giây trước</span><span>23 thay đổi</span><span>0 lượt</span></span></div>
+        <div class="agent"><span class="av">{{i:bot}}</span><span class="nm">kiểm-định</span><button class="btn ghost" type="button" data-toast="Đã tạm dừng agent kiểm-định">{{i:pause}}Tạm dừng</button><span class="doing">Kiểm tra lệch Tập 9–12 · 31/192</span><span class="meta"><span>đang chạy</span><span>vision</span></span></div>
+      </div>
+    </section>
+
+    <section class="panel" id="viec" aria-labelledby="jb-h">
+      <div class="panel-h"><h2 id="jb-h" class="sm b">Việc</h2><a class="btn ghost" href="#">Tất cả 12</a></div>
+      <div>
+        <div class="job"><span class="ic-run">{{i:loader}}</span><span class="stack-sm"><span class="name">Tập 11 · video 34 / 44</span><span class="stage-t">GrokTele · ảnh → video</span></span><button class="btn ghost" type="button">Huỷ việc</button><span class="prog"><span class="track4"><i style="--p:.71"></i></span><span class="mono">71%</span><span>còn ~12 phút</span></span></div>
+        <div class="job"><span class="ic-fail">{{i:alert}}</span><span class="stack-sm"><span class="name">Tập 13 · Clip 20 ảnh</span><span class="stage-t">MaiVideo trả 502 sau 3 lần thử</span></span><button class="btn" type="button">Thử lại</button></div>
+        <div class="job"><span class="ic-warn">{{i:gauge}}</span><span class="stack-sm"><span class="name">Tập 41 · 48 ảnh</span><span class="stage-t">Chờ · vượt ngân sách tháng</span></span><a class="btn ghost" href="settings.html">Ngân sách</a></div>
+      </div>
+    </section>
+
+    <section class="panel" id="lich-su" aria-labelledby="hs-h">
+      <div class="panel-h"><h2 id="hs-h" class="sm b">Lịch sử</h2><span class="xs faint">Ctrl Z hoàn tác của bạn</span></div>
+      <ul class="feed">
+        <li><span class="tm">14:05</span><span class="what"><span class="actor">{{i:bot}}biên-tập</span>sửa prompt 12 clip</span><button class="btn ghost" type="button" data-toast="Đã hoàn tác thay đổi của biên-tập">Hoàn tác</button><span class="where">Tập 14 · Cảnh 2</span></li>
+        <li><span class="tm">13:58</span><span class="what"><span class="actor human">{{i:user}}Bạn</span>duyệt gate Khung hình</span><span></span><span class="where">Tập 12</span></li>
+        <li><span class="tm">13:51</span><span class="what"><span class="actor human">{{i:user}}Bạn</span>sửa cụm khoá look Áo dài đỏ</span><button class="btn ghost" type="button">Hoàn tác</button><span class="where">Đánh dấu cũ 14 clip ở tập 9–12</span></li>
+        <li><span class="tm">13:40</span><span class="what"><span class="actor">{{i:bot}}llm-local</span>viết metadata 3 gói</span><span></span><span class="where">Tập 9</span></li>
+      </ul>
+    </section>
+  </div>
+</div>
+
+<dialog id="reject" class="estimate" aria-labelledby="rj-h" closedby="any">
+  <div class="dh"><h2 id="rj-h">Trả lại animatic tập 12</h2><button class="icon-btn" type="button" data-close aria-label="Đóng">{{i:x}}</button></div>
+  <div class="db">
+    <div class="field"><label for="fb">Góp ý cho agent biên-tập</label><textarea id="fb" class="textarea" autofocus>Cảnh 3 nhịp chậm quá, cắt bớt 2 clip phố Hội. Sửa lệch tóc An trước khi làm video.</textarea><span class="hint">Gửi qua gate.reject · agent thấy góp ý trong Hoạt động.</span></div>
+  </div>
+  <div class="df"><button class="btn" type="button" data-close>Huỷ</button><button class="btn primary" type="button" data-close data-toast="Đã trả lại animatic tập 12 kèm góp ý">Trả lại</button></div>
+</dialog>

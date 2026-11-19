@@ -1,0 +1,46 @@
+<!--{"title": "Cài đặt", "desc": "Kết nối provider, định tuyến LLM, truy cập, ngân sách, lưu trữ.", "project": false}-->
+<style>
+  .set { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); min-width: 0; max-width: 1200px; }
+  @media (min-width: 1024px) { .set { grid-template-columns: 220px minmax(0, 1fr); } }
+  .setnav { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+  @media (min-width: 1024px) { .setnav { flex-direction: column; } }
+  .setnav a { display: flex; align-items: center; gap: 10px; min-height: var(--h-touch); padding: 0 12px; border-radius: var(--r-md); text-decoration: none; color: rgb(var(--c-fg-2)); font-size: var(--text-sm); white-space: nowrap; }
+  .setnav a:hover { background: rgb(var(--c-bg-2)); color: rgb(var(--c-fg-1)); }
+  .setnav a[aria-current="page"] { background: rgb(var(--c-bg-2)); color: rgb(var(--c-fg-1)); box-shadow: inset 2px 0 0 rgb(var(--c-accent)); }
+  .prov { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; padding: 12px; border-top: 1px solid rgb(var(--c-line-1)); }
+  .prov:first-child { border-top: 0; }
+  .prov .d { width: 8px; height: 8px; border-radius: 50%; }
+</style>
+<div class="page-head"><h1>Cài đặt</h1><a class="btn ghost" href="overview.html">{{i:left}}Về dự án Kiếp Hồ Ly</a></div>
+<div class="set">
+  <nav class="setnav" aria-label="Mục cài đặt">
+    <a href="#">{{i:layers}}Kết nối</a>
+    <a href="#">{{i:bot}}Định tuyến LLM</a>
+    <a href="#">{{i:lock}}Truy cập và token</a>
+    <a href="#" aria-current="page">{{i:gauge}}Ngân sách</a>
+    <a href="#">{{i:folder}}Lưu trữ</a>
+  </nav>
+  <div class="stack">
+    <section class="panel" aria-labelledby="bg-h">
+      <div class="panel-h"><h2 id="bg-h" class="sm b">Ngân sách</h2><label class="check"><input type="checkbox" checked> Bật chặn khi vượt</label></div>
+      <div class="panel-b">
+        <div class="stats" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr))">
+          <div class="stat"><span class="v">412<span class="faint sm"> / 1.236</span></span><span class="k">MaiVideo · trọn đời</span></div>
+          <div class="stat"><span class="v">388<span class="faint sm"> / 600</span></span><span class="k">Kiếp Hồ Ly · tháng 11</span></div>
+          <div class="stat"><span class="v">14,2 tr</span><span class="k">token LLM · tháng 11</span></div>
+        </div>
+        <div class="field"><label for="mb">Lượt ảnh mỗi tháng cho dự án <span class="src"><span class="ladder"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></span>từ Dự án</span></label><input id="mb" class="input" inputmode="numeric" value="600" style="max-width:160px"><span class="hint">Việc vượt mức đứng ở hàng đợi với lý do “vượt ngân sách”, không bị huỷ.</span></div>
+        <div class="field"><label for="nh">Không hỏi lại với việc dưới</label><div class="row"><input id="nh" class="input" inputmode="numeric" value="5" style="max-width:96px"><span class="sm muted">lượt</span></div></div>
+      </div>
+    </section>
+    <section class="panel" aria-labelledby="pv-h">
+      <div class="panel-h"><h2 id="pv-h" class="sm b">Sức khoẻ kết nối</h2><button class="btn" type="button">Kiểm tra tất cả</button></div>
+      <div>
+        <div class="prov"><span class="d" style="background:rgb(var(--c-ok))"></span><span class="stack-sm"><b class="sm">maivideo · ảnh</b><span class="xs muted">sống · kiểm tra 12 giây trước · song song 3</span></span><button class="btn ghost" type="button">Thử</button></div>
+        <div class="prov"><span class="d" style="background:rgb(var(--c-ok))"></span><span class="stack-sm"><b class="sm">groktele · video</b><span class="xs muted">sống · 2 tài khoản dùng được</span></span><button class="btn ghost" type="button">Thử</button></div>
+        <div class="prov"><span class="d" style="background:rgb(var(--c-warn))"></span><span class="stack-sm"><b class="sm">edge-tts · giọng</b><span class="xs muted">chập chờn · 3 lần NoAudioReceived trong 10 phút</span></span><button class="btn ghost" type="button">Thử</button></div>
+        <div class="prov"><span class="d" style="background:rgb(var(--c-fg-4))"></span><span class="stack-sm"><b class="sm">openai-stt · nhận dạng lời</b><span class="xs muted">chưa cấu hình · dán lời thủ công khi clone video</span></span><button class="btn ghost" type="button">Cấu hình</button></div>
+      </div>
+    </section>
+  </div>
+</div>

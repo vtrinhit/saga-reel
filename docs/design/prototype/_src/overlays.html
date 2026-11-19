@@ -1,0 +1,77 @@
+<dialog id="palette" aria-label="Bảng lệnh" closedby="any">
+  <input class="pin" type="search" placeholder="Gõ tên tập, clip, nhân vật hoặc lệnh — không cần dấu" aria-label="Tìm hoặc chạy lệnh" autofocus>
+  <ul>
+    <li class="grp">Đi tới</li>
+    <li><a href="overview.html">{{i:overview}}Tổng quan · Kiếp Hồ Ly<span class="kbd">G O</span></a></li>
+    <li><a href="episode.html">{{i:rows}}Tập 12 · Đêm trăng máu<span class="kbd">G T</span></a></li>
+    <li><a href="studio.html">{{i:clapper}}Studio tập 12</a></li>
+    <li><a href="library.html">{{i:library}}Lạc An · nhân vật</a></li>
+    <li class="grp">Hành động</li>
+    <li><a href="review.html">{{i:review}}Duyệt khung hình tập 12 · 212 take chờ<span class="kbd">G D</span></a></li>
+    <li><a href="#" data-open="estimate">{{i:redo}}Tạo lại các clip đã cũ ở tập 12 · 3 lượt</a></li>
+    <li><a href="activity.html">{{i:inbox}}Mở Cần bạn · 5 mục<span class="kbd">G I</span></a></li>
+    <li><a href="#" data-toast="Đã hoàn tác: sửa prompt Clip 18">{{i:undo}}Hoàn tác thay đổi gần nhất của bạn<span class="kbd">Ctrl Z</span></a></li>
+  </ul>
+</dialog>
+
+<dialog id="estimate" class="estimate" aria-labelledby="est-t" closedby="any">
+  <div class="dh"><h2 id="est-t">Chạy tới gate kế tiếp · 10 tập</h2><button class="icon-btn" type="button" data-close aria-label="Đóng">{{i:x}}</button></div>
+  <div class="db">
+    <p class="muted sm">Tập 41–50 · Arc 4 · từ Kịch bản tới gate Khung hình. Video chưa tính: chỉ chạy sau khi bạn duyệt animatic.</p>
+    <table class="est-t">
+      <tr><td>Kịch bản + phân cảnh · LLM</td><td class="muted">10 tập</td><td class="r">≈ 1,9 triệu token</td></tr>
+      <tr><td>Khung hình · MaiVideo</td><td class="muted">480 ảnh × 1 lượt</td><td class="r">480 lượt</td></tr>
+      <tr><td>Thoại · edge-tts</td><td class="muted">612 câu</td><td class="r">miễn phí</td></tr>
+      <tr><td>Thời gian</td><td class="muted">song song 3 · MaiVideo</td><td class="r">≈ 2 giờ 40 ph</td></tr>
+    </table>
+    <div class="est-total"><span class="muted">Tổng trả phí</span><span class="big">480 lượt</span></div>
+    <div class="warnband">{{i:alert}}<div><b>Vượt ngân sách tháng của dự án.</b> Còn 212 lượt trong tháng 11; còn 824 lượt trọn đời MaiVideo. Chạy tới hết Phân cảnh trước thì không tốn lượt ảnh.</div></div>
+    <label class="check"><input type="checkbox"> Không hỏi lại với việc dưới 5 lượt</label>
+  </div>
+  <div class="df">
+    <button class="btn" type="button" data-close>Huỷ</button>
+    <button class="btn" type="button" data-close data-toast="Đã xếp 10 tập chạy tới hết Phân cảnh">Chạy tới hết Phân cảnh <span class="cost">0 lượt</span></button>
+    <button class="btn primary" type="button" data-close data-toast="Đã xếp 10 tập · 480 lượt">Chạy 10 tập <span class="cost">480 lượt</span></button>
+  </div>
+</dialog>
+
+<dialog id="budget" class="estimate" aria-labelledby="bud-t" closedby="any">
+  <div class="dh"><h2 id="bud-t">Chi phí</h2><button class="icon-btn" type="button" data-close aria-label="Đóng">{{i:x}}</button></div>
+  <div class="db">
+    <table class="est-t">
+      <tr><td>MaiVideo · ảnh</td><td class="muted">trọn đời</td><td class="r">412 / 1.236 lượt</td></tr>
+      <tr><td>Kiếp Hồ Ly · tháng 11</td><td class="muted">ngân sách dự án</td><td class="r">388 / 600 lượt</td></tr>
+      <tr><td>GrokTele · video</td><td class="muted">không giới hạn</td><td class="r">1.204 clip</td></tr>
+      <tr><td>LLM · llm-local</td><td class="muted">tháng 11</td><td class="r">14,2 triệu token</td></tr>
+    </table>
+    <p class="xs faint">Số liệu từ budget.status · cập nhật mỗi khi việc trả phí xong.</p>
+  </div>
+  <div class="df"><a class="btn" href="settings.html">Sửa ngân sách</a><button class="btn primary" type="button" data-close>Xong</button></div>
+</dialog>
+
+<dialog id="activity" popover aria-labelledby="act-t">
+  <div class="panel-h"><h2 id="act-t">Hoạt động</h2><button class="icon-btn" type="button" popovertarget="activity" popovertargetaction="hide" aria-label="Đóng panel Hoạt động">{{i:x}}</button></div>
+  <div class="divide">
+    <div class="agent">
+      <span class="av">{{i:bot}}</span>
+      <span class="nm">biên-tập</span>
+      <button class="btn ghost" type="button" data-toast="Đã tạm dừng agent biên-tập (token chỉ còn quyền đọc)">{{i:pause}}Tạm dừng</button>
+      <span class="doing">Viết kịch bản Tập 14 · <span class="mono xs">story.write_script</span></span>
+      <span class="meta"><span>ghi lần cuối 40 giây trước</span><span>23 thay đổi phiên này</span><span>0 lượt</span></span>
+    </div>
+    <div class="agent">
+      <span class="av">{{i:bot}}</span>
+      <span class="nm">kiểm-định</span>
+      <button class="btn ghost" type="button" data-toast="Đã tạm dừng agent kiểm-định">{{i:pause}}Tạm dừng</button>
+      <span class="doing">Kiểm tra lệch nhân vật Tập 9–12 · 31/192 clip</span>
+      <span class="meta"><span>đang chạy</span><span>vision · llm-local</span></span>
+    </div>
+  </div>
+  <ul class="feed" aria-label="Dòng thời gian">
+    <li><span class="tm">14:05</span><span class="what"><span class="actor">{{i:bot}}biên-tập</span>sửa prompt 12 clip</span><button class="btn ghost" type="button" data-toast="Đã hoàn tác thay đổi của biên-tập">Hoàn tác</button><span class="where">Tập 14 · Cảnh 2</span></li>
+    <li><span class="tm">14:02</span><span class="what"><span class="actor">{{i:bot}}kiểm-định</span>đánh dấu lệch An ở 3 clip</span><span></span><span class="where">Tập 12 · Clip 9, 18, 31</span></li>
+    <li><span class="tm">13:58</span><span class="what"><span class="actor human">{{i:user}}Bạn</span>duyệt gate Khung hình</span><span></span><span class="where">Tập 12</span></li>
+    <li><span class="tm">13:40</span><span class="what"><span class="actor">{{i:bot}}biên-tập</span>yêu cầu duyệt animatic</span><span></span><span class="where">Tập 12 · đang chờ bạn</span></li>
+  </ul>
+  <div class="panel-b"><a class="btn block" href="activity.html">Mở trang Hoạt động</a></div>
+</dialog>

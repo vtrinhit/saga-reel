@@ -1,0 +1,71 @@
+<!--{"title": "Duyệt take", "desc": "Hàng đợi duyệt: so sánh take, chọn, tạo lại, bỏ qua bằng phím.", "rail": "review", "phone": "review", "stage": 3}-->
+<div class="toolbar">
+  <h1 class="sm b">Duyệt khung hình · Tập 12</h1>
+  <span class="pill wait">18 / 48</span>
+  <span class="spacer"></span>
+  <div class="seg phone-hide" role="radiogroup" aria-label="Lọc hàng đợi">
+    <button type="button" role="radio" aria-checked="true">Chưa duyệt 30</button>
+    <button type="button" role="radio" aria-checked="false">Lệch 3</button>
+    <button type="button" role="radio" aria-checked="false">Đã cũ 3</button>
+    <button type="button" role="radio" aria-checked="false">Lỗi 1</button>
+  </div>
+  <button class="btn ghost phone-hide" type="button">{{i:filter}}Nhân vật: An</button>
+</div>
+
+<div class="review">
+  <nav class="panel region phone-hide" aria-label="Hàng đợi duyệt" style="max-height: 70vh">
+    <div class="panel-h"><span class="sm b">Hàng đợi</span><span class="xs faint">J / K</span></div>
+    <ol class="queue">
+      <li><a href="#"><span class="thumb ft-4"></span><span class="stack-sm"><span class="sm">Clip 16</span><span class="xs faint">agent đã chọn T3</span></span><span class="pill">{{i:bot}}T3</span></a></li>
+      <li><a href="#"><span class="thumb ft-3"></span><span class="stack-sm"><span class="sm">Clip 17</span><span class="xs faint">2 take</span></span></a></li>
+      <li><a href="#" aria-current="true"><span class="thumb ft-7"></span><span class="stack-sm"><span class="sm b">Clip 18</span><span class="xs" style="color:rgb(var(--c-drifted))">lệch · 4 take</span></span></a></li>
+      <li><a href="#"><span class="thumb ft-2"></span><span class="stack-sm"><span class="sm">Clip 19</span><span class="xs" style="color:rgb(var(--c-stale))">đã cũ</span></span></a></li>
+      <li><a href="#"><span class="thumb ft-6"></span><span class="stack-sm"><span class="sm">Clip 24</span><span class="xs faint">3 take</span></span></a></li>
+      <li><a href="#"><span class="thumb ft-5"></span><span class="stack-sm"><span class="sm">Clip 25</span><span class="xs faint">2 take</span></span></a></li>
+    </ol>
+  </nav>
+
+  <section class="stack" aria-labelledby="clip-h">
+    <div class="row between">
+      <h2 id="clip-h" class="sm b">Cảnh 2 · Clip 18 <span class="faint">· MCU · 6,0 s</span></h2>
+      <span class="xs muted">Prompt: An turns toward the door, nine tails unfurl…</span>
+    </div>
+    <div class="suggest">{{i:alert}}<div><b>Đã tạo lại 2 lần vì lệch tóc.</b> Tạo lại tiếp khó khác đi — thử sửa <i>keep_features</i> của look “Hồ ly hiện hình” hoặc thêm ảnh cận mặt làm tham chiếu. <a href="library.html">Mở look</a></div></div>
+    <div class="compare three">
+      <figure class="take phone-hide" style="margin:0">
+        <div class="frame"><span class="img ft-sheet"></span><span class="take-no">Mỏ neo</span></div>
+        <figcaption class="kv"><span>An · Hồ ly hiện hình</span><span>sheet chính diện</span></figcaption>
+      </figure>
+      <figure class="take" style="margin:0">
+        <div class="frame"><span class="img ft-3"></span><span class="take-no">3</span></div>
+        <figcaption class="stack-sm"><span class="kv"><span class="mono">seed 41827</span><span>gpt-image-2</span><span>1 lượt</span></span><span class="note">{{i:face}}tóc ngắn hơn mỏ neo · 62/100</span></figcaption>
+      </figure>
+      <figure class="take picked" style="margin:0">
+        <div class="frame"><span class="img ft-7"></span><span class="take-no mine">4</span></div>
+        <figcaption class="stack-sm"><span class="kv"><span class="mono">seed 41828</span><span>gpt-image-2</span><span>1 lượt</span></span><span class="kv">{{i:check}}khớp mỏ neo · 88/100</span></figcaption>
+      </figure>
+    </div>
+    <div class="decide">
+      <button class="btn" type="button" data-toast="Đã xếp tạo lại Clip 18 · 1 lượt">{{i:redo}}Tạo lại <span class="kbd">R</span></button>
+      <button class="btn" type="button" data-toast="Đã bỏ qua Clip 18">Bỏ qua <span class="kbd">S</span></button>
+      <span class="hints xs faint">1–9 chọn take · E sửa prompt · V verdict · C so sánh · Space phát</span>
+      <button class="btn primary" type="button" data-toast="Đã chọn take 4 cho Clip 18 — sang Clip 19">{{i:check}}Chọn<span class="phone-hide"> take 4</span> <span class="kbd">A</span></button>
+    </div>
+  </section>
+
+  <aside class="inspector phone-hide" aria-label="Chi tiết clip 18">
+    <div class="insp-sec">
+      <h3>Prompt ảnh <span class="src"><span class="ladder"><i></i><i></i><i></i><i></i><i></i><i class="on"></i></span>agent</span></h3>
+      <textarea id="prompt" class="textarea" aria-label="Prompt ảnh clip 18">Medium close-up, An turns toward the door, nine tails unfurl behind her, eyes catching red moonlight</textarea>
+      <button class="btn" type="button">{{i:wand}}Nhờ AI sửa theo góp ý</button>
+    </div>
+    <div class="insp-sec">
+      <h3>Verdict <span class="kbd">V</span></h3>
+      <div class="row"><button class="btn" type="button">Giữ</button><button class="btn" type="button">Cắt</button><button class="btn" type="button">Sửa hậu kỳ</button><button class="btn" type="button">Tạo lại</button><button class="btn" type="button">Loại</button></div>
+    </div>
+    <div class="insp-sec">
+      <h3>Chi phí clip này</h3>
+      <p class="sm muted"><span class="mono">4 lượt</span> qua 4 take · tập 12 đã tiêu <span class="mono">52 lượt</span></p>
+    </div>
+  </aside>
+</div>
