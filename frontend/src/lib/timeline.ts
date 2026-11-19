@@ -365,6 +365,10 @@ export interface ClipRow {
   video_take_id?: number | null;
   input_media_id?: number | null;
   shot_size?: string;
+  motion_prompt?: string;
+  image_prompt?: string;
+  grok_audio?: string;
+  motion_preset?: string;
   subtitle_mode?: string;
   flags?: Record<string, unknown>;
   review?: string;
