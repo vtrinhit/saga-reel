@@ -1,0 +1,74 @@
+# Bảng làm-cũ theo trường (spec §23.9, §10) — dữ liệu, sửa được.
+#
+# `fields.<thực thể>.<trường>`: sửa trường này (giá trị thật sự đổi) thì gắn các cờ vào `clip.flags` (cờ = true).
+#   - clip: cờ gắn lên chính clip.
+#   - asset_variant / asset / dialogue_line: cờ gắn lên các clip dùng look/tài sản/câu thoại đó (task sở hữu thực thể
+#     gọi `services.staleness.flags_for(...)` rồi `apply(...)`).
+# `requires.<cờ>`: chỉ gắn cờ khi clip đã có ít nhất một trong các cột này khác null (chưa tạo gì thì không có gì "cũ").
+#   Cờ không liệt kê ở đây luôn được gắn.
+# `events.<sự kiện>`: khi chọn take mới (tạo lại thành công hoặc take.select):
+#   self_set / self_clear: cờ gắn / gỡ trên chính clip;
+#   self_clear_if_continue: gỡ thêm khi clip có link=continue (khung đầu đã lấy từ clip trước);
+#   next_continue: cờ gắn lên clip kế tiếp (theo rank) nếu clip đó có link=continue.
+
+fields:
+  clip:
+    image_prompt: [stale_image, stale_video]
+    prompt_mode: [stale_image, stale_video]
+    assets: [stale_image, stale_video]
+    extra_ref_media_ids: [stale_image, stale_video]
+    input_media_id: [stale_image, stale_video]
+    shot_size: [stale_image, stale_video]
+    angle: [stale_image, stale_video]
+    lens: [stale_image, stale_video]
+    composition: [stale_image, stale_video]
+    eyeline: [stale_image, stale_video]
+    first_frame_desc: [stale_image, stale_video]
+    scene_id: [stale_image, stale_video]
+    motion_prompt: [stale_video]
+    camera_move: [stale_video]
+    last_frame_desc: [stale_video]
+    beats: [stale_video]
+    duration_ms: [stale_video]
+    engine: [stale_video]
+    motion_preset: [stale_video]
+    link: [stale_video]
+    transition: [stale_chunk]
+    trim_in_ms: [stale_chunk]
+    trim_out_ms: [stale_chunk]
+    speed: [stale_chunk]
+    grok_audio: [stale_chunk]
+    subtitle_mode: [stale_chunk]
+    sfx_desc: [stale_chunk]
+  asset_variant:
+    description_delta: [stale_image, stale_video]
+    keep_features: [stale_image, stale_video]
+    lock_word: [stale_image, stale_video]
+    anchor_media_id: [stale_image, stale_video]
+    sheet: [stale_image, stale_video]
+    ref_media_ids: [stale_image, stale_video]
+  asset:
+    description: [stale_image, stale_video]
+  dialogue_line:
+    text: [stale_audio, stale_subtitle]
+    speaker_asset_id: [stale_audio]
+    emotion: [stale_audio]
+    source: [stale_audio]
+    voice_override: [stale_audio]
+    offset_ms: [stale_chunk]
+    translations: [stale_subtitle]
+
+requires:
+  stale_image: [image_take_id, video_take_id]
+  stale_video: [video_take_id]
+
+events:
+  image_selected:
+    self_set: [stale_video]
+    self_clear: [stale_image]
+    next_continue: [stale_image]
+  video_selected:
+    self_set: []
+    self_clear: [stale_video]
+    self_clear_if_continue: [stale_image]
+    next_continue: [stale_image]
