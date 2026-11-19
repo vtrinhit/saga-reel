@@ -14,3 +14,8 @@
 ## Từ J
 - Undo khôi phục cả `sequence.pipeline/gates` → đánh dấu bookkeeping.
 - Undo không dựng lại FTS bible → reindex khi restore.
+
+## Từ L2
+- Spec dùng khoá theo vị trí cho dialogue/timeline (`clip#n`); migration 0005 (S) đã có cột `key` → chuyển spec sang khoá thật.
+- Spec chưa xuất bible, take; id trong cột JSON không được ánh xạ lại.
+- `skill.list/get` (read_only) có thể ghi change set đồng bộ → tách đồng bộ ra khỏi op đọc.
