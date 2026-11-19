@@ -9,8 +9,9 @@ Cập nhật sau mỗi mốc và sau mỗi lần gọi provider thật.
 |---|---|---|---|---|---|
 | 2026-11-19 | — | Khởi đầu | 0 | 0 | |
 | 2026-11-19 | M0 | Thử âm Grok: ảnh bà cụ (MaiVideo, chậm >10 phút; lần chạy đầu bị dừng nhưng vẫn bị trừ lượt) | 2 | — | lifetime 1236→1234 |
+| 2026-11-19 | M0 T18 | Kiểm chứng qua app: provider.try_image MaiVideo (thuyền sông Hương) | 1 | — | qua job queue thật |
 
-**Đã dùng: 2/60 ảnh (thử âm Grok) · clip video: không giới hạn (GrokTele).** Chỉ người điều phối được gọi provider thật; subagent chỉ dùng adapter giả.
+**Đã dùng: 3/60 ảnh (thử âm Grok) · clip video: không giới hạn (GrokTele).** Chỉ người điều phối được gọi provider thật; subagent chỉ dùng adapter giả.
 
 ## Trạng thái provider (kiểm tra lần cuối 2026-11-19)
 
