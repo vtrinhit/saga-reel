@@ -21,6 +21,8 @@ class OpContext:
     project_id: int | None = None
     dry_run: bool = False
     run_overrides: dict = field(default_factory=dict)
+    # Cách principal được xác thực: "local" | "session" | "token"; None = không qua HTTP (coi như không cục bộ).
+    via: str | None = None
 
     def uow(self, summary: str = "", *, op_name: str | None = None) -> UnitOfWork:
         """UnitOfWork với actor/project của context; op name lấy từ `current_op` (do `invoke` đặt) nếu không truyền."""

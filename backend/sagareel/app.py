@@ -15,6 +15,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from sagareel import APP_NAME, __version__
 from sagareel import ops as ops_pkg
+from sagareel.api.middleware import SecurityMiddleware
+from sagareel.api.routes_auth import build_router as build_auth_router
 from sagareel.api.routes_events import build_router as build_events_router
 from sagareel.api.routes_ops import build_router
 from sagareel.config import AppSettings, load_settings
@@ -99,6 +101,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     app = FastAPI(title=APP_NAME, version=__version__, lifespan=lifespan)
     app.state.services = services
+    # Thêm trước handler lỗi → nằm trong UnhandledErrorMiddleware (lỗi bất ngờ vẫn ra JSON chuẩn).
+    app.add_middleware(SecurityMiddleware)
     _install_error_handlers(app)
 
     @app.get("/api/health")
@@ -113,4 +117,5 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     ops_pkg.load_all()
     app.include_router(build_router())
     app.include_router(build_events_router())
+    app.include_router(build_auth_router())
     return app
