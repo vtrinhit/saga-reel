@@ -95,7 +95,8 @@ def _loudnorm(target: dict, measured: dict | None = None, *, json_out: bool = Tr
 
 
 def _summary(raw: dict, prefix: str = "input") -> dict:
-    return {"integrated_lufs": _num(raw.get(f"{prefix}_i")), "true_peak_dbtp": _num(raw.get(f"{prefix}_tp")),
+    tp = _num(raw.get(f"{prefix}_tp"))
+    return {"integrated_lufs": _num(raw.get(f"{prefix}_i")), "true_peak_db": tp, "true_peak_dbtp": tp,
             "lra": _num(raw.get(f"{prefix}_lra")), "threshold": _num(raw.get(f"{prefix}_thresh"))}
 
 
@@ -222,59 +223,114 @@ def input_args(dialogue_stem: Path | str, music_items: Sequence[dict] = (), sfx:
     return args
 
 
-def _gain(item: dict, target_lufs: float) -> float:
-    if "lufs" not in item or item["lufs"] is None:
-        raise ValueError(f"Thiếu độ to đo được (`lufs`) cho {_item_path(item)} — gọi measure_loudness trước.")
-    lufs = _num(item["lufs"])
-    if not math.isfinite(lufs):
-        return -MAX_GAIN_DB
-    g = target_lufs - lufs + float(item.get("gain_db", 0.0))
-    return max(-MAX_GAIN_DB, min(MAX_GAIN_DB, g))
+_LABEL = re.compile(r"^\[?\d+:a(?::\d+)?\]?$")
+
+
+def _opt(item: dict, key: str, default: Any = None) -> Any:
+    """Tuỳ chọn của item: khoá trực tiếp, rồi `item["params"]` (kiểu Task E)."""
+    if item.get(key) is not None:
+        return item[key]
+    v = (item.get("params") or {}).get(key)
+    return default if v is None else v
+
+
+def _label(ref: Any) -> str:
+    s = str(ref)
+    return s if s.startswith("[") else f"[{s}]"
+
+
+def _level(item: dict, target_lufs: float) -> str:
+    """Bộ lọc đặt mức: có `lufs` đo được → `volume=(đích − lufs + gain_db)dB`; có `volume_db` → gain thô; không có số
+    đo → loudnorm một lượt về đích (dự phòng khi người gọi không đo trước — dynamic, kém hơn đo trước)."""
+    lufs = _opt(item, "lufs")
+    extra = float(_opt(item, "gain_db", 0.0) or 0.0)
+    if lufs is not None:
+        v = _num(lufs)
+        g = -MAX_GAIN_DB if not math.isfinite(v) else max(-MAX_GAIN_DB, min(MAX_GAIN_DB, target_lufs - v + extra))
+        return f"volume={g:.2f}dB"
+    if _opt(item, "volume_db") is not None:
+        return f"volume={float(_opt(item, 'volume_db')) + extra:.2f}dB"
+    chain = f"loudnorm=I={target_lufs:g}:TP=-2:LRA=11,aresample={SAMPLE_RATE}"
+    return chain + (f",volume={extra:.2f}dB" if extra else "")
 
 
 def _s(ms: float) -> str:
     return f"{ms / 1000:.3f}"
 
 
+def _span(item: dict, total: int) -> tuple[int, int]:
+    start = max(0, int(_opt(item, "start_ms", 0) or 0))
+    end = _opt(item, "end_ms")
+    dur = _opt(item, "duration_ms")
+    if dur is None and end is not None:
+        dur = int(end) - start
+    dur = min(int(dur or (total - start)), total - start)
+    return start, dur
+
+
 def final_audio_filter(dialogue_stem: Path | str, music_items: Sequence[dict], sfx: Sequence[dict],
                        params: dict, measured: dict | None = None) -> tuple[str, list[str]]:
-    """Đồ thị `-filter_complex` cho lượt âm thanh cuối + `maps`.
+    """Đồ thị `-filter_complex` cho lượt âm thanh cuối + `maps` (nhãn đầu ra; phần tử đầu = âm trộn, vd. `["[out]"]`).
 
-    `params`: `duration_ms` (bắt buộc — độ dài sequence; thoại được đệm/cắt đúng bằng), `target` {I, TP, LRA},
-    `music_lufs`, `sfx_lufs`, `ambient_lufs`, `ducking` (chuỗi filter), `ambient` (list item), `duck` (mặc định True).
-    Item: `{path, lufs (đo được), start_ms=0, duration_ms?, source_duration_ms?, loop?, fade_in_s?, fade_out_s?,
-    gain_db?}`. `measured` = JSON loudnorm lượt 1 (None → đồ thị lượt 1).
+    Hai cách gọi:
+    - **Theo file** (đứng riêng, `mix_final`): input do `input_args` sinh (0 = stem thoại, rồi nhạc, SFX, ambient); item
+      có `path`. Thoại là phần chính của bản trộn.
+    - **Theo nhãn input** (Task E, `render/concat.py`): `dialogue_stem="1:a"`, item `{input: "2:a", start_ms, end_ms,
+      params}`, `params = {bed: "0:a", total_ms, loudnorm: False, target}`. `bed` = âm của video (đã có thoại/SFX/
+      ambient); stem thoại **chỉ làm sidechain** ducking, không cộng thêm vào bản trộn.
+
+    `params`: `duration_ms`|`total_ms` (bắt buộc), `target` {I, TP, LRA}, `loudnorm` (mặc định True: thêm loudnorm —
+    lượt 1 khi `measured=None`, lượt 2 linear khi có `measured`; False → trả bản trộn chưa chuẩn hoá, người gọi tự làm
+    hai lượt), `music_lufs`, `sfx_lufs`, `ambient_lufs`, `ducking`, `ambient` (list item), `duck` (mặc định True).
+    Item (khoá trực tiếp hoặc trong `item["params"]`): `lufs` (đo được), `start_ms`, `duration_ms`|`end_ms`,
+    `source_duration_ms`, `loop`, `fade_in_s`, `fade_out_s`, `gain_db`, `volume_db`.
     """
-    total = int(params["duration_ms"])
+    total = int(params.get("duration_ms") or params.get("total_ms") or 0)
     if total <= 0:
-        raise ValueError("duration_ms phải > 0")
+        raise ValueError("duration_ms (hoặc total_ms) phải > 0")
     target = {**TARGET, **(params.get("target") or {})}
     ambient = list(params.get("ambient") or [])
     music_lufs = float(params.get("music_lufs", MUSIC_LUFS))
     sfx_lufs = float(params.get("sfx_lufs", SFX_LUFS))
     amb_lufs = float(params.get("ambient_lufs", AMBIENT_LUFS))
-    duck = params.get("duck", True) and bool(music_items)
-    T = _s(total)
-    g: list[str] = [f"[0:a]{FORMAT},apad,atrim=0:{T},asetpts=N/SR/TB" + (",asplit=2[dlg][sc]" if duck else "[dlg]")]
+    duck = bool(params.get("duck", True)) and bool(music_items)
+    bed = params.get("bed")
+    by_label = bed is not None or (isinstance(dialogue_stem, str) and bool(_LABEL.match(dialogue_stem)))
+    pad = f"{FORMAT},apad,atrim=0:{_s(total)},asetpts=N/SR/TB"
+    stem = _label(dialogue_stem) if by_label else "[0:a]"
+    g: list[str] = []
+    if bed is not None:
+        g.append(f"{_label(bed)}{pad}[dlg]")
+        if duck:
+            g.append(f"{stem}{pad}[sc]")
+    else:
+        g.append(f"{stem}{pad}" + (",asplit=2[dlg][sc]" if duck else "[dlg]"))
     idx = 1
+
+    def ref(item: dict) -> str:
+        nonlocal idx
+        r = _label(item["input"]) if item.get("input") is not None else f"[{idx}:a]"
+        idx += 1
+        return r
+
     music_labels = []
     for i, m in enumerate(music_items):
-        start = max(0, int(m.get("start_ms", 0)))
-        if start >= total:
-            idx += 1
+        src = ref(m)
+        start, dur = _span(m, total)
+        if dur <= 0:
             continue
-        dur = min(int(m.get("duration_ms") or (total - start)), total - start)
-        if not m.get("loop") and m.get("source_duration_ms"):
-            dur = min(dur, int(m["source_duration_ms"]))
-        fi = min(float(m.get("fade_in_s", FADE_IN_S)), dur / 2000)
-        fo = min(float(m.get("fade_out_s", FADE_OUT_S)), dur / 2000)
-        chain = (f"[{idx}:a]{FORMAT},atrim=0:{_s(dur)},asetpts=N/SR/TB,volume={_gain(m, music_lufs):.2f}dB,"
+        if not _opt(m, "loop") and _opt(m, "source_duration_ms"):
+            dur = min(dur, int(_opt(m, "source_duration_ms")))
+        fi = min(float(_opt(m, "fade_in_s", FADE_IN_S)), dur / 2000)
+        fo = min(float(_opt(m, "fade_out_s", FADE_OUT_S)), dur / 2000)
+        chain = (f"{src}{FORMAT},atrim=0:{_s(dur)},asetpts=N/SR/TB,{_level(m, music_lufs)},"
                  f"afade=t=in:st=0:d={fi:.3f},afade=t=out:st={max(0.0, dur / 1000 - fo):.3f}:d={fo:.3f}")
         if start:
             chain += f",adelay={start}:all=1"
         g.append(chain + f"[m{i}]")
         music_labels.append(f"[m{i}]")
-        idx += 1
+    if duck and not music_labels:  # nhạc nằm ngoài độ dài: sidechain thừa phải được tiêu thụ
+        g.append("[sc]anullsink")
     mix_inputs = ["[dlg]"]
     if music_labels:
         if len(music_labels) > 1:
@@ -289,26 +345,26 @@ def final_audio_filter(dialogue_stem: Path | str, music_items: Sequence[dict], s
             mix_inputs.append(mus)
     for kind, items, lufs in (("s", sfx, sfx_lufs), ("a", ambient, amb_lufs)):
         for i, x in enumerate(items):
-            start = max(0, int(x.get("start_ms", 0)))
-            if start >= total:
-                idx += 1
+            src = ref(x)
+            start, dur = _span(x, total)
+            if dur <= 0:
                 continue
-            chain = f"[{idx}:a]{FORMAT},volume={_gain(x, lufs):.2f}dB"
-            if x.get("duration_ms"):
-                chain += f",atrim=0:{_s(int(x['duration_ms']))},asetpts=N/SR/TB"
+            chain = f"{src}{FORMAT},{_level(x, lufs)}"
+            if _opt(x, "duration_ms") or _opt(x, "end_ms"):
+                chain += f",atrim=0:{_s(dur)},asetpts=N/SR/TB"
             if start:
                 chain += f",adelay={start}:all=1"
             g.append(chain + f"[{kind}{i}]")
             mix_inputs.append(f"[{kind}{i}]")
-            idx += 1
-    tail = _loudnorm(target, measured)
-    if measured is None:
-        tail += f",aresample={SAMPLE_RATE}"
+    if params.get("loudnorm", True):
+        tail = _loudnorm(target, measured) + ("" if measured is not None else f",aresample={SAMPLE_RATE}")
+    else:
+        tail = "anull"
     if len(mix_inputs) > 1:
         g.append("".join(mix_inputs) + MIX.format(n=len(mix_inputs)) + "," + tail + "[out]")
     else:
         g.append(f"[dlg]{tail}[out]")
-    return ";".join(g), ["-map", "[out]"]
+    return ";".join(g), ["[out]"]
 
 
 async def mix_final(out_path: Path | str, dialogue_stem: Path | str, music_items: Sequence[dict] = (),
@@ -335,10 +391,10 @@ async def mix_final(out_path: Path | str, dialogue_stem: Path | str, music_items
         params["ambient"] = with_lufs(params.get("ambient") or [])
         inputs = input_args(dialogue_stem, music, effects, params["ambient"])
         g1, maps = final_audio_filter(dialogue_stem, music, effects, params)
-        raw1 = parse_loudnorm(_capture([*inputs, "-filter_complex", g1, *maps, "-f", "null", "-"]))
+        raw1 = parse_loudnorm(_capture([*inputs, "-filter_complex", g1, "-map", maps[0], "-f", "null", "-"]))
         g2, maps = final_audio_filter(dialogue_stem, music, effects, params, measured=raw1)
         with atomic_output(out_path) as part:
-            err2 = _capture([*inputs, "-filter_complex", g2, *maps, "-ar", str(SAMPLE_RATE), "-ac", "2",
+            err2 = _capture([*inputs, "-filter_complex", g2, "-map", maps[0], "-ar", str(SAMPLE_RATE), "-ac", "2",
                              *_codec_args(out_path), str(part)])
         ntype = str(parse_loudnorm(err2).get("normalization_type", ""))
         final = measure_loudness(out_path)

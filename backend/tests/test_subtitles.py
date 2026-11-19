@@ -58,6 +58,18 @@ def test_presets_match_research_defaults():
         sub.load_style("9x16", mode="wave")
     with pytest.raises(KeyError):
         sub.load_style("../secret")
+    # Dict preset (cách Task E truyền): gộp lên preset có sẵn theo `inherit`/`key`, mặc định 9x16.
+    assert sub.load_style({"key": "16x9", "fontsize": 60}).play_res == (1920, 1080)
+    assert sub.load_style({"inherit": "9x16_box"})["border_style"] == 3
+    assert sub.load_style({})["margin_v"] == 700
+
+
+def test_task_e_call_shape():
+    """`render/chunks.py`: build_cues(lines{id,text,start_ms,end_ms,words?,lang}, style dict, w, h, safe_zone)."""
+    lines = [{"id": 7, "text": "Bà ơi con về", "start_ms": 200, "end_ms": 1800, "words": None, "lang": "vi"}]
+    cues = sub.build_cues(lines, {"key": "9x16"}, 540, 960, None)
+    assert cues and cues[0].start_ms == 150
+    assert sub.to_ass(cues, {"key": "9x16"}, 540, 960).startswith("[Script Info]")
 
 
 def test_measure_follows_libass_scaling():

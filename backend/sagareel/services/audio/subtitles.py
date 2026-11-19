@@ -125,6 +125,8 @@ def load_style(key_or_data: str | dict | Style | None = None, overrides: dict | 
     elif isinstance(key_or_data, dict):
         data = dict(key_or_data)
         parent = data.pop("inherit", None)
+        if parent is None and str(data.get("key", "")) in builtin_keys():
+            parent = str(data["key"])  # dict preset từ bảng `preset` (Task E/F truyền thẳng data)
         data = _deep_merge(preset_data(parent or DEFAULT_STYLE), data)
         key = str(data.get("key") or "custom")
     else:
