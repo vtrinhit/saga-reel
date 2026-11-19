@@ -277,7 +277,8 @@ class ImportEnvParams(BaseModel):
     params=ImportEnvParams, idempotent=True)
 def provider_import_env(ctx: OpContext, p: ImportEnvParams) -> dict:
     env_file = ctx.services.settings.env_file
-    result = seed.import_env(ctx.services.db, env_file, force=True, dry_run=not p.confirm, actor=ctx.actor,
+    # Change set: actor `system:seed`, op_name `provider.import_env` (cho biết do người dùng kích hoạt).
+    result = seed.import_env(ctx.services.db, env_file, force=True, dry_run=not p.confirm,
                              resolver=ctx.services.resolver)
     if result is None:
         raise NotFound("Không tìm thấy file .env.local.", code="env_file_missing",

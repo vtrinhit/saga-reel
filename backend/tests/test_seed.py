@@ -70,9 +70,31 @@ def test_seed_from_env_creates_connections_once(tmp_db, tmp_path, caplog):
     assert set(seed_from_env(tmp_db, env)) == {"maivideo", "groktele", "llm-local", "edge-tts"}
     assert seed_from_env(tmp_db, env) == []
     assert "mk-123456" not in caplog.text
-    assert "lk" not in [r.getMessage() for r in caplog.records]
     # Bí mật không lọt vào lịch sử (UoW che cột secret).
     assert "mk-123456" not in _revision_text(tmp_db)
+
+
+SECRETS = ("mv-SECRET-aaaa1111", "mkt-SECRET-bbbb2222", "llm-SECRET-cccc3333")
+SECRET_ENV = (f"MAIVIDEO_API_KEY={SECRETS[0]}\nMULTIKIT_URL=http://127.0.0.1:8888\nMULTIKIT_API_KEY={SECRETS[1]}\n"
+              f"LLM_BASE_URL=http://x/v1\nLLM_API_KEY={SECRETS[2]}\nLLM_MODEL=m\nMULTIKIT_RESOLUTION=bad\n")
+
+
+def test_secrets_never_logged_or_in_history(tmp_db, tmp_path, caplog):
+    caplog.set_level(logging.DEBUG)
+    seed_from_env(tmp_db, _write_env(tmp_path, SECRET_ENV))
+    revisions = _revision_text(tmp_db)
+    for secret in SECRETS:
+        assert secret not in caplog.text
+        assert secret not in revisions
+    assert {c.api_key for c in _conns(tmp_db).values()} == {*SECRETS, ""}  # lưu nguyên trong cột
+
+
+def test_parse_env_quotes_comments_export():
+    text = ("# c\nexport A=1\nB = \"x # y\"  # chú thích\nC='q'\nD=v # note\nE=a#b\nF=\nG\n")
+    env = seed.parse_env(text)
+    assert env["A"] == "1" and env["B"] == "x # y" and env["C"] == "q"
+    assert env["D"] == "v" and env["E"] == "a#b"
+    assert "F" not in env and "G" not in env
 
 
 def test_seed_from_env_connection_fields_settings_and_history(tmp_db, tmp_path):
@@ -293,6 +315,8 @@ def test_import_env_dry_run_then_confirm(client, settings):
     assert set(done["connections"]) == {"maivideo", "groktele", "llm-local", "edge-tts"}
     assert "mk-123456" not in json.dumps(done)
     assert len(client.post("/api/ops/provider.list", json={}).json()["items"]) == 4
+    sets = [cs for cs in _change_sets(client.app.state.services.db) if cs.op_name == "provider.import_env"]
+    assert len(sets) == 1 and sets[0].actor == "system:seed"
 
     # Chạy lại bỏ qua cờ: chỉ tạo kết nối chưa có theo tên.
     again = client.post("/api/ops/provider.import_env", json={"confirm": True}).json()

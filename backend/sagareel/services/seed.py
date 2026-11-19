@@ -27,6 +27,7 @@ Không bao giờ log hay trả về giá trị đọc từ file env. Không gọ
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -59,13 +60,15 @@ _ENV_SETTINGS = (
     ("video.duration", "MULTIKIT_DURATION"),
 )
 _FIXED_SETTINGS = {"budget.videos_total": 0}  # video GrokTele thật không giới hạn; ảnh giữ mặc định 60
+_INLINE_COMMENT = re.compile(r"\s+#")
 
 
 # --- Đọc file env ---------------------------------------------------------------------------------------------------
 
 
 def parse_env(text: str) -> dict[str, str]:
-    """`KEY=VALUE` mỗi dòng; bỏ dòng trống/`#`, tiền tố `export `, cặp nháy bao ngoài. Giá trị rỗng bị bỏ."""
+    """`KEY=VALUE` mỗi dòng; bỏ dòng trống/`#`, tiền tố `export `, cặp nháy bao ngoài. Giá trị không có nháy: bỏ chú
+    thích cuối dòng (`␣#…`). Giá trị rỗng bị bỏ."""
     out: dict[str, str] = {}
     for raw in text.splitlines():
         line = raw.strip()
@@ -75,8 +78,11 @@ def parse_env(text: str) -> dict[str, str]:
             line = line[len("export "):].lstrip()
         key, _, value = line.partition("=")
         key, value = key.strip(), value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-            value = value[1:-1]
+        if value[:1] in ("'", '"'):
+            end = value.find(value[0], 1)
+            value = value[1:end] if end > 0 else value[1:]
+        else:
+            value = _INLINE_COMMENT.split(value, 1)[0].strip()
         if key and value:
             out[key] = value
     return out
