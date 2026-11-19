@@ -1,0 +1,48 @@
+# Nhật ký tiến độ SagaReel Studio
+
+File này là bộ nhớ làm việc của người điều phối: mốc nào xong, đang dở gì, đã tiêu bao nhiêu lượt gọi provider thật.
+Cập nhật sau mỗi mốc và sau mỗi lần gọi provider thật.
+
+## Ngân sách test thật (trần: 60 ảnh, 20 clip video)
+
+| Ngày | Mốc | Việc | Ảnh | Clip | Ghi chú |
+|---|---|---|---|---|---|
+| 2026-11-19 | — | Khởi đầu | 0 | 0 | |
+
+**Đã dùng: 0/60 ảnh · 0/20 clip.** Chỉ người điều phối được gọi provider thật; subagent chỉ dùng adapter giả.
+
+## Trạng thái provider (kiểm tra lần cuối 2026-11-19)
+
+| Provider | Kết quả |
+|---|---|
+| MaiVideo (ảnh) | Key hợp lệ (`GET /api/v1/image-generation/models`, header `X-API-Key`). Quota tháng 30/30 đã hết, gói trọn đời còn 1236 lượt. 7 model, tối đa 9 ảnh ref. |
+| GrokTele (video) | Server chạy (`/health` ok) nhưng **0 tài khoản dùng được**: 1 tài khoản `dead` (session bị đăng xuất, gói hết hạn 09/11/2026). Cần người dùng đăng nhập lại + gia hạn. Trong lúc chờ: dùng clip giả. |
+| LLM proxy | Sống, 33 model, mặc định `gpt-6-luna`. |
+| TTS | Chưa cài (edge-tts, VieNeu-TTS) — làm ở M0/M3. |
+
+## Việc còn nợ vì provider chưa sẵn sàng
+
+- [ ] M0: tạo thật 1 clip 6 giây qua GrokTele.
+- [ ] M0: thử âm thanh Grok (tiếng Việt, khẩu hình) → `docs/research/grok-audio-test.md`.
+- [ ] Thử lại GrokTele ở cổng mỗi mốc.
+
+## Mốc
+
+| Mốc | Trạng thái | Commit | Ghi chú |
+|---|---|---|---|
+| Nghiên cứu OSS | đang làm (dừng giữa chừng vì hết hạn mức) | | Đã có: `docs/research/raw/assembly-editor-clone.md`. Còn chờ 4 báo cáo agent (nền tảng phim ngắn; skill/planner; TTS; thông số nền tảng) + agent design system (ghi `DESIGN.md`, `docs/design/preview.html`). Báo cáo nào chưa lưu thành file thì chạy lại agent đó. Sau đó: viết `oss-study.md`, `platform-specs.md`, spec. |
+| Spec | chưa | | |
+| M0 | chưa | | |
+| M1 | chưa | | |
+| M2 | chưa | | |
+| M3 | chưa | | |
+| M4 | chưa | | |
+| M5 | chưa | | |
+| M6 | chưa | | |
+| M7 | chưa | | |
+| M8 | chưa | | |
+
+## Quyết định đã chốt (tóm tắt, chi tiết trong spec)
+
+- Python 3.11 (uv quản lý) cho backend; venv `.venv`; MCP ở `.venv-mcp`.
+- Tailwind 3.4 + React 19 + Vite 8 + TS 6 (giống ReelFB).
