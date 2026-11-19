@@ -4,7 +4,9 @@ import pytest
 from sqlalchemy import select
 
 import sagareel
+from sagareel import ops as ops_pkg
 from sagareel.container import Services
+from sagareel.core import ops
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError
 from sagareel.core.resolver import LAYERS, SCHEMA_PATH, Layer, Resolver, load_schema
@@ -189,20 +191,48 @@ def test_validate_accepts_valid_values():
 # --- Service: set_global / explain ------------------------------------------------------------------------------
 
 
-def test_set_global_merges_and_preserves_internal_and_foreign_keys(ctx):
-    seed_global(ctx, {"_app_secret": "s3cr3t-value", "seeded_env_at": "2026-11-19", "legacy.key": 1})
+def test_set_global_merges_with_existing_values(ctx):
+    seed_global(ctx, {"tts.voice": "vi-VN-NamMinhNeural"})
     settings.set_global(ctx, {"video.duration": 10, "prompt.mode": "verbatim"})
     settings.set_global(ctx, {"video.duration": 15})
-    assert global_row(ctx) == {
-        "_app_secret": "s3cr3t-value",
-        "seeded_env_at": "2026-11-19",
-        "legacy.key": 1,
-        "video.duration": 15,
-        "prompt.mode": "verbatim",
-    }
+    assert global_row(ctx) == {"tts.voice": "vi-VN-NamMinhNeural", "video.duration": 15, "prompt.mode": "verbatim"}
     m = explain_map(settings.explain(ctx))
     assert (m["video.duration"].value, m["video.duration"].source, m["video.duration"].source_id) == (15, "global", 1)
-    assert not any(k.startswith("_") for k in m)
+    assert (m["tts.voice"].value, m["tts.voice"].source) == ("vi-VN-NamMinhNeural", "global")
+
+
+def test_global_data_only_ever_holds_schema_keys(ctx):
+    settings.set_global(ctx, {"video.duration": 10, "budget.enabled": False})
+    for bad in ({"_app_secret": "x"}, {"seeded_env_at": "2026-11-19"}, {"video.duration": 15, "legacy.key": 1}):
+        with pytest.raises(AppError) as e:
+            settings.set_global(ctx, bad)
+        assert e.value.code == "unknown_setting"
+    assert set(global_row(ctx)) <= set(load_schema(SCHEMA))
+    assert global_row(ctx) == {"video.duration": 10, "budget.enabled": False}
+
+
+def test_set_global_change_set_has_no_project(ctx):
+    ctx.project_id = 7
+    settings.set_global(ctx, {"video.duration": 10})
+    with ctx.services.db.session() as s:
+        cs = s.scalars(select(ChangeSet)).one()
+        assert (cs.op_name, cs.project_id) == ("settings.set_global", None)
+    ctx.project_id = None
+    history.undo(ctx)  # Ctrl+Z ở phạm vi toàn cục tìm thấy thay đổi cài đặt
+    assert global_row(ctx) == {}
+
+
+async def test_set_global_op_checks_run_overrides_before_writing(ctx):
+    ops_pkg.load_all()
+    ctx.run_overrides = {"video.duration": 7}
+    with pytest.raises(AppError) as e:
+        await ops.invoke("settings.set_global", {"values": {"prompt.mode": "verbatim"}}, ctx)
+    assert e.value.code == "validation_failed"
+    assert global_row(ctx) is None
+    ctx.run_overrides = {"video.duration": 15}
+    rows = await ops.invoke("settings.set_global", {"values": {"video.duration": 10}}, ctx)
+    assert next(r for r in rows if r["key"] == "video.duration")["source"] == "run"
+    assert global_row(ctx) == {"video.duration": 10}
 
 
 def test_set_global_none_removes_override(ctx):
@@ -271,13 +301,6 @@ def test_set_global_records_revision_and_undo_restores(ctx):
     assert explain_map(settings.explain(ctx))["video.duration"].source == "default"
     history.redo(ctx)
     assert global_row(ctx) == {"video.duration": 10}
-
-
-def test_undo_keeps_internal_keys(ctx):
-    seed_global(ctx, {"_app_secret": "s3cr3t-value"})
-    settings.set_global(ctx, {"prompt.mode": "verbatim"})
-    history.undo(ctx)
-    assert global_row(ctx) == {"_app_secret": "s3cr3t-value"}
 
 
 def test_set_global_same_value_creates_no_change_set(ctx):

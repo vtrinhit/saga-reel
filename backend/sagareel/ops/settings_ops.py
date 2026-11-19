@@ -71,5 +71,7 @@ def settings_explain(ctx: OpContext, p: SettingsExplainParams) -> ResolvedList:
     mcp="tool",
 )
 def settings_set_global(ctx: OpContext, p: SettingsSetGlobalParams) -> ResolvedList:
+    # Kiểm tra ghi đè lần chạy trước khi ghi: lỗi ở đây không được xảy ra sau khi đã commit.
+    settings.run_layer_values(ctx)
     settings.set_global(ctx, p.values)
     return ResolvedList(settings.explain(ctx))
