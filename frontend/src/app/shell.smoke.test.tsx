@@ -246,7 +246,8 @@ describe('khung v2 (dây chuyền, Cần bạn, agent)', () => {
     shellBackend();
     let router = await render('/p/3');
     expect(router.state.location.pathname).toBe('/p/3/overview');
-    expect(container.textContent).toContain('Dự án chưa có tập nào trên bàn sản xuất.');
+    // Tổng quan do module `pages/overview` (Task H) cung cấp: ma trận thay trang giữ chỗ.
+    expect(container.textContent).toContain('Tập theo chặng');
     router = await render('/p/3/sequences?arc=2');
     expect(router.state.location.pathname).toBe('/p/3/overview');
     expect(router.state.location.search).toBe('?arc=2');
