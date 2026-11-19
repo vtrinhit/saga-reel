@@ -462,6 +462,24 @@ async def test_resume_finds_job_cancelled_while_away_needs_attention(adapter, ru
 
 
 @respx.mock
+async def test_resume_of_job_user_cancelled_fails_and_suggests_force_new(adapter, run_ctx, req):
+    """Người dùng đã huỷ job (SagaReel gửi DELETE) rồi bấm chạy lại (nối lại): không nói "bị huỷ phía GrokTele trong
+    lúc SagaReel không chạy" — báo job đã bị huỷ trước đó, thất bại (job.retry dùng được) và gợi ý force_new."""
+    run_ctx.external_id = "job_9"
+    run_ctx.external = {"state": "submitted", "client_ref": "proj7:scene03", "user_cancelled": True}
+    respx.get(f"{BASE}/grok/jobs/job_9").mock(return_value=httpx.Response(200, json={
+        "jobId": "job_9", "status": "cancelled", "error": {"kind": "cancelled", "message": "Đã huỷ"}}))
+    post = respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted("job_10"))
+    with pytest.raises(ProviderJobError) as ei:
+        await adapter.generate(req, run_ctx)
+    assert ei.value.code == "provider_cancelled"
+    assert "trong lúc SagaReel không chạy" not in ei.value.msg
+    assert "job_9" in ei.value.msg and "huỷ trước đó" in ei.value.msg
+    assert "force_new" in ei.value.hint and "clear_attention" not in ei.value.hint
+    assert not post.called and run_ctx.external_id == "job_9"
+
+
+@respx.mock
 async def test_job_cancelled_on_provider_during_poll_fails(adapter, run_ctx, req):
     """Job vừa gửi trong lần chạy này bị huỷ phía GrokTele (vd. 08.cancel-all.bat) → thất bại, không tự gửi lại."""
     post = respx.post(f"{BASE}/grok/jobs").mock(return_value=accepted())

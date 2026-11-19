@@ -93,6 +93,8 @@ Thư mục `<kind>/` mới cần một `__init__.py` (có thể rỗng) để `d
   `params_patch` mà không `force_new` → lỗi 422
   `params_patch_requires_new_job` (job cũ đã tồn tại phía provider, sửa tham số không có tác dụng). Gợi ý lỗi xảy ra
   sau khi provider đã nhận job dùng `services.jobs.FORCE_NEW_HINT`; job `needs_attention` → `job.clear_attention`.
+  `params_patch` (của `job.retry` và `job.clear_attention(resubmit)`) chỉ sửa khoá đã có trong `params` và không bao
+  giờ sửa `connection_id` → ngược lại 422 `params_patch_invalid` (đổi kết nối = tạo job mới).
 - Tôn trọng `run.cancelled` (asyncio.Event) trong vòng poll.
 
 ## Vòng đời dấu gửi (`external_state.state`)
@@ -162,7 +164,9 @@ Worker (`_final_values`): lần chạy không thành công (kể cả `Transient
     `sagareel:job:<id>`), nên nếu GrokTele đã tạo job thì chỉ nhận lại job cũ. Đã có `external_id` cũ (lần gửi lại vì
     file của job cũ không còn) → `queued`, lần sau **tự** POST lại bằng `client_ref` đã lưu.
   - 202 thiếu `jobId` → `needs_attention/multikit_job_unknown`; job bị huỷ phía GrokTele lúc SagaReel tắt →
-    `needs_attention/remote_cancelled`; 404 khi poll → `failed/provider_not_found`; quá `timeout_s` →
+    `needs_attention/remote_cancelled`; nối lại (`job.retry` không `force_new`) một job **người dùng** đã huỷ
+    (`job.retry` ghi `external_state.user_cancelled`) mà GrokTele báo đã huỷ → `failed/provider_cancelled`, gợi ý
+    `force_new`; 404 khi poll → `failed/provider_not_found`; quá `timeout_s` →
     `TransientError` → `queued`, chờ tiếp đúng job cũ.
 - **Sức khoẻ**: `GET /health` rồi `GET /grok/accounts`; không kết nối được, 401/403, 4xx khác → `dead`; 429 và
   5xx/cổng → `unknown`; ≥ 1 tài khoản dùng được → `alive`; không → `dead` kèm

@@ -231,6 +231,8 @@ class JobRun:
             if external_id is not None:
                 self.external_id = external_id
                 self._data["external_id"] = external_id
+            # Cờ suy ra trong payload `job.updated` lúc chạy phải theo trạng thái provider mới.
+            self._data.update(jobs.derived_flags("running", self.external_id, merged))
             if not fut.done():
                 fut.set_result(None)
 

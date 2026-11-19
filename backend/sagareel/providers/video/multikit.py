@@ -49,7 +49,7 @@ from sagareel.providers.base import (
     http_health_status,
 )
 from sagareel.providers.registry import register_adapter
-from sagareel.services.jobs import FORCE_NEW_HINT, NeedsAttention, TransientError
+from sagareel.services.jobs import FORCE_NEW_HINT, USER_CANCELLED_KEY, NeedsAttention, TransientError
 
 if TYPE_CHECKING:
     from sagareel.services.worker import JobRun
@@ -286,6 +286,14 @@ class MultiKitVideoAdapter(VideoAdapter):
             except _RemoteCancelled as e:
                 if not resumed:
                     raise
+                if external.get(USER_CANCELLED_KEY):
+                    # Người dùng đã huỷ job này (SagaReel đã gửi DELETE) rồi chạy lại kiểu nối lại: không có gì để
+                    # quyết định thêm → thất bại (job.retry dùng được), gợi ý tạo job trả phí mới.
+                    raise ProviderJobError(
+                        "cancelled",
+                        f"Job GrokTele {job_id} đã bị huỷ trước đó (bạn đã huỷ việc này) nên không nối lại được.",
+                        hint="Muốn tạo lại video thì chạy lại với force_new=true (tạo job trả phí mới; sửa được prompt).",
+                    ) from None
                 # Bị huỷ phía GrokTele khi SagaReel không chạy → người dùng quyết định, không tự gửi lại (tốn lượt).
                 raise NeedsAttention(
                     "remote_cancelled",

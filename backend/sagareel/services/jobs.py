@@ -88,12 +88,37 @@ def drop_submit_marker(external_state: dict | None) -> dict:
 
 GEN_KEY = "gen"  # thế hệ gửi của job: chỉ tăng (force_new, clear_attention resubmit), giữ qua mọi lần đặt lại
 CLIENT_REF_KEY = "client_ref"  # ref chống trùng adapter đã gửi (MultiKit); giữ khi resubmit job chỉ mang dấu
+# `job.retry` nối lại một job NGƯỜI DÙNG đã huỷ: adapter thấy job phía provider đã bị huỷ thì báo đúng nguyên nhân
+# (huỷ trước đó, gợi ý force_new) thay vì "bị huỷ khi SagaReel không chạy".
+USER_CANCELLED_KEY = "user_cancelled"
+
+
+def provider_holds(external_id: str | None, external_state: dict | None) -> bool:
+    """Provider đã giữ (và đã/sẽ tính tiền) job: có `external_id`, hoặc `external_state.state` khác None/`submitting`
+    (vd. `submitted`; adapter đồng bộ như openai_images ghi `completed` + `result_file` mà không có id)."""
+    return bool(external_id) or (external_state or {}).get(SUBMIT_MARKER_KEY) not in (None, SUBMIT_MARKER)
 
 
 def provider_holds_job(job: Job) -> bool:
-    """Provider đã giữ (và đã/sẽ tính tiền) job: có `external_id`, hoặc `external_state.state` khác None/`submitting`
-    (vd. `submitted`; adapter đồng bộ như openai_images ghi `completed` + `result_file` mà không có id)."""
-    return bool(job.external_id) or (job.external_state or {}).get(SUBMIT_MARKER_KEY) not in (None, SUBMIT_MARKER)
+    return provider_holds(job.external_id, job.external_state)
+
+
+# Job đã dừng (không phải succeeded) còn mang dấu submitting — vd. bị huỷ đúng lúc đang gửi.
+_MARKED_IDLE = frozenset({"failed", "cancelled", "interrupted"})
+
+
+def needs_decision(status: str, external_id: str | None, external_state: dict | None) -> bool:
+    """Job đã dừng (thất bại/huỷ/gián đoạn) còn dấu `submitting` chưa có `external_id`: `job.retry` từ chối, chỉ
+    `job.clear_attention` (resubmit/fail) xử lý được. Job `needs_attention` đã tự nói lên điều đó qua `status`."""
+    return status in _MARKED_IDLE and has_submit_marker(external_id, external_state)
+
+
+def derived_flags(status: str, external_id: str | None, external_state: dict | None) -> dict[str, bool]:
+    """Hai cờ suy ra cho UI/agent (có trong `job_dict` và mọi sự kiện `job.updated`)."""
+    return {
+        "provider_holds": provider_holds(external_id, external_state),
+        "needs_decision": needs_decision(status, external_id, external_state),
+    }
 
 
 def generation(external_state: dict | None) -> int:
@@ -203,8 +228,13 @@ def _iso(value: datetime | None) -> str | None:
 
 
 def job_dict(job: Job) -> dict[str, Any]:
-    """Hình JSON của một job (op trả về, payload sự kiện `job.updated`)."""
+    """Hình JSON của một job (op trả về, payload sự kiện `job.updated`).
+
+    Thêm hai cờ suy ra (`derived_flags`): `provider_holds` (provider đã giữ job → `job.retry` nối lại, muốn tạo lại
+    phải `force_new`) và `needs_decision` (job đã dừng còn dấu submitting → chỉ `job.clear_attention`).
+    """
     return {
+        **derived_flags(job.status, job.external_id, job.external_state),
         "id": job.id,
         "type": job.type,
         "status": job.status,
@@ -366,6 +396,29 @@ def add_log(session: Session, job_id: int, level: str, message: str) -> JobLog:
 # --- Thao tác của người dùng/agent ----------------------------------------------------------------------------------
 
 
+# Khoá `params` không bao giờ sửa được bằng `params_patch`: đổi kết nối = job khác (lane, ngân sách, provider khác).
+_FROZEN_PARAMS = frozenset({"connection_id"})
+
+
+def _check_patch(job: Job, params_patch: dict | None) -> None:
+    """`params_patch` chỉ được sửa tham số job đã có (trừ `connection_id`) → ngược lại 422 `params_patch_invalid`."""
+    if not params_patch:
+        return
+    known = set(job.params or {})
+    bad = sorted(k for k in params_patch if k in _FROZEN_PARAMS or k not in known)
+    if bad:
+        frozen = [k for k in bad if k in _FROZEN_PARAMS]
+        raise AppError(
+            "params_patch_invalid",
+            f"Không sửa được tham số {', '.join(bad)} của job #{job.id}"
+            + (" (đổi kết nối)." if frozen else " (job không có tham số này)."),
+            hint="params_patch chỉ sửa tham số job đã có (vd. prompt). Muốn đổi kết nối hay thêm tham số khác thì tạo "
+                 "job mới.",
+            status=422,
+            extra={"job_id": job.id, "keys": bad, "allowed": sorted(known - _FROZEN_PARAMS)},
+        )
+
+
 def _reset_for_run(job: Job) -> None:
     job.status = "queued"
     job.next_attempt_at = None
@@ -404,6 +457,7 @@ def retry_job(
             hint=JOB_UNKNOWN_HINT,
             extra={"job_id": job_id},
         )
+    _check_patch(job, params_patch)
     if job.client_ref is not None:
         twin = session.scalars(
             select(Job.id).where(Job.client_ref == job.client_ref, Job.status.not_in(TERMINAL), Job.id != job.id)
@@ -437,11 +491,17 @@ def retry_job(
     if new_paid or (job.status == "succeeded" and not resume):
         _budget().detach(session, job.id)
     gen = generation(job.external_state)
+    was_cancelled = job.status == "cancelled"
     _reset_for_run(job)
     job.attempt = 0
     job.result = {}
     job.cost_actual = {}
-    if not resume:
+    if resume:
+        state = {k: v for k, v in (job.external_state or {}).items() if k != USER_CANCELLED_KEY}
+        if was_cancelled:
+            state[USER_CANCELLED_KEY] = True
+        job.external_state = state  # dict mới: cột JSON không theo dõi sửa tại chỗ
+    else:
         job.external_id = None
         # Giữ thế hệ gửi qua mọi lần đặt lại; force_new = thế hệ mới (clientRef mới phía provider).
         job.external_state = _gen_state(gen + 1 if force_new else gen)
@@ -468,10 +528,6 @@ def prioritize(session: Session, job_ids: list[int], priority: int) -> list[Job]
     return changed
 
 
-# Job đã dừng (không phải succeeded) còn mang dấu submitting — vd. bị huỷ đúng lúc đang gửi.
-_MARKED_IDLE = frozenset({"failed", "cancelled", "interrupted"})
-
-
 def clear_attention(
     session: Session, job_id: int, action: Literal["resubmit", "fail"], params_patch: dict | None = None
 ) -> Job:
@@ -482,12 +538,13 @@ def clear_attention(
     `fail` ghi `error_code="cleared_by_user"`.
     """
     job = get_job(session, job_id)
-    marked_idle = job.status in _MARKED_IDLE and has_submit_marker(job.external_id, job.external_state)
-    if job.status != "needs_attention" and not marked_idle:
+    if job.status != "needs_attention" and not needs_decision(job.status, job.external_id, job.external_state):
         raise Conflict(
             f"Job #{job_id} không ở trạng thái cần xử lý (hiện là '{job.status}').",
             hint="Chỉ dùng cho job needs_attention hoặc job đã dừng (không thành công) còn đánh dấu submitting.",
         )
+    if action == "resubmit":
+        _check_patch(job, params_patch)
     # Dòng chi tiêu có thể đã trả tiền thì giữ trong sổ (tách khỏi job): provider đã nhận (external_id), hoặc người
     # dùng cho thất bại (giữ chỗ mập mờ — thận trọng). Chỉ `resubmit` một job chỉ mang dấu `submitting` (người dùng xác
     # nhận provider chưa tạo) mới để lần gửi mới thay chỗ giữ đó.

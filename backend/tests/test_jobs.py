@@ -21,6 +21,7 @@ from sagareel.services import worker as worker_mod
 # --- Handler test bổ sung (chỉ module này) --------------------------------------------------------------------------
 
 EXTRA_TYPES = (
+    "test.held_progress",
     "test.custom_fail",
     "test.custom_attention",
     "test.always_transient",
@@ -148,6 +149,14 @@ def extra_handlers(test_job_handlers):
             await asyncio.sleep(30)
         except asyncio.CancelledError:
             await probe.gate(run.job_id).wait()  # nuốt huỷ, chỉ dừng khi test mở cổng
+        return {}
+
+    @jobs.job_handler("test.held_progress", resumable=True)
+    async def held_progress(run):
+        """Provider nhận job (có id) rồi báo tiến độ: payload `job.updated` lúc chạy phải thấy provider_holds."""
+        await run.save_external("ext-9", state="submitted")
+        run.progress(10.0, stage="poll")
+        await asyncio.sleep(0.4)
         return {}
 
     @jobs.job_handler("test.gate_transient")
@@ -1025,7 +1034,15 @@ async def test_job_retry_keeps_accepted_provider_job_unless_force_new(svc, op_ct
         assert status(svc, kept) == "succeeded" and load(svc, kept).external_state == ext
     else:
         out = (await ops.invoke("job.retry", {"ids": [kept]}, op_ctx))["items"][0]
-        assert (out["status"], out["attempt"], out["external_id"], out["external_state"]) == ("queued", 0, "p-1", ext)
+        # nối lại job NGƯỜI DÙNG đã huỷ: ghi cờ để adapter báo đúng ("đã huỷ trước đó", gợi ý force_new)
+        resumed = {**ext, "user_cancelled": True} if st == "cancelled" else ext
+        assert (out["status"], out["attempt"], out["external_id"], out["external_state"]) == (
+            "queued", 0, "p-1", resumed)
+        if st == "cancelled":  # chạy lại lần nữa sau khi job không còn là "đã huỷ" → bỏ cờ
+            with svc.db.session() as s:
+                s.get(Job, kept).status = "failed"
+            out = (await ops.invoke("job.retry", {"ids": [kept]}, op_ctx))["items"][0]
+            assert out["external_state"] == ext
     fresh = insert_job(svc, "test.sleep", status=st, external_id="p-2", external_state=ext)
     out = (await ops.invoke("job.retry", {"ids": [fresh], "force_new": True}, op_ctx))["items"][0]
     assert (out["status"], out["external_id"], out["external_state"]) == ("queued", None, {"gen": 1})
@@ -1042,10 +1059,11 @@ OPENAI_DONE = {"state": "completed", "result_file": "out/a.png"}  # adapter đ�
 @pytest.mark.parametrize("st", ["failed", "cancelled", "interrupted"])
 async def test_retry_of_job_held_by_state_without_external_id(svc, op_ctx, st):
     """`state` khác None/submitting (vd. openai_images `completed`) = provider giữ job dù không có external_id."""
-    kept = insert_job(svc, "test.sleep", status=st, external_state=OPENAI_DONE)
+    kept = insert_job(svc, "test.sleep", status=st, external_state=OPENAI_DONE, params={"prompt": "cũ"})
     _add_spend(svc, kept)
     out = (await ops.invoke("job.retry", {"ids": [kept]}, op_ctx))["items"][0]
-    assert (out["status"], out["external_state"]) == ("queued", OPENAI_DONE)  # nối lại: dùng file đã tạo
+    resumed = {**OPENAI_DONE, "user_cancelled": True} if st == "cancelled" else OPENAI_DONE
+    assert (out["status"], out["external_state"]) == ("queued", resumed)  # nối lại: dùng file đã tạo
     assert _spend_rows(svc) == [(kept, 1.0)]
     with svc.db.session() as s:
         s.get(Job, kept).status = st
@@ -1123,6 +1141,77 @@ async def test_job_retry_params_patch_on_accepted_job_requires_force_new(svc, op
     out = (await ops.invoke("job.retry", {"ids": [a], "params_patch": {"prompt": "mới"}, "force_new": True},
                             op_ctx))["items"][0]
     assert (out["status"], out["params"], out["external_id"]) == ("queued", {"prompt": "mới"}, None)
+
+
+def _flags(d: dict) -> tuple[bool, bool]:
+    return d["provider_holds"], d["needs_decision"]
+
+
+async def test_job_dict_exposes_provider_holds_and_needs_decision(svc, op_ctx):
+    """UI theo đúng luật backend: `provider_holds` (= provider_holds_job) và `needs_decision` (job đã dừng, không thành
+    công, còn dấu submitting chưa có external_id → chỉ job.clear_attention xử lý được) có trong job.get/list."""
+    # openai_images-style: API đồng bộ đã tạo xong (state completed, không id) → provider giữ job
+    openai_done = insert_job(svc, "test.sleep", status="succeeded", external_state=OPENAI_DONE)
+    openai_failed = insert_job(svc, "test.sleep", status="failed", external_state=OPENAI_DONE)
+    # bị huỷ đúng lúc đang POST: còn dấu submitting, không id → cần quyết định (clear_attention)
+    cancelled_mid_post = insert_job(svc, "test.sleep", status="cancelled", external_state=MARKER)
+    attention = insert_job(svc, "test.sleep", status="needs_attention", external_state=MARKER)
+    # provider đã nhận (có id) → giữ job; force_new tạo job mới → không còn giữ
+    held = insert_job(svc, "test.sleep", status="failed", external_id="p-1", external_state={"state": "submitted"})
+    plain = insert_job(svc, "test.sleep", status="failed")
+    legacy_done = insert_job(svc, "test.sleep", status="succeeded", external_state=MARKER)  # dấu sót, đã xong
+    expected = {
+        openai_done: (True, False), openai_failed: (True, False), cancelled_mid_post: (False, True),
+        attention: (False, False), held: (True, False), plain: (False, False), legacy_done: (False, False),
+    }
+    for jid, flags in expected.items():
+        assert _flags(await ops.invoke("job.get", {"id": jid}, op_ctx)) == flags, jid
+    listed = {j["id"]: _flags(j) for j in (await ops.invoke("job.list", {}, op_ctx))["items"]}
+    assert listed == expected
+    out = (await ops.invoke("job.retry", {"ids": [held], "force_new": True}, op_ctx))["items"][0]
+    assert _flags(out) == (False, False)
+    out = await ops.invoke("job.clear_attention", {"id": cancelled_mid_post, "action": "resubmit"}, op_ctx)
+    assert _flags(out) == (False, False)
+
+
+async def test_running_job_events_carry_fresh_provider_holds(svc, capture):
+    a = enqueue_job(svc, "test.held_progress", {})
+    await run_until_idle(svc)
+    events = [d for t, d in capture if t == "job.updated" and d["id"] == a]
+    assert all("provider_holds" in d and "needs_decision" in d for d in events)
+    assert events[0]["provider_holds"] is False  # vừa xếp hàng
+    polled = [d for d in events if d["status"] == "running" and d["stage"] == "poll"]
+    assert polled and all(d["provider_holds"] is True and d["needs_decision"] is False for d in polled)
+    assert events[-1]["status"] == "succeeded" and events[-1]["provider_holds"] is True
+
+
+@pytest.mark.parametrize("how", ["retry", "retry_force_new", "resubmit"])
+@pytest.mark.parametrize("patch", [{"connection_id": 2}, {"aspec": "16:9"}, {"prompt": "mới", "connection_id": 2}])
+async def test_params_patch_rejects_connection_and_unknown_keys(svc, op_ctx, how, patch):
+    """`params_patch` chỉ sửa tham số job đã có; đổi kết nối (`connection_id`) hay thêm khoá lạ → 422 `params_patch_invalid`
+    (đổi kết nối = tạo job mới), job giữ nguyên."""
+    params = {"prompt": "cũ", "connection_id": 1}
+    if how == "resubmit":
+        a = insert_job(svc, "test.sleep", status="needs_attention", external_state=MARKER, params=params)
+        call = ops.invoke("job.clear_attention", {"id": a, "action": "resubmit", "params_patch": patch}, op_ctx)
+    else:
+        a = insert_job(svc, "test.sleep", status="failed", params=params)
+        extra = {"force_new": True} if how == "retry_force_new" else {}
+        call = ops.invoke("job.retry", {"ids": [a], "params_patch": patch, **extra}, op_ctx)
+    with pytest.raises(AppError) as ei:
+        await call
+    assert (ei.value.code, ei.value.status) == ("params_patch_invalid", 422)
+    assert "job mới" in ei.value.hint
+    job = load(svc, a)
+    assert job.params == params and job.status in ("failed", "needs_attention")
+    assert job.external_state == (MARKER if how == "resubmit" else {})
+
+
+async def test_params_patch_with_known_keys_still_allowed(svc, op_ctx):
+    a = insert_job(svc, "test.sleep", status="failed", params={"prompt": "cũ", "aspect": "9:16", "connection_id": 1})
+    out = (await ops.invoke("job.retry", {"ids": [a], "params_patch": {"prompt": "mới", "aspect": "16:9"}},
+                            op_ctx))["items"][0]
+    assert out["params"] == {"prompt": "mới", "aspect": "16:9", "connection_id": 1}
 
 
 def _spend_rows(svc) -> list[tuple[int | None, float]]:

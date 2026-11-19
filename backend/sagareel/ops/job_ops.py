@@ -162,7 +162,8 @@ def _cancel_idle(ctx: OpContext, job_id: int) -> dict | None:
 class JobRetryParams(BaseModel):
     ids: list[int] = _IDS
     params_patch: dict[str, Any] | None = Field(
-        default=None, description="Gộp vào params trước khi chạy lại (vd. sửa prompt)"
+        default=None,
+        description="Gộp vào params trước khi chạy lại (vd. sửa prompt); chỉ khoá đã có, không có connection_id",
     )
     force_new: bool = Field(
         default=False,
@@ -231,7 +232,8 @@ class JobClearAttentionParams(BaseModel):
     id: int
     action: Literal["resubmit", "fail"]
     params_patch: dict[str, Any] | None = Field(
-        default=None, description="Chỉ với resubmit: gộp vào params trước khi gửi lại"
+        default=None,
+        description="Chỉ với resubmit: gộp vào params trước khi gửi lại; chỉ khoá đã có, không có connection_id",
     )
 
 
