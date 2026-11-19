@@ -26,3 +26,10 @@
 - H dùng `RunToGateDialog`, `IdeaToVideoDialog`, `NeedItem` trên Tổng quan.
 - Thêm `js-yaml` vào package.json.
 - Backend: `token.suspend/resume`; `history.list` lọc `actor`; `pipeline.status` toàn cục; chi phí theo bước trong dry run + ước tính tập chưa tách clip; khoá "không hỏi lại dưới n lượt"; tổng drift; `media.cleanup_preview`/`trash.purge`; nguồn video xem trước cho GateCard.
+
+## Từ H (UI)
+- `scene.list(sequence_id)`; trả `change_set_id` từ clip.move/delete/bulk_update/create, take.select (để Hoàn tác chính xác).
+- Đếm take chờ duyệt cấp project; `sequence.list` kèm số take/cờ; `sequence.cost_summary(ids[])`; `review.queue(sequence_ids[])`.
+- Op trả danh sách enum shot; khoá cài đặt "không hỏi lại dưới n lượt" (H dùng localStorage, M cũng cần); `take.verdict` xoá được verdict; vị trí hàng đợi job.
+- `entity.changed` → nạp lại cả tập 1000 clip (~3 MB); vá theo id clip đổi.
+- UI: nối `pages/overview/slots.tsx` với `RunToGateDialog`/`NeedItem` của M.
