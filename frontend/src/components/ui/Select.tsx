@@ -77,7 +77,6 @@ export function Select<V extends string = string>({
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
     // chỉ chạy khi mở
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -171,7 +170,7 @@ export function Select<V extends string = string>({
         {open ? (
           <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-dropdown overflow-hidden rounded-md border border-line-2 bg-bg-3 shadow-pop">
             {searchable ? (
-              <div className="flex items-center gap-2 border-b border-line-1 px-2.5">
+              <div className="flex items-center gap-2 border-b border-line-1 px-2.5 focus-within:outline focus-within:outline-focus focus-within:-outline-offset-2 focus-within:outline-accent">
                 <Search className="sr-ico text-fg-3" aria-hidden />
                 <input
                   ref={searchRef}

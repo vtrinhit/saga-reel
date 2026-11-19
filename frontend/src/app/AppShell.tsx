@@ -38,7 +38,8 @@ function useBannerState(): BannerState {
   });
   if (justReconnected) return 'reconnected';
   if (!down) return null;
-  if (health.isSuccess && !health.isFetching && health.data?.ok) return null;
+  // Dùng kết quả gần nhất (không xét isFetching) để banner không nháy mỗi lần kiểm tra lại.
+  if (health.status === 'success' && health.data?.ok) return null;
   if (state === 'offline' && health.isError) return 'offline';
   return 'reconnecting';
 }
@@ -257,7 +258,7 @@ function ProjectTabs({ base }: { base: string }) {
           to={`${base}/${n.to}`}
           className={({ isActive }) =>
             cn(
-              'relative inline-flex h-10 flex-none items-center gap-2 px-3 text-sm text-fg-2 hover:text-fg-1',
+              'relative inline-flex min-h-touch flex-none items-center gap-2 px-3 text-sm text-fg-2 hover:text-fg-1',
               isActive && 'text-fg-1 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-accent',
               focusRing,
               'focus-visible:-outline-offset-2',
@@ -388,7 +389,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex min-h-dvh min-w-0 flex-col" data-bottom-nav={projectId ? 'true' : undefined}>
+    <div className="flex min-h-dvh min-w-0 flex-col overflow-x-clip" data-bottom-nav={projectId ? 'true' : undefined}>
       <a
         href="#main"
         className="sr-only z-tooltip rounded-md bg-bg-4 px-3 py-2 text-sm focus:not-sr-only focus:fixed focus:left-2 focus:top-2"

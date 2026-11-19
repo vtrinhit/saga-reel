@@ -201,13 +201,15 @@ describe('connectEvents', () => {
   });
 
   it('tự tạo kết nối mới (mất Last-Event-ID) → coi như có khoảng trống, tải lại mọi query khi mở', () => {
-    const { invalidateQueries, stop } = setup();
+    const { events, invalidateQueries, stop } = setup();
     last().open();
     expect(invalidateQueries).not.toHaveBeenCalled();
     last().fail();
     vi.advanceTimersByTime(1000);
     last().open();
     expect(invalidateQueries).toHaveBeenCalledTimes(1);
+    // dữ liệu dựng từ sự kiện (thanh lô) cũng phải biết là có khoảng trống
+    expect(events.filter((e) => e.type === 'resync')).toEqual([{ type: 'resync', id: '', data: { reason: 'reconnect' } }]);
     stop();
   });
 

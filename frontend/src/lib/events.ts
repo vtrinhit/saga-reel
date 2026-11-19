@@ -166,8 +166,10 @@ export function connectEvents(opts: ConnectEventsOptions): EventsConnection {
       opts.onRetryIn?.(null);
       setState('open');
       if (gap) {
+        // EventSource mới không gửi được Last-Event-ID: có thể đã lỡ sự kiện → xử lý như sự kiện resync.
         gap = false;
         invalidateAll();
+        opts.onEvent({ type: 'resync', id: '', data: { reason: 'reconnect' } });
       }
     };
     source.onerror = () => {

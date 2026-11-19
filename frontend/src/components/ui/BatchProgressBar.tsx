@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn, focusRing } from '../../lib/cn';
 import { formatCount, formatEta } from '../../lib/format';
 import type { BatchSummary } from '../../stores/jobs';
@@ -51,7 +51,15 @@ export function SegBar({ total, done, running, failed, className }: { total: num
  */
 export function BatchProgressBar({ batches, onOpen, onDismiss, className }: BatchProgressBarProps) {
   const [collapsed, setCollapsed] = useState(false);
-  if (batches.length === 0) return null;
+  const visible = batches.length > 0;
+  // Toast đứng trên thanh lô khi thanh đang hiện (cùng khe đáy).
+  useEffect(() => {
+    if (!visible) return;
+    const root = document.documentElement;
+    root.style.setProperty('--sr-batchbar-offset', '64px');
+    return () => root.style.setProperty('--sr-batchbar-offset', '0px');
+  }, [visible]);
+  if (!visible) return null;
   const t = totals(batches);
   const finished = t.active === 0;
   const head =
@@ -90,7 +98,7 @@ export function BatchProgressBar({ batches, onOpen, onDismiss, className }: Batc
       aria-label="Tiến độ lô"
       className={cn(
         pos,
-        'grid h-12 w-[min(360px,calc(100%-32px))] grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-1 gap-y-1',
+        'grid min-h-12 w-[min(360px,calc(100%-32px))] grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-1 gap-y-1',
         'rounded-md border border-line-2 bg-bg-4 py-1 pl-3 pr-1 shadow-pop',
         className,
       )}

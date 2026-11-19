@@ -95,7 +95,7 @@ export function ToastViewport() {
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-4 bottom-[calc(16px+var(--sr-bottom-offset,0px))] z-toast flex flex-col items-stretch gap-2 md:left-auto md:right-4 md:w-[420px]"
+      className="pointer-events-none fixed inset-x-4 bottom-[calc(16px+var(--sr-bottom-offset,0px)+var(--sr-batchbar-offset,0px))] z-toast flex flex-col items-stretch gap-2 md:left-auto md:right-4 md:w-[420px]"
     >
       {toasts.map((t) => (
         <ToastView key={t.id} t={t} onDismiss={() => dismiss(t.id)} />
