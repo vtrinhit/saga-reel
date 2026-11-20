@@ -265,7 +265,9 @@ async def test_image_and_motion_prompts_fill_and_respect_user(owner_ctx, proj, s
     fake_llm.on("story_motion_prompts", {"items": [{"clip": "c0001", "prompt": "slow push-in"}]})
     out = await writer.write_prompts(owner_ctx, "motion", clip_ids=[c1.id, c2.id])
     assert out["written"] == 1 and out["missing"] == ["c0002"]
-    assert "thoại: linh: Ai đó?" in fake_llm.calls_of("story_motion_prompts")[0]["variables"]["clips"]
+    motion_clips = fake_llm.calls_of("story_motion_prompts")[0]["variables"]["clips"]
+    # thoại TTS: chỉ báo lồng tiếng sau (khẩu hình), không đưa lời vào prompt video
+    assert "lồng tiếng sau" in motion_clips and "Ai đó?" not in motion_clips
 
 
 async def test_dialogue_only_targets_too_long(owner_ctx, proj, seq, fake_llm):

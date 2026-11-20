@@ -790,10 +790,21 @@ def clip_brief(c: Clip, assets: dict[int, Asset], lines: list[DialogueLine], sce
             parts.append(f"khung cuối: {c.last_frame_desc}")
         if c.sfx_desc:
             parts.append(f"âm thanh: {c.sfx_desc}")
-    if part in ("motion", "dialogue") and lines:
+    if part == "dialogue" and lines:
         say = " / ".join(f"{assets[ln.speaker_asset_id].key if ln.speaker_asset_id in assets else 'narrator'}: "
                          f"{ln.text}" for ln in lines)
         parts.append(f"thoại: {say}")
+    if part == "motion" and lines:
+        # Chỉ câu source=grok mới để video tự nói (chèn nguyên văn); câu lồng tiếng TTS chỉ cần khẩu hình;
+        # lời người kể (không có người nói) là voice-over → không đưa vào prompt chuyển động.
+        spoken = [ln for ln in lines if ln.speaker_asset_id in assets and ln.source == "grok"]
+        dubbed = [ln for ln in lines if ln.speaker_asset_id in assets and ln.source != "grok"]
+        if spoken:
+            parts.append("thoại video tự nói: " + " / ".join(
+                f"{assets[ln.speaker_asset_id].name} ({ln.emotion or 'tự nhiên'}): \"{ln.text}\"" for ln in spoken))
+        if dubbed:
+            names = ", ".join(dict.fromkeys(assets[ln.speaker_asset_id].name for ln in dubbed))
+            parts.append(f"lồng tiếng sau (chỉ khẩu hình, không viết lời): {names}")
     if part == "dialogue":
         parts.append(f"giới hạn: {max(0, int((c.duration_ms / 1000 - 2) * 4.5))} ký tự")
     return " | ".join(parts)
