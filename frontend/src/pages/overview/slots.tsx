@@ -1,81 +1,98 @@
 /**
- * Chỗ cắm cho Task M trên Tổng quan (H chỉ dựng ma trận). M thay phần thân hai component này — giữ nguyên tên + props:
- * - `RunToGateAction`: nút "Chạy tới gate kế tiếp" trong thanh lô (`pipeline.run` dry_run → EstimateDialog theo chặng
- *   → run). Bản H: nút tắt kèm lý do.
- * - `NeedsColumn`: cột/khối "Cần bạn" (GateCard/NeedItem). Bản H: liệt kê tập có gate đang chờ (đọc từ ma trận) +
- *   link trang Hoạt động.
+ * Hai khối hành động của Tổng quan, nối với component quy trình (Task M):
+ * - `RunToGateAction`: nút "Chạy tới gate kế tiếp" trong thanh lô → `RunToGateDialog` (dry_run → ước tính → chạy).
+ * - `NeedsColumn`: cột "Cần bạn" của dự án = cùng danh sách với trang Hoạt động (`buildNeeds` trên `pipeline.status` +
+ *   việc của dự án), mỗi dòng là `NeedItem`. Không có gì chờ → lối tắt "Từ ý tưởng ra video" (`IdeaToVideoDialog`).
  */
-import { ChevronRight, Diamond, Play } from 'lucide-react';
+import { Play, Sparkles } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
+import { useIsViewer } from '../../api/auth';
+import { IdeaToVideoDialog } from '../../components/pipeline/IdeaToVideoDialog';
+import { NeedItem } from '../../components/pipeline/NeedItem';
+import { RunToGateDialog } from '../../components/pipeline/RunToGateDialog';
+import { useProjectJobs, useShellPipelines } from '../../components/shell/useShellData';
 import { Button } from '../../components/ui/Button';
-import type { MatrixRow } from '../../lib/overviewMatrix';
+import { SkeletonRows } from '../../components/ui/Skeleton';
+import { buildNeeds } from '../../lib/activity';
+import { focusRing, cn } from '../../lib/cn';
+
+const nf = new Intl.NumberFormat('vi-VN');
 
 export interface RunToGateProps {
   sequenceIds: number[];
   projectId: number;
+  /** Workflow chung của các tập đã chọn (khác nhau → để hộp thoại chọn, mặc định full_auto). */
+  workflowKey?: string | null;
 }
 
-export function RunToGateAction({ sequenceIds }: RunToGateProps) {
+export function RunToGateAction({ sequenceIds, workflowKey }: RunToGateProps) {
+  const [open, setOpen] = useState(false);
+  const viewer = useIsViewer();
+  if (viewer) return null;
+  const label = sequenceIds.length === 1 ? '1 tập' : `${nf.format(sequenceIds.length)} tập`;
   return (
-    <Button icon={Play} disabled title="Chạy quy trình từ Tổng quan có ở bản sau; tạm chạy từng chặng trong tập." aria-describedby="run-gate-note">
-      Chạy tới gate kế tiếp
-      <span id="run-gate-note" className="sr-only">
-        Chưa bật cho {sequenceIds.length} tập đã chọn.
-      </span>
-    </Button>
+    <>
+      <Button icon={Play} disabled={sequenceIds.length === 0} onClick={() => setOpen(true)}>
+        Chạy tới gate kế tiếp
+      </Button>
+      <RunToGateDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        sequenceIds={sequenceIds}
+        scopeLabel={label}
+        workflowKey={workflowKey}
+      />
+    </>
   );
 }
 
 export interface NeedsColumnProps {
   base: string;
-  rows: MatrixRow[];
+  projectId: number;
   limit?: number;
 }
 
-export function NeedsColumn({ base, rows, limit = 5 }: NeedsColumnProps) {
-  const items = rows.flatMap((r) =>
-    r.kind === 'seq'
-      ? r.stages
-          .filter((s) => s.status === 'wait' || s.status === 'failed')
-          .map((s) => ({ seq: r.seq, stage: s }))
-      : [],
+export function NeedsColumn({ base, projectId, limit = 5 }: NeedsColumnProps) {
+  const viewer = useIsViewer();
+  const pipelines = useShellPipelines(String(projectId), true);
+  const jobs = useProjectJobs(String(projectId), true);
+  const [ideaOpen, setIdeaOpen] = useState(false);
+  const needs = useMemo(
+    () => buildNeeds(pipelines.data ?? [], jobs.data?.items ?? [], { projectId }),
+    [pipelines.data, jobs.data, projectId],
   );
+  const loading = pipelines.isPending && jobs.isPending;
+
   return (
     <section aria-labelledby="needs-h" className="grid min-w-0 content-start gap-2">
       <div className="flex items-center justify-between">
         <h2 id="needs-h" className="text-sm font-semibold">Cần bạn</h2>
-        <Link to={`${base}/activity`} className="rounded-sm text-sm font-medium hover:text-accent focus-visible:outline focus-visible:outline-focus focus-visible:outline-accent">
-          Xem tất cả{items.length ? ` ${items.length}` : ''}
+        <Link to={`${base}/activity`} className={cn('rounded-sm text-sm font-medium hover:text-accent', focusRing)}>
+          {needs.length > limit ? `Xem tất cả ${nf.format(needs.length)}` : 'Mở Hoạt động'}
         </Link>
       </div>
-      {items.length === 0 ? <p className="rounded-md border border-line-1 px-3 py-3 text-sm text-fg-2">Không có gate hay lỗi nào chờ bạn.</p> : null}
-      <ul className="grid gap-2">
-        {items.slice(0, limit).map(({ seq, stage }) => (
-          <li key={`${seq.id}-${stage.key}`}>
-            <Link
-              to={`${base}/s/${seq.id}`}
-              className="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-line-2 bg-bg-1 px-3 py-2.5 hover:bg-bg-3 focus-visible:outline focus-visible:outline-focus focus-visible:outline-offset-focus focus-visible:outline-accent"
-            >
-              <span
-                className={
-                  stage.status === 'wait'
-                    ? 'grid h-8 w-8 place-items-center rounded-full border-2 border-dashed border-accent text-accent'
-                    : 'grid h-8 w-8 place-items-center rounded-full bg-state-failed/15 text-state-failed'
-                }
-              >
-                <Diamond className="h-3.5 w-3.5" aria-hidden />
-              </span>
-              <span className="grid min-w-0">
-                <span className="truncate py-px text-sm font-medium">
-                  {stage.status === 'wait' ? `Duyệt ${stage.label.toLowerCase()}` : `${stage.label}: ${stage.countLabel ?? 'lỗi'}`} · Tập {seq.number}
-                </span>
-                <span className="truncate py-px text-xs text-fg-2">{seq.title}</span>
-              </span>
-              <ChevronRight className="h-4 w-4 text-fg-3" aria-hidden />
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {loading ? (
+        <SkeletonRows count={3} />
+      ) : needs.length === 0 ? (
+        <div className="grid gap-3 rounded-md border border-line-1 px-3 py-3">
+          <p className="text-sm text-fg-2">Không có gate hay việc lỗi nào chờ bạn.</p>
+          {viewer ? null : (
+            <Button icon={Sparkles} className="justify-self-start" onClick={() => setIdeaOpen(true)}>
+              Từ ý tưởng ra video…
+            </Button>
+          )}
+        </div>
+      ) : (
+        <ul className="grid gap-2">
+          {needs.slice(0, limit).map((n) => (
+            <li key={n.id}>
+              <NeedItem need={n} />
+            </li>
+          ))}
+        </ul>
+      )}
+      <IdeaToVideoDialog open={ideaOpen} onClose={() => setIdeaOpen(false)} projectId={projectId} />
     </section>
   );
 }

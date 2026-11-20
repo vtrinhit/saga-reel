@@ -130,7 +130,6 @@ export function Overview() {
     () => buildMatrixRows(visible, status.data ?? new Map(), groups, collapsed, workflowOf),
     [visible, status.data, groups, collapsed, workflowOf],
   );
-  const allRows = useMemo(() => buildMatrixRows(all, status.data ?? new Map(), groups, new Set(), workflowOf), [all, status.data, groups, workflowOf]);
 
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const [anchor, setAnchor] = useState<number | null>(null);
@@ -202,6 +201,8 @@ export function Overview() {
     void qc.invalidateQueries({ queryKey: ['shell'] });
   };
   const firstSel = all.find((s) => s.id === selIds[0]);
+  const selWorkflows = new Set(all.filter((s) => selected.has(s.id)).map((s) => workflowKeyOf(s)));
+  const commonWorkflow = selWorkflows.size === 1 ? [...selWorkflows][0] : null;
 
   const stat = (value: React.ReactNode, label: string, sub?: React.ReactNode) => (
     <div className="grid min-w-0 content-start gap-0.5 bg-bg-1 px-4 py-3">
@@ -210,7 +211,7 @@ export function Overview() {
     </div>
   );
 
-  const needs = <NeedsColumn base={base} rows={allRows} />;
+  const needs = <NeedsColumn base={base} projectId={pid} />;
 
   return (
     <div className="grid min-w-0 gap-5">
@@ -292,7 +293,7 @@ export function Overview() {
         <Button icon={CircleCheck} onClick={() => navigate(`${base}/review?seq=${selIds.join(',')}&part=image`)}>
           Duyệt các take
         </Button>
-        <RunToGateAction sequenceIds={selIds} projectId={pid} />
+        <RunToGateAction sequenceIds={selIds} projectId={pid} workflowKey={commonWorkflow} />
         <Menu
           label="Thêm hành động cho tập đã chọn"
           align="right"
