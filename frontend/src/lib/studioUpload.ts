@@ -3,7 +3,7 @@
  * `sound.*`. Nối lại từ `received` của server; sha256 tính bằng Web Crypto.
  */
 import { api } from '../api/client';
-import { callOpLoose } from '../api/opsLoose';
+import { callOp } from '../api/ops';
 
 interface UploadStatus {
   id: string;
@@ -22,12 +22,12 @@ export async function uploadFile(
   file: File,
   opts: { kind: 'audio' | 'image' | 'video' | 'subtitle' | 'other'; projectId?: number | null; onProgress?: (p: number) => void },
 ): Promise<{ media_id: number }> {
-  const st = await callOpLoose<UploadStatus>('upload.start', {
+  const st = (await callOp('upload.start', {
     name: file.name,
     size: file.size,
     kind: opts.kind,
     project_id: opts.projectId ?? null,
-  });
+  })) as unknown as UploadStatus;
   const chunk = Math.max(256 * 1024, Math.min(st.chunk_max || 8 * 1024 * 1024, 8 * 1024 * 1024));
   let offset = st.received || 0;
   while (offset < file.size) {
@@ -40,6 +40,6 @@ export async function uploadFile(
     opts.onProgress?.(offset / file.size);
   }
   const sha = await sha256Hex(await file.arrayBuffer());
-  const media = await callOpLoose<{ id: number }>('upload.finish', { id: st.id, sha256: sha });
+  const media = (await callOp('upload.finish', { id: st.id, sha256: sha })) as unknown as { id: number };
   return { media_id: media.id };
 }

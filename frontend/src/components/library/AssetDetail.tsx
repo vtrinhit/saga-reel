@@ -37,8 +37,15 @@ export function AssetDetail({
   const kind = kinds.find((k) => k.key === asset.kind);
   const views = kindViews(kind);
   const voices = useVoices(projectId);
-  const drift = useAssetDrift(projectId, asset.id);
-  const dsum = drift.data ? summarizeDrift(drift.data.clips, asset.id) : null;
+  // Số lệch do server đếm (`asset.counts.drift`); chỉ quét clip để biết tập nào khi thật sự có lệch.
+  const driftCount = asset.counts?.drift;
+  const drift = useAssetDrift(projectId, asset.id, driftCount == null || driftCount > 0);
+  const scanned = drift.data ? summarizeDrift(drift.data.clips, asset.id) : null;
+  const byLook = Object.fromEntries(asset.looks.filter((l) => l.counts?.drift).map((l) => [l.id, l.counts!.drift!]));
+  const dsum =
+    driftCount != null
+      ? { clips: driftCount, sequences: scanned?.sequences ?? [], byLook: Object.keys(byLook).length ? byLook : (scanned?.byLook ?? {}) }
+      : scanned;
   const [descKey, setDescKey] = useState(`${asset.id}:${asset.updated_at}`);
   const [desc, setDesc] = useState(asset.description);
   const [tags, setTags] = useState<string[]>(asset.tags ?? []);
@@ -95,14 +102,18 @@ export function AssetDetail({
     <div className="grid gap-5">
       <header className={cn('grid gap-1', layout === 'inspector' && 'pr-8')}>
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <h2 className={cn('min-w-0 break-words font-semibold', layout === 'page' ? 'text-xl' : 'text-md')}>{asset.name}</h2>
+          {layout === 'page' ? (
+            <h1 className="min-w-0 break-words text-xl font-semibold">{asset.name}</h1>
+          ) : (
+            <h2 className="min-w-0 break-words text-md font-semibold">{asset.name}</h2>
+          )}
           <span className="font-mono text-xs text-fg-2">{asset.key}</span>
           <span className="text-xs text-fg-3">{kindLabel(kinds, asset.kind)}</span>
         </div>
         {dsum && dsum.clips > 0 ? (
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <StatusPill status="drifted" label={`${dsum.clips} clip lệch nhất quán`} />
-            <span className="text-xs text-fg-2">{seqLabel(dsum.sequences)}</span>
+            {dsum.sequences.length ? <span className="text-xs text-fg-2">{seqLabel(dsum.sequences)}</span> : null}
             <Link to={`${base}/review?filter=drift&asset=${asset.id}`} className="text-xs text-fg-1 underline underline-offset-2">
               So với sheet
             </Link>

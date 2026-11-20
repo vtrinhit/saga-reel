@@ -8,6 +8,7 @@ import { SettingsBudget } from '../pages/settings/SettingsBudget';
 import { SettingsLayout } from '../pages/settings/SettingsLayout';
 import { SettingsLlm } from '../pages/settings/SettingsLlm';
 import { SettingsProviders } from '../pages/settings/SettingsProviders';
+import { SettingsStorage } from '../pages/settings/SettingsStorage';
 import { AppShell } from './AppShell';
 import { coveredSections, featureRoutes, type FeatureRoutes } from './featureRoutes';
 import { PROJECT_SECTIONS, REDIRECT_SECTIONS } from './nav';
@@ -34,6 +35,7 @@ export function buildRoutes(feature: FeatureRoutes): RouteObject[] {
         { path: 'llm', element: <SettingsLlm /> },
         { path: 'access', element: <SettingsAccess /> },
         { path: 'budget', element: <SettingsBudget /> },
+        { path: 'storage', element: <SettingsStorage /> },
         { path: '*', element: <NotFound /> },
       ],
     },

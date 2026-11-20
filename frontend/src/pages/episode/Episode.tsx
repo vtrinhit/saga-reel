@@ -22,15 +22,14 @@ import { Modal } from '../../components/ui/Modal';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { SkeletonCardGrid } from '../../components/ui/Skeleton';
 import { isTypingTarget } from '../../components/shell/useShellKeys';
-import { patchClip, epKeys, useAssets, useEpisodeClips, useEpisodeLive, useLint, useScenes } from '../../lib/episodeData';
+import { patchClip, epKeys, useAssets, useEnumOptions, useEpisodeClips, useEpisodeLive, useLint, useScenes } from '../../lib/episodeData';
 import { applyPlan, moveAnnouncement, planMove, planStep, type MovePlan } from '../../lib/episodeOrder';
 import type { Clip } from '../../lib/episodeTypes';
-import { undoLatest } from '../../lib/episodeUndo';
-import { clipView, ENGINE_LABEL, SHOT_ENUMS, SHOT_FIELD_LABEL, type ActiveJob, type ShotField } from '../../lib/episodeView';
+import { undoAction } from '../../lib/episodeUndo';
+import { clipView, SHOT_FIELD_LABEL, type ActiveJob, type ShotField } from '../../lib/episodeView';
 import { boardKeyAction } from '../../lib/reviewKeys';
 import { toast } from '../../stores/toast';
 import type { ProjectInfo } from '../../api/types';
-import { callOpLoose } from '../../api/opsLoose';
 
 type ViewMode = 'grid' | 'table';
 type FilterKey = 'all' | 'pending' | 'failed' | 'stale' | 'drift' | 'empty';
@@ -78,7 +77,7 @@ export function Episode() {
 
   const project = useQuery({
     queryKey: ['shell', 'project', pid],
-    queryFn: () => callOpLoose<ProjectInfo>('project.get', { id: pid }),
+    queryFn: async () => (await callOp('project.get', { id: pid })) as unknown as ProjectInfo,
     staleTime: 60_000,
     retry: false,
   });
@@ -94,11 +93,14 @@ export function Episode() {
       const out = new Map<number, ActiveJob>();
       for (const status of ['running', 'queued']) {
         const page = (await callOp('job.list', { project_id: pid, status, limit: 500 })) as unknown as {
-          items: { id: number; status: string; progress: number | null; sequence_id: number | null; clip_id: number | null }[];
+          items: {
+            id: number; status: string; progress: number | null; sequence_id: number | null; clip_id: number | null;
+            queue_position?: number | null;
+          }[];
         };
         page.items
           .filter((j) => j.sequence_id === seqId && j.clip_id != null)
-          .forEach((j, i) => out.set(j.clip_id!, { id: j.id, status: j.status, progress: j.progress, position: status === 'queued' ? i + 1 : null }));
+          .forEach((j) => out.set(j.clip_id!, { id: j.id, status: j.status, progress: j.progress, position: j.queue_position ?? null }));
       }
       return out;
     },
@@ -207,18 +209,20 @@ export function Episode() {
       setStatus('');
       setTimeout(() => setStatus(moveAnnouncement(plan, keyOf)), 400);
       try {
-        await callOp('clip.move', {
+        const out = await callOp('clip.move', {
           ids: plan.ids,
           after_clip_id: plan.afterClipId,
           ...(plan.sceneId !== undefined ? { scene_id: plan.sceneId } : {}),
         });
         void qc.invalidateQueries({ queryKey: epKeys.lint(seqId) });
+        const undo = undoAction(pid, out, () => qc.invalidateQueries({ queryKey: epKeys.clips(seqId) }));
+        if (undo) toast({ message: plan.ids.length > 1 ? `Đã dời ${plan.ids.length} clip.` : 'Đã dời clip.', undo });
       } catch (e) {
         if (before) qc.setQueryData(epKeys.clips(seqId), before);
         toast({ message: `Không dời được clip: ${errText(e)}`, tone: 'error' });
       }
     },
-    [qc, seqId],
+    [pid, qc, seqId],
   );
 
   const reorderable = filter === 'all';
@@ -367,13 +371,13 @@ export function Episode() {
         after_clip_id: active?.id ?? null,
         scene_id: active?.scene_id ?? null,
         fields: {},
-      } as never)) as unknown as Clip;
+      } as never)) as unknown as Clip & { change_set_id?: number | null };
       await qc.invalidateQueries({ queryKey: epKeys.clips(seqId) });
       setActiveId(c.id);
       if (!wide) setDrawerOpen(true);
       toast({
         message: 'Đã thêm clip.',
-        undo: () => void undoLatest(pid, 'clip.bulk_create').then(() => qc.invalidateQueries({ queryKey: epKeys.clips(seqId) })),
+        undo: undoAction(pid, c, () => qc.invalidateQueries({ queryKey: epKeys.clips(seqId) })),
       });
     } catch (e) {
       toast({ message: `Không thêm được clip: ${errText(e)}`, tone: 'error' });
@@ -399,14 +403,13 @@ export function Episode() {
     if (seqId == null || !selIds.length) return;
     try {
       const prev = (await callOp('clip.delete_preview', { ids: selIds })) as unknown as { confirm_token: string };
-      await callOp('clip.delete', { confirm_token: prev.confirm_token });
+      const out = await callOp('clip.delete', { confirm_token: prev.confirm_token });
       setSelected(new Set());
       if (activeId != null && selIds.includes(activeId)) setActiveId(null);
       await qc.invalidateQueries({ queryKey: epKeys.clips(seqId) });
       toast({
         message: `Đã xoá ${selIds.length} clip (vào Thùng rác).`,
-        undo: () =>
-          void undoLatest(pid, 'clip.delete').then(() => qc.invalidateQueries({ queryKey: epKeys.clips(seqId) })),
+        undo: undoAction(pid, out, () => qc.invalidateQueries({ queryKey: epKeys.clips(seqId) })),
       });
     } catch (e) {
       toast({ message: `Không xoá được: ${errText(e)}`, tone: 'error' });
@@ -457,6 +460,8 @@ export function Episode() {
 
   return (
     <div className="grid min-w-0 gap-3">
+      {/* Tên tập đã hiện trên thanh chặng; h1 cho trình đọc màn hình và mục lục trang. */}
+      <h1 className="sr-only">Bảng clip</h1>
       <p role="status" className="sr-only">{status}</p>
       {/* Toolbar */}
       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -609,12 +614,12 @@ export function Episode() {
         onClose={() => setBulkOpen(false)}
         onApply={async (values) => {
           try {
-            await callOp('clip.bulk_update', { ids: selIds, values });
+            const out = await callOp('clip.bulk_update', { ids: selIds, values });
             await qc.invalidateQueries({ queryKey: epKeys.all(seqId) });
             setBulkOpen(false);
             toast({
               message: `Đã sửa ${selIds.length} clip.`,
-              undo: () => void undoLatest(pid, 'clip.bulk_update').then(() => qc.invalidateQueries({ queryKey: epKeys.all(seqId) })),
+              undo: undoAction(pid, out, () => qc.invalidateQueries({ queryKey: epKeys.all(seqId) })),
             });
           } catch (e) {
             toast({ message: `Không sửa được: ${errText(e)}`, tone: 'error' });
@@ -682,12 +687,8 @@ function BulkEditDialog({
   const [field, setField] = useState('shot_size');
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
-  const opts =
-    field === 'engine'
-      ? Object.entries(ENGINE_LABEL)
-      : field in SHOT_ENUMS
-        ? SHOT_ENUMS[field as ShotField]
-        : null;
+  const enums = useEnumOptions();
+  const opts = field === 'engine' ? enums.engine : field in enums.shot ? enums.shot[field as ShotField] : null;
   const parsed = field === 'duration_ms' ? Math.round(Number(value.replace(',', '.')) * 1000) : value;
   const valid = field === 'duration_ms' ? Number.isFinite(parsed) && (parsed as number) > 0 : true;
   const cls = 'h-control w-full rounded-sm border border-line-3 bg-bg-2 px-2 text-sm';

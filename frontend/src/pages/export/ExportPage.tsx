@@ -9,7 +9,7 @@ import { useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { useIsViewer } from '../../api/auth';
 import type { Job } from '../../api/types';
-import { callOpLoose } from '../../api/opsLoose';
+import { callOp } from '../../api/ops';
 import { ExportMatrix, useCheck } from '../../components/export/ExportMatrix';
 import { IssueList } from '../../components/export/IssueList';
 import { MetadataForm } from '../../components/export/MetadataForm';
@@ -27,6 +27,8 @@ import {
   metaLimits,
   parseCellKey,
   type CellKey,
+  type GeneratedMeta,
+  type MetaOverride,
 } from '../../lib/exportMatrix';
 import {
   numId,
@@ -93,13 +95,17 @@ export function ExportPage() {
     return out;
   }, [linesQ.data, langs, primaryLang]);
 
-  const [mdCheck, setMdCheck] = useState<Record<string, unknown> | null>(null);
+  const [mdCheck, setMdCheck] = useState<GeneratedMeta | null>(null);
   const mdQ = useCheck(mdCheck ? sid : null, activeCell?.platform ?? '', activeCell?.lang ?? '', mdCheck);
+  // Metadata server sẽ sinh ra cho ô đang chọn (cùng cache với ô của ma trận).
+  const genQ = useCheck(sid, activeCell?.platform ?? '', activeCell?.lang ?? '');
+  // Bản sửa tay theo ô của tập đang xem — gửi kèm `export.create(metadata=…)` khi xuất ô đó.
+  const [overrides, setOverrides] = useState<Partial<Record<CellKey, MetaOverride>>>({});
 
   // Ô đầu (nền tảng đầu × ngôn ngữ chính) dùng chung cache với ma trận — để biết đã có bản dựng cuối chưa.
   const probe = useCheck(sid, platforms[0]?.key ?? '', primaryLang);
   const finalRender = useMutation({
-    mutationFn: () => callOpLoose('render.start', { sequence_id: sid, variant: 'final', platform: platforms[0]?.key ?? null }),
+    mutationFn: () => callOp('render.start', { sequence_id: sid!, variant: 'final', platform: platforms[0]?.key, priority: 0 }),
     onSuccess: () => toast({ message: 'Đang dựng bản cuối. Kiểm tra sẽ đo lại khi xong.' }),
     onError: (e) => toastError('Không bắt đầu dựng bản cuối được', e),
   });
@@ -112,7 +118,7 @@ export function ExportPage() {
   const jobsQ = useQueries({
     queries: tracked.map((t) => ({
       queryKey: ['studio', 'export-job', t.job],
-      queryFn: () => callOpLoose<Job>('job.get', { id: t.job }),
+      queryFn: async () => (await callOp('job.get', { id: t.job })) as unknown as Job,
       refetchInterval: (q: { state: { data?: Job } }) => (q.state.data && ['succeeded', 'failed', 'cancelled'].includes(q.state.data.status) ? false : 2000),
     })),
   });
@@ -123,15 +129,17 @@ export function ExportPage() {
   });
   const create = useMutation({
     mutationFn: async () => {
-      const calls = createCalls(seqIds, [...selected]);
+      const calls = createCalls(seqIds, [...selected], overrides);
       const out: { job: number; exports: number[] }[] = [];
       for (const c of calls) {
-        const r = await callOpLoose<{ job_id: number; export_ids: number[] }>('export.create', c);
+        const r = (await callOp('export.create', { ...c, dry_run: false })) as unknown as { job_id: number; export_ids: number[] };
         out.push({ job: r.job_id, exports: r.export_ids });
       }
       return out;
     },
     onSuccess: (jobs) => {
+      // Bản sửa đã dùng cho gói vừa xuất → bỏ (lần sau sinh lại từ tập).
+      setOverrides((o) => Object.fromEntries(Object.entries(o).filter(([k]) => !selected.has(k as CellKey))));
       setTracked((t) => [...jobs, ...t].slice(0, 20));
       toast({ tone: 'success', message: `Đã xếp ${selected.size * seqIds.length} gói để xuất.` });
       setSelected(new Set());
@@ -180,6 +188,7 @@ export function ExportPage() {
             setSelected(new Set());
             setActive(null);
             setMdCheck(null);
+            setOverrides({});
           }}
         />
         {isMd && !viewer && seqs.length > 1 ? (
@@ -276,9 +285,25 @@ export function ExportPage() {
             lang={activeCell.lang}
             limits={metaLimits(activePlatform.data)}
             pkg={(exportsQ.data ?? []).find((r) => r.platform === activeCell.platform && r.lang === activeCell.lang && r.sequence_ids.includes(sid)) ?? null}
+            generated={genQ.data?.metadata ?? null}
+            generating={genQ.isPending}
+            override={overrides[cellKey(activeCell.platform, activeCell.lang)] ?? null}
             checking={mdQ.isFetching}
             readOnly={viewer}
-            onCheck={(d) => setMdCheck({ title: d.title, description: d.description, hashtags: d.hashtags })}
+            onCheck={(md) => setMdCheck(md)}
+            onSave={(o) => {
+              const k = cellKey(activeCell.platform, activeCell.lang);
+              setOverrides((cur) => {
+                const next = { ...cur };
+                if (o) next[k] = o;
+                else delete next[k];
+                return next;
+              });
+              if (o) {
+                setSelected((cur) => new Set(cur).add(k));
+                toast({ tone: 'success', message: `Đã lưu metadata cho ${activePlatform.name} · ${activeCell.lang}. Ô được chọn để xuất.` });
+              }
+            }}
           />
           {mdCheck && mdQ.data ? (
             <div className="rounded-md border border-line-2 bg-bg-1 p-3">

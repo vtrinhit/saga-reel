@@ -1,11 +1,13 @@
 /**
- * Nghe một đoạn âm thanh trong trang (một `Audio` dùng chung — phát cái mới thì dừng cái cũ). Câu thoại: lấy media của
- * take âm thanh qua `take.list(owner_type=dialogue)`; nghe thử giọng: `voice.preview` → job → `result.media_ids[0]`.
+ * Nghe một đoạn âm thanh trong trang (một `Audio` dùng chung — phát cái mới thì dừng cái cũ). Câu thoại: phát thẳng
+ * `/media/<audio_media_id>` (có sẵn trong `dialogue.list`, không gọi thêm op); nghe thử giọng: `voice.preview` → job →
+ * `result.media_ids[0]`.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { callOpLoose } from '../../api/opsLoose';
+import { callOp } from '../../api/ops';
 import type { Job } from '../../api/types';
 import { toastError } from '../../lib/studioData';
+import { toast } from '../../stores/toast';
 
 let shared: HTMLAudioElement | null = null;
 
@@ -37,23 +39,14 @@ export function useAudioPlayback() {
   }, []);
 
   const playLine = useCallback(
-    async (lineId: number, takeId: number | null | undefined) => {
+    (lineId: number, mediaId: number | null | undefined) => {
       const key = `line-${lineId}`;
       if (playing === key) return stop();
-      setLoading(key);
-      try {
-        const r = await callOpLoose<{ items: { id: number; status?: string; media: { url: string } | null }[] }>('take.list', {
-          owner_type: 'dialogue',
-          owner_id: lineId,
-          part: 'audio',
-        });
-        const t = r.items.find((x) => x.id === takeId) ?? r.items.find((x) => x.media);
-        if (t?.media?.url) playUrl(key, t.media.url);
-      } catch (e) {
-        toastError('Không mở được âm thanh câu thoại', e);
-      } finally {
-        if (alive.current) setLoading(null);
+      if (mediaId == null) {
+        toast({ tone: 'info', message: 'Câu thoại chưa có âm thanh (hoặc file đã vào thùng rác). Bấm “Đọc” để tạo.' });
+        return;
       }
+      playUrl(key, `/media/${mediaId}`);
     },
     [playing, playUrl, stop],
   );
@@ -64,10 +57,10 @@ export function useAudioPlayback() {
       if (playing === key) return stop();
       setLoading(key);
       try {
-        const { job_id } = await callOpLoose<{ job_id: number }>('voice.preview', params);
+        const { job_id } = (await callOp('voice.preview', params)) as unknown as { job_id: number };
         let job: Job | null = null;
         for (let i = 0; i < 40 && alive.current; i += 1) {
-          job = await callOpLoose<Job>('job.get', { id: job_id });
+          job = (await callOp('job.get', { id: job_id })) as unknown as Job;
           if (job && ['succeeded', 'failed', 'cancelled'].includes(job.status)) break;
           await new Promise((r) => setTimeout(r, 1000));
         }

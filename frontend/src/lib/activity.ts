@@ -41,6 +41,10 @@ export interface PipelineSummary {
   gates: Record<string, { status?: string; by?: string; at?: string; feedback?: string; count?: number } | undefined>;
   progress: number;
   updated_at: string | null;
+  /** Có khi gọi theo dự án / toàn app. */
+  project_id?: number;
+  /** Gate đang chờ: bản dựng xem trước gần nhất của tập (video để duyệt ngay trong thẻ). */
+  preview?: { render_id: number; variant: string; media_id: number; url: string } | null;
 }
 
 /** Một bước trong `pipeline.run` dry_run. */
@@ -51,6 +55,22 @@ export interface PlanStep {
   units: { images: number; videos: number; tts: number; renders: number };
   llm_calls: number;
   cost: number | null;
+}
+
+/** Cộng lượt của các bước dry_run tới (không gồm) gate bật đầu tiên — phần sẽ chạy ngay khi bấm "Chạy". */
+export function untilFirstGate(steps: PlanStep[] | undefined): { gate: string | null; images: number; videos: number; tts: number; llm: number } {
+  const out = { gate: null as string | null, images: 0, videos: 0, tts: 0, llm: 0 };
+  for (const s of steps ?? []) {
+    if (s.gate) {
+      out.gate = s.key;
+      break;
+    }
+    out.images += s.units?.images ?? 0;
+    out.videos += s.units?.videos ?? 0;
+    out.tts += s.units?.tts ?? 0;
+    out.llm += s.llm_calls ?? 0;
+  }
+  return out;
 }
 
 /** `pipeline.run` dry_run (`engine.plan`). */
@@ -71,6 +91,10 @@ export interface SequenceStatus {
   number: number;
   title: string;
   has_script: boolean;
+  has_synopsis?: boolean;
+  /** Bản tóm tắt quy trình của tập (cùng dạng một item `pipeline.status`). */
+  pipeline?: PipelineSummary;
+  gates?: Record<string, unknown>;
   clips: {
     total: number;
     with_image: number;
@@ -223,7 +247,7 @@ export function nextCost(seg: NextSegment, plan: PipelinePlan['sequences'][numbe
 /* Danh sách "Cần bạn"                                                                                                 */
 /* ------------------------------------------------------------------------------------------------------------------ */
 
-export type NeedKind = 'gate' | 'input' | 'pipeline_failed' | 'job_failed' | 'job_attention' | 'budget';
+export type NeedKind = 'gate' | 'input' | 'pipeline_failed' | 'job_failed' | 'job_attention' | 'budget' | 'drift';
 
 export interface Need {
   id: string;
@@ -242,7 +266,7 @@ export interface Need {
   jobIds?: number[];
 }
 
-const RANK: Record<NeedKind, number> = { gate: 0, input: 1, pipeline_failed: 2, job_attention: 3, job_failed: 4, budget: 5 };
+const RANK: Record<NeedKind, number> = { gate: 0, input: 1, pipeline_failed: 2, job_attention: 3, job_failed: 4, drift: 5, budget: 6 };
 
 function errText(e: PipelineSummary['error'] | Job['error_message']): string {
   if (!e) return '';
@@ -271,7 +295,7 @@ const JOB_ATTENTION = new Set(['needs_attention', 'interrupted']);
 export function buildNeeds(
   pipelines: PipelineSummary[],
   jobs: Job[],
-  opts: { projectId: number | null; projectName?: (id: number | null) => string | null } = { projectId: null },
+  opts: { projectId: number | null; projectName?: (id: number | null) => string | null; drift?: number } = { projectId: null },
 ): Need[] {
   const out: Need[] = [];
   const pname = (id: number | null) => (opts.projectName ? opts.projectName(id) : null);
@@ -348,6 +372,14 @@ export function buildNeeds(
       detail: `Nâng ngân sách hoặc huỷ việc${where ? ` · ${where}` : ''}`,
       href: '/settings/budget', at: Math.max(...list.map((j) => parseServerTime(j.updated_at ?? j.created_at) ?? 0)),
       jobIds: list.map((j) => j.id),
+    });
+  }
+  // Clip lệch nhân vật (`project.get counts.drift`) — một dòng cho cả dự án, mở Duyệt đã lọc lệch.
+  if (opts.drift && opts.drift > 0 && opts.projectId != null) {
+    out.push({
+      id: `drift:${opts.projectId}`, kind: 'drift', projectId: opts.projectId, sequenceId: null,
+      title: `${nf.format(opts.drift)} clip lệch nhân vật`,
+      detail: 'So với sheet rồi tạo lại hoặc bỏ cờ lệch', href: `/p/${opts.projectId}/review?filter=drift`, at: 0,
     });
   }
   return out.sort((a, b) => RANK[a.kind] - RANK[b.kind] || b.at - a.at);

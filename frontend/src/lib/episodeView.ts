@@ -1,6 +1,7 @@
 /**
  * Hàm thuần cho bảng clip: trạng thái hiển thị của clip, hàng ảo hoá (lưới theo hàng / bảng theo dòng, có tiêu đề
- * cảnh), nhãn enum shot (enum lấy từ `services/clips.py::SHOT_ENUMS` — backend chưa có op trả enum).
+ * cảnh), nhãn enum shot. Danh sách giá trị lấy từ `meta.enums` (server là nguồn sự thật — `enumOptions`); bảng dưới
+ * chỉ giữ nhãn tiếng Việt + làm danh sách dự phòng khi `meta.enums` chưa về.
  */
 import type { ClipStatus } from '../components/ui/StatusPill';
 import type { Clip, Scene, Take } from './episodeTypes';
@@ -59,13 +60,52 @@ export const ENGINE_LABEL: Record<string, string> = {
 
 export const LINK_LABEL: Record<string, string> = { cut: 'Cắt', fade: 'Mờ chuyển', continue: 'Nối tiếp' };
 
+/** Kết quả `meta.enums` (phần UI dùng). */
+export interface MetaEnums {
+  shot?: Partial<Record<ShotField, string[]>>;
+  engines?: string[];
+  links?: string[];
+  verdicts?: string[];
+}
+
+export interface EnumOptions {
+  shot: Record<ShotField, [string, string][]>;
+  engine: [string, string][];
+  link: [string, string][];
+}
+
+const SHOT_LABEL_MAP = Object.fromEntries(
+  (Object.keys(SHOT_ENUMS) as ShotField[]).map((f) => [f, Object.fromEntries(SHOT_ENUMS[f])]),
+) as Record<ShotField, Record<string, string>>;
+
+/** Giá trị theo thứ tự server → `[giá trị, nhãn]`; giá trị lạ (server thêm mới) giữ nguyên làm nhãn. */
+export function withLabels(values: string[], labels: Record<string, string>): [string, string][] {
+  return values.map((v) => [v, labels[v] ?? v]);
+}
+
+/** Lựa chọn của menu enum: theo `meta.enums` nếu có, không thì danh sách dự phòng tĩnh. */
+export function enumOptions(meta?: MetaEnums | null): EnumOptions {
+  const shot = {} as Record<ShotField, [string, string][]>;
+  for (const f of Object.keys(SHOT_ENUMS) as ShotField[]) {
+    const vals = meta?.shot?.[f];
+    shot[f] = vals?.length ? withLabels(vals, SHOT_LABEL_MAP[f]) : SHOT_ENUMS[f];
+  }
+  return {
+    shot,
+    engine: meta?.engines?.length ? withLabels(meta.engines, ENGINE_LABEL) : Object.entries(ENGINE_LABEL),
+    link: meta?.links?.length ? withLabels(meta.links, LINK_LABEL) : Object.entries(LINK_LABEL),
+  };
+}
+
+export const STATIC_ENUMS: EnumOptions = enumOptions(null);
+
 /** Nhãn ngắn của cỡ cảnh trong bảng: "MCU". */
 export function shotShort(v: string): string {
   return v ? v.toUpperCase() : '';
 }
 
 export function shotLabel(field: ShotField, v: string): string {
-  return SHOT_ENUMS[field].find(([k]) => k === v)?.[1] ?? v;
+  return SHOT_LABEL_MAP[field][v] ?? v;
 }
 
 /** "4,0 s" (DESIGN §9 — một chữ số thập phân cho clip). */

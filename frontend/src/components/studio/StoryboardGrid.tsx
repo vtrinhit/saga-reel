@@ -1,53 +1,39 @@
 /**
  * Storyboard trong Studio (DESIGN §4.3/§4.6): lưới thẻ clip theo tỉ lệ tập, ảo hoá theo hàng (chiều cao cố định),
- * thumbnail lấy từ take đang chọn (`take.list` khi thẻ hiện ra). Chọn thẻ → inspector. Thẻ không shadow/filter.
+ * thumbnail = `thumb_media_id` của take đang chọn trong `clip.list` (`/media/<id>/thumb`). Chọn thẻ → inspector. Thẻ không shadow/filter.
  * (ClipCard đầy đủ là của Task H; đây là thẻ gọn của Studio.)
  */
-import { useQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ImageOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { callOpLoose } from '../../api/opsLoose';
 import { cn, focusRing } from '../../lib/cn';
 import { clipSeconds, type ClipRow, type ClipSlot } from '../../lib/timeline';
 
-interface TakeList {
-  items: { id: number; media: { thumb_url: string | null } | null }[];
-}
-
-export function useClipThumb(clip: ClipRow | null, enabled = true) {
-  const takeId = clip?.image_take_id ?? null;
-  return useQuery({
-    queryKey: ['studio', 'thumb', clip?.id ?? -1, takeId],
-    queryFn: async () => {
-      const r = await callOpLoose<TakeList>('take.list', { owner_type: 'clip', owner_id: clip!.id, part: 'image' });
-      const t = r.items.find((x) => x.id === takeId);
-      return t?.media?.thumb_url ?? null;
-    },
-    enabled: enabled && clip != null && takeId != null,
-    staleTime: 5 * 60_000,
-  });
+/** URL thumbnail của take đang chọn (ảnh, không thì video) từ `clip.list` — không gọi thêm op. */
+export function clipThumbUrl(clip: Pick<ClipRow, 'thumb_media_id'> | null, width = 240): string | null {
+  return clip?.thumb_media_id != null ? `/media/${clip.thumb_media_id}/thumb?w=${width}` : null;
 }
 
 function Thumb({ clip, ratio }: { clip: ClipRow; ratio: number }) {
-  const q = useClipThumb(clip);
+  const url = clipThumbUrl(clip);
   const [loaded, setLoaded] = useState(false);
   return (
     <div className="relative overflow-hidden bg-stage" style={{ aspectRatio: String(ratio) }}>
-      {q.data ? (
+      {url ? (
         <img
-          src={`${q.data}?w=240`}
+          key={url}
+          src={url}
           alt=""
           loading="lazy"
           decoding="async"
           onLoad={() => setLoaded(true)}
           className={cn('absolute inset-0 size-full object-cover transition-opacity duration-image', loaded ? 'opacity-100' : 'opacity-0')}
         />
-      ) : clip.image_take_id == null ? (
+      ) : (
         <div className="absolute inset-0 flex items-center justify-center bg-bg-1">
           <ImageOff className="size-6 text-fg-3" aria-hidden />
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

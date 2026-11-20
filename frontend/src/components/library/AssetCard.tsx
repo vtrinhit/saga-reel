@@ -27,7 +27,8 @@ export function AssetCard({
   onOpen?: () => boolean;
 }) {
   const chips = lookChips(asset);
-  const looks = asset.looks.length;
+  const looks = asset.counts?.looks ?? asset.looks.length;
+  const drift = asset.counts?.drift ?? 0;
   const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
     if (onOpen?.()) e.preventDefault();
@@ -88,6 +89,12 @@ export function AssetCard({
             </>
           ) : null}
           <span className="whitespace-nowrap">{looks} look</span>
+          {drift > 0 ? (
+            <>
+              <span aria-hidden>·</span>
+              <span className="whitespace-nowrap text-state-drifted">{drift} clip lệch</span>
+            </>
+          ) : null}
         </span>
       </div>
     </Link>

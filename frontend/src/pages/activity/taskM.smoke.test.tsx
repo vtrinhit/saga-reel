@@ -123,6 +123,17 @@ describe('Task M — smoke', () => {
     expect(calls.find((c) => c.op === 'gate.approve')?.body).toMatchObject({ sequence_id: 12, gate: 'outline' });
   });
 
+  it('Agent: tạm dừng một agent (token.suspend) và tạm dừng mọi agent (agents.pause_all)', async () => {
+    await render('/p/3/activity', '/p/:projectId/activity', <ProjectActivityPage />);
+    await act(async () => (document.querySelector('button[aria-label="Tạm dừng agent biên-tập"]') as HTMLButtonElement).click());
+    await flush();
+    expect(calls.find((c) => c.op === 'token.suspend')?.body).toEqual({ name: 'biên-tập' });
+    await act(async () => button('Tạm dừng mọi agent')!.click());
+    await flush();
+    expect(calls.some((c) => c.op === 'agents.pause_all')).toBe(true);
+    expect(document.querySelector('a[href="/p/3/history?actor=agent%3Abi%C3%AAn-t%E1%BA%ADp"]')).not.toBeNull();
+  });
+
   it('Trả lại gate cần góp ý', async () => {
     await render('/p/3/activity', '/p/:projectId/activity', <ProjectActivityPage />);
     await act(async () => button('Trả lại kèm góp ý')!.click());
@@ -130,9 +141,12 @@ describe('Task M — smoke', () => {
     expect(button('Gửi góp ý và chạy lại')!.disabled).toBe(true);
   });
 
-  it('/inbox gom theo dự án', async () => {
+  it('/inbox gom mọi dự án bằng một pipeline.status toàn app (không vòng theo dự án)', async () => {
     await render('/inbox', '/inbox', <InboxPage />);
-    expect(calls.some((c) => c.op === 'pipeline.status' && c.body.project_id === 3)).toBe(true);
+    const ps = calls.filter((c) => c.op === 'pipeline.status');
+    expect(ps).toHaveLength(1);
+    expect(ps[0].body).toMatchObject({ active_only: true });
+    expect(ps[0].body.project_id).toBeUndefined();
     expect(text()).toContain('Kiếp Hồ Ly');
   });
 

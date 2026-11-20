@@ -1,10 +1,12 @@
 /**
  * Tạo lại trả phí: `clip.regenerate dry_run` → EstimateDialog (bảng theo phần, ngân sách còn) → chạy thật. Dưới ngưỡng
- * "Không hỏi lại dưới n lượt" thì chạy thẳng. Backend chưa có khoá cài đặt cho ngưỡng → lưu cục bộ (mặc định tắt, 5 lượt).
+ * "Không hỏi lại dưới n lượt" (`budget.confirm_below_units` — cài đặt toàn cục của server, đọc qua
+ * `budget.status(project_id)`; 0 = luôn hỏi) thì chạy thẳng. Ô đánh dấu trong hộp ước tính ghi lại cài đặt đó.
  * Không cập nhật lạc quan (DESIGN §7.3): card chỉ chuyển "Chờ #n" khi server nhận việc.
  */
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState, type ReactNode } from 'react';
+import { useParams } from 'react-router';
 import { ApiError } from '../../api/client';
 import { callOp } from '../../api/ops';
 import { useConnection } from '../../stores/connection';
@@ -12,22 +14,26 @@ import { toast } from '../../stores/toast';
 import type { RegenerateResult } from '../../lib/episodeTypes';
 import { EstimateDialog, type EstimateRow } from '../ui/EstimateDialog';
 
+/** Ngưỡng bật lại khi người dùng đánh dấu ô mà cài đặt đang là 0. */
 export const SKIP_THRESHOLD = 5;
-const LS_KEY = 'sr.regen.skipBelow';
+const SKIP_KEY = 'budget.confirm_below_units';
 
-function readSkip(): boolean {
-  try {
-    return localStorage.getItem(LS_KEY) === '1';
-  } catch {
-    return false;
-  }
+export const confirmKey = (projectId: number | null) => ['budget', 'confirm-below', projectId ?? 'all'] as const;
+
+/** `budget.status(project_id).confirm_below_units` (0 = luôn hỏi). */
+export function useConfirmBelow(projectId: number | null) {
+  return useQuery({
+    queryKey: confirmKey(projectId),
+    queryFn: async () =>
+      Number(((await callOp('budget.status', { project_id: projectId })) as unknown as { confirm_below_units?: number }).confirm_below_units ?? 0) || 0,
+    staleTime: 60_000,
+    retry: false,
+  });
 }
-function writeSkip(v: boolean) {
-  try {
-    localStorage.setItem(LS_KEY, v ? '1' : '0');
-  } catch {
-    /* bỏ qua */
-  }
+
+/** Chạy thẳng không hỏi khi tổng lượt dưới ngưỡng và không vượt ngân sách còn lại. */
+export function canSkipConfirm(total: number, threshold: number, remaining: number | null): boolean {
+  return threshold > 0 && total < threshold && (remaining == null || total <= remaining);
 }
 
 export interface RegenRequest {
@@ -70,7 +76,19 @@ export function useRegenerate(seqId: number | null): { request: (r: RegenRequest
   const offline = useConnection((s) => s.state === 'offline');
   const [pending, setPending] = useState<{ req: RegenRequest; est: RegenerateResult } | null>(null);
   const [running, setRunning] = useState(false);
-  const [skip, setSkip] = useState(readSkip);
+  const { projectId } = useParams();
+  const pid = projectId && /^\d+$/.test(projectId) ? Number(projectId) : null;
+  const confirm = useConfirmBelow(pid);
+  const threshold = confirm.data ?? 0;
+  const setThreshold = async (n: number) => {
+    try {
+      await callOp('settings.set_global', { values: { [SKIP_KEY]: n } });
+      qc.setQueryData(confirmKey(pid), n);
+      void qc.invalidateQueries({ queryKey: ['budget'] });
+    } catch (e) {
+      toast({ message: `Không lưu được cài đặt hỏi lại: ${errText(e)}`, tone: 'error' });
+    }
+  };
 
   const body = (req: RegenRequest, dry: boolean) => ({
     ids: req.ids ?? null,
@@ -119,7 +137,7 @@ export function useRegenerate(seqId: number | null): { request: (r: RegenRequest
         const est = (await callOp('clip.regenerate', body(req, true) as never)) as unknown as RegenerateResult;
         const total = Object.values(est.estimate.parts).reduce((s, p) => s + p.units, 0);
         const rem = budgetRemaining(est);
-        if (readSkip() && total < SKIP_THRESHOLD && (rem == null || total <= rem) && !offline) {
+        if (!offline && canSkipConfirm(total, threshold, rem)) {
           await run(req);
           return;
         }
@@ -128,7 +146,7 @@ export function useRegenerate(seqId: number | null): { request: (r: RegenRequest
         toast({ message: `Không ước tính được chi phí: ${errText(e)}`, tone: 'error' });
       }
     },
-    [offline, run],
+    [offline, run, threshold],
   );
 
   const dialog = pending ? (
@@ -144,14 +162,15 @@ export function useRegenerate(seqId: number | null): { request: (r: RegenRequest
         ...pending.est.warnings,
         ...pending.est.skipped.slice(0, 3).map((s) => `Bỏ qua clip #${s.clip_id}: ${s.message}`),
       ]}
-      skipBelow={{
-        checked: skip,
-        threshold: SKIP_THRESHOLD,
-        onChange: (v) => {
-          setSkip(v);
-          writeSkip(v);
-        },
-      }}
+      skipBelow={
+        confirm.isSuccess
+          ? {
+              checked: threshold > 0,
+              threshold: threshold > 0 ? threshold : SKIP_THRESHOLD,
+              onChange: (v) => void setThreshold(v ? SKIP_THRESHOLD : 0),
+            }
+          : undefined
+      }
       running={running}
       offline={offline}
     />

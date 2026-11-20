@@ -108,8 +108,108 @@ export function latestPackage(rows: ExportRow[] | undefined, seqId: number, plat
   return (rows ?? []).find((r) => r.platform === platform && r.lang === lang && r.sequence_ids.includes(seqId)) ?? null;
 }
 
-/** Gom ô đã chọn thành lời gọi `export.create` tối thiểu: nhóm theo nền tảng → ngôn ngữ (op nhận tích chéo). */
-export function createCalls(seqIds: number[], selected: CellKey[]): { sequence_ids: number[]; platforms: string[]; langs: string[] }[] {
+/* --- Metadata đăng bài -------------------------------------------------------------------------------------------- */
+
+/** Metadata sinh ra (`export.check` → `metadata`, `services/export/metadata.py`) hoặc của gói đã xuất. */
+export interface GeneratedMeta {
+  title?: string;
+  description?: string;
+  hashtags?: string[];
+  keywords?: string[];
+  pinned_comment?: string;
+  source?: string;
+  [k: string]: unknown;
+}
+
+/** Bản nháp trong form: hashtag là một ô chữ (phẩy hoặc xuống dòng ngăn cách). */
+export interface MetaDraft {
+  title: string;
+  description: string;
+  hashtags: string;
+}
+
+/** Ghi đè gửi `export.create(metadata=…)` — chỉ khoá người dùng đã sửa. */
+export type MetaOverride = Partial<{ title: string; description: string; hashtags: string[] }>;
+
+/** "#a, b⏎#c d" → ["#a", "#b", "#c d"]: tách theo phẩy/xuống dòng, thêm `#` nếu thiếu, bỏ trùng + rỗng. */
+export function parseHashtags(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(/[,\n]/)) {
+    const t = raw.trim().replace(/^#+/, '').trim();
+    if (!t) continue;
+    const tag = `#${t}`;
+    if (!out.includes(tag)) out.push(tag);
+  }
+  return out;
+}
+
+export function draftFrom(md: GeneratedMeta | null | undefined): MetaDraft {
+  return {
+    title: String(md?.title ?? ''),
+    description: String(md?.description ?? ''),
+    hashtags: (md?.hashtags ?? []).map((h) => (String(h).startsWith('#') ? String(h) : `#${h}`)).join(', '),
+  };
+}
+
+/** Văn bản đăng kèm video = mô tả + hashtag — đúng `checks.full_caption` của backend (thứ nền tảng đếm giới hạn). */
+export function fullCaption(d: Pick<MetaDraft, 'description' | 'hashtags'>): string {
+  const desc = d.description.trim();
+  const tags = parseHashtags(d.hashtags).join(' ');
+  return tags ? `${desc}\n\n${tags}`.trim() : desc;
+}
+
+/** Vấn đề giới hạn của bản nháp (rỗng = đạt) — chặn nút "Dùng khi xuất". */
+export function metaProblems(d: MetaDraft, l: MetaLimits): string[] {
+  const out: string[] = [];
+  if (l.titleMax != null && countChars(d.title) > l.titleMax) out.push(`Tiêu đề dài hơn ${l.titleMax} ký tự`);
+  const cap = fullCaption(d);
+  if (l.captionMax != null && countChars(cap, l.captionUtf16) > l.captionMax) out.push(`Mô tả + hashtag dài hơn ${l.captionMax} ký tự`);
+  if (l.captionBytes != null && countBytes(cap) > l.captionBytes) out.push(`Mô tả + hashtag quá ${l.captionBytes} byte`);
+  const n = parseHashtags(d.hashtags).length;
+  if (l.hashtagMax != null && n > l.hashtagMax) out.push(`${n} hashtag, tối đa ${l.hashtagMax}`);
+  return out;
+}
+
+/** Khoá đã đổi so với bản sinh ra; null = không đổi gì (xuất dùng bản sinh ra). */
+export function metaOverride(d: MetaDraft, base: GeneratedMeta | null | undefined): MetaOverride | null {
+  const b = draftFrom(base);
+  const out: MetaOverride = {};
+  if (d.title.trim() !== b.title.trim()) out.title = d.title.trim();
+  if (d.description.trim() !== b.description.trim()) out.description = d.description.trim();
+  const tags = parseHashtags(d.hashtags);
+  if (tags.join(' ') !== parseHashtags(b.hashtags).join(' ')) out.hashtags = tags;
+  return Object.keys(out).length ? out : null;
+}
+
+export interface CreateCall {
+  sequence_ids: number[];
+  platforms: string[];
+  langs: string[];
+  metadata?: MetaOverride;
+}
+
+/**
+ * Gom ô đã chọn thành lời gọi `export.create` tối thiểu: nhóm theo nền tảng → ngôn ngữ (op nhận tích chéo). Ô có
+ * metadata sửa tay (`overrides`, chỉ của tập đang xem = `seqIds[0]`) đi lời gọi riêng kèm `metadata`; các tập xuất cùng
+ * của ô đó vẫn dùng metadata sinh ra.
+ */
+export function createCalls(seqIds: number[], selected: CellKey[], overrides: Partial<Record<CellKey, MetaOverride>> = {}): CreateCall[] {
+  const own: CreateCall[] = [];
+  const plain: CellKey[] = [];
+  const rest: CellKey[] = [];
+  for (const k of selected) {
+    const md = overrides[k];
+    if (md && seqIds.length) {
+      const { platform, lang } = parseCellKey(k);
+      own.push({ sequence_ids: [seqIds[0]], platforms: [platform], langs: [lang], metadata: md });
+      rest.push(k);
+    } else plain.push(k);
+  }
+  return [...own, ...groupCalls(seqIds, plain), ...(seqIds.length > 1 ? groupCalls(seqIds.slice(1), rest) : [])];
+}
+
+function groupCalls(seqIds: number[], selected: CellKey[]): CreateCall[] {
+  if (!selected.length || !seqIds.length) return [];
   const byPlatform = new Map<string, Set<string>>();
   for (const k of selected) {
     const { platform, lang } = parseCellKey(k);

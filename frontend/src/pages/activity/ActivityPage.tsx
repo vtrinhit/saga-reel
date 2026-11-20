@@ -1,4 +1,4 @@
-import { Bot, ChevronRight, Inbox, Pause, Undo2, X } from 'lucide-react';
+import { Bot, ChevronRight, Inbox, Pause, Play, Undo2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useIsViewer } from '../../api/auth';
@@ -6,6 +6,7 @@ import { ApiError } from '../../api/client';
 import { callOp } from '../../api/ops';
 import type { ChangeSet, Job } from '../../api/types';
 import { GateCard } from '../../components/pipeline/GateCard';
+import { useProject } from '../../components/shell/useShellData';
 import { GateRejectDialog } from '../../components/pipeline/GateRejectDialog';
 import { NeedItem } from '../../components/pipeline/NeedItem';
 import { ActorTag } from '../../components/ui/ActorTag';
@@ -33,6 +34,7 @@ import { formatClock, formatRelative, parseServerTime } from '../../lib/time';
 import { toast } from '../../stores/toast';
 import {
   useActivityLiveRefresh,
+  useAgentControl,
   useBudgetStatus,
   useGateActions,
   useGateDetails,
@@ -79,11 +81,10 @@ export function ActivityView({ projectId }: { projectId: number | null }) {
   const viewer = useIsViewer();
   const inbox = projectId == null;
   const projects = useProjectList(true);
-  const projectIds = useMemo(
-    () => (inbox ? (projects.data ?? []).map((p) => p.id) : projectId != null ? [projectId] : []),
-    [inbox, projects.data, projectId],
-  );
-  const pipelines = usePipelines(projectIds);
+  const pipelines = usePipelines(projectId);
+  const agentCtl = useAgentControl();
+  const projectInfo = useProject(projectId != null ? String(projectId) : null);
+  const drift = Number(projectInfo.data?.counts?.drift ?? 0) || 0;
   const jobs = useJobs(projectId);
   const history = useRecentHistory(projectId);
   const budget = useBudgetStatus();
@@ -102,8 +103,8 @@ export function ActivityView({ projectId }: { projectId: number | null }) {
 
   const jobItems: Job[] = useMemo(() => jobs.data?.items ?? [], [jobs.data]);
   const needs = useMemo(
-    () => buildNeeds(pipelines.data, jobItems, { projectId, projectName: inbox ? nameOf : undefined }),
-    [pipelines.data, jobItems, projectId, inbox, nameOf],
+    () => buildNeeds(pipelines.data, jobItems, { projectId, projectName: inbox ? nameOf : undefined, drift }),
+    [pipelines.data, jobItems, projectId, inbox, nameOf, drift],
   );
   const gates = needs.filter((n) => n.kind === 'gate');
   const others = needs.filter((n) => n.kind !== 'gate');
@@ -111,9 +112,10 @@ export function ActivityView({ projectId }: { projectId: number | null }) {
   const agents = agentRows(history.data?.items, jobItems, now);
   const running = jobItems.filter((j) => j.status === 'running' || j.status === 'queued');
   const activePipes = pipelines.data.filter((p) => PIPELINE_ACTIVE.has(p.status));
-  const tokenNames = new Set((tokens.data ?? []).filter((t) => t.active).map((t) => t.name));
+  const tokenByName = new Map((tokens.data ?? []).filter((t) => t.active).map((t) => [t.name, t]));
+  const anySuspended = (tokens.data ?? []).some((t) => t.active && t.suspended);
 
-  const loading = pipelines.isLoading || jobs.isLoading || (inbox && projects.isLoading);
+  const loading = pipelines.isLoading || jobs.isLoading;
 
   const submitReject = (feedback: string) => {
     if (!rejecting) return;
@@ -234,61 +236,81 @@ export function ActivityView({ projectId }: { projectId: number | null }) {
         {/* Phải: agent, quy trình, việc, lịch sử */}
         <div className="grid min-w-0 gap-3">
           {!inbox ? (
-            <Section title="Agent" extra={<span className="text-xs text-fg-3">24 giờ qua</span>}>
+            <Section
+              title="Agent"
+              extra={
+                viewer || !tokens.data?.length ? (
+                  <span className="text-xs text-fg-3">24 giờ qua</span>
+                ) : (
+                  <Button
+                    variant={anySuspended ? 'secondary' : 'ghost'}
+                    icon={anySuspended ? Play : Pause}
+                    className="h-control px-2 text-xs"
+                    loading={agentCtl.all.isPending}
+                    onClick={() => agentCtl.all.mutate(!anySuspended)}
+                  >
+                    {anySuspended ? 'Bật lại mọi agent' : 'Tạm dừng mọi agent'}
+                  </Button>
+                )
+              }
+            >
               {agents.length === 0 ? (
                 <p className="px-3 py-3 text-sm text-fg-2">Chưa có agent nào ghi vào dự án trong 24 giờ qua.</p>
               ) : (
                 <ul>
-                  {agents.map((a) => (
-                    <li key={a.actor} className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-start gap-3 border-t border-line-1 px-3 py-2.5 first:border-t-0">
-                      <span className="grid h-9 w-9 place-items-center rounded-md bg-bg-3 text-fg-2" aria-hidden>
-                        <Bot className="sr-ico" />
-                      </span>
-                      <div className="min-w-0">
-                        <p className="flex items-center gap-2">
-                          <span className="truncate py-px font-mono text-sm font-semibold">{a.name}</span>
-                          {a.live ? (
-                            <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-state-running">
-                              <span className="h-1.5 w-1.5 rounded-full bg-state-running" aria-hidden />
-                              đang làm
-                            </span>
+                  {agents.map((a) => {
+                    const tok = tokenByName.get(a.name);
+                    const paused = !!tok?.suspended;
+                    return (
+                      <li key={a.actor} className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-start gap-3 border-t border-line-1 px-3 py-2.5 first:border-t-0">
+                        <span className="grid h-9 w-9 place-items-center rounded-md bg-bg-3 text-fg-2" aria-hidden>
+                          <Bot className="sr-ico" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-2">
+                            <span className="truncate py-px font-mono text-sm font-semibold">{a.name}</span>
+                            {paused ? (
+                              <span className="whitespace-nowrap text-xs text-warn">đã tạm dừng</span>
+                            ) : a.live ? (
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-state-running">
+                                <span className="h-1.5 w-1.5 rounded-full bg-state-running" aria-hidden />
+                                đang làm
+                              </span>
+                            ) : null}
+                          </p>
+                          <p className="truncate py-px text-sm text-fg-1">{a.lastSummary || (a.runningJobs ? 'Đang chạy việc' : '—')}</p>
+                          <p className="truncate text-xs text-fg-3 tnum">
+                            {a.lastOp ? <span className="font-mono">{a.lastOp}</span> : null}
+                            {a.lastAt ? ` · ${formatRelative(a.lastAt, now)}` : ''} · {nf.format(a.changes)} thay đổi
+                            {a.runningJobs ? ` · ${nf.format(a.runningJobs)} việc đang chạy` : ''}
+                          </p>
+                          {!viewer && a.changes > 0 && projectId != null ? (
+                            <Link
+                              to={`/p/${projectId}/history?actor=${encodeURIComponent(a.actor)}`}
+                              className={cn('mt-0.5 inline-block rounded-sm text-xs text-fg-2 underline-offset-2 hover:text-fg-1 hover:underline', focusRing)}
+                            >
+                              Xem và hoàn tác thay đổi của {a.name}
+                            </Link>
                           ) : null}
-                        </p>
-                        <p className="truncate py-px text-sm text-fg-1">{a.lastSummary || (a.runningJobs ? 'Đang chạy việc' : '—')}</p>
-                        <p className="truncate text-xs text-fg-3 tnum">
-                          {a.lastOp ? <span className="font-mono">{a.lastOp}</span> : null}
-                          {a.lastAt ? ` · ${formatRelative(a.lastAt, now)}` : ''} · {nf.format(a.changes)} thay đổi
-                          {a.runningJobs ? ` · ${nf.format(a.runningJobs)} việc đang chạy` : ''}
-                        </p>
-                      </div>
-                      {!viewer ? (
-                        <Button
-                          variant="ghost"
-                          icon={Pause}
-                          disabled
-                          title={
-                            tokenNames.has(a.name)
-                              ? 'Chưa tạm dừng được: máy chủ chưa có thao tác tạm khoá token.'
-                              : 'Không thấy token đang hoạt động của agent này.'
-                          }
-                          aria-describedby="agent-pause-note"
-                        >
-                          Tạm dừng
-                        </Button>
-                      ) : null}
-                    </li>
-                  ))}
+                        </div>
+                        {!viewer ? (
+                          <Button
+                            variant="ghost"
+                            icon={paused ? Play : Pause}
+                            disabled={!tok}
+                            title={tok ? undefined : 'Không thấy token đang hoạt động của agent này.'}
+                            loading={agentCtl.one.isPending && agentCtl.one.variables?.name === a.name}
+                            onClick={() => agentCtl.one.mutate({ name: a.name, pause: !paused })}
+                            aria-label={`${paused ? 'Bật lại' : 'Tạm dừng'} agent ${a.name}`}
+                          >
+                            {paused ? 'Bật lại' : 'Tạm dừng'}
+                          </Button>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
-              {!viewer && agents.length ? (
-                <p id="agent-pause-note" className="border-t border-line-1 px-3 py-2 text-xs text-fg-3">
-                  Tạm dừng agent chưa có trên máy chủ. Cần chặn ngay: thu hồi token ở{' '}
-                  <Link to="/settings/access" className={cn('text-fg-1 underline underline-offset-2', focusRing)}>
-                    Cài đặt › Truy cập
-                  </Link>
-                  .
-                </p>
-              ) : null}
             </Section>
           ) : null}
 

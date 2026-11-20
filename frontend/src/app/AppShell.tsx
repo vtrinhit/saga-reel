@@ -17,14 +17,18 @@ import { StageSpine } from '../components/shell/StageSpine';
 import {
   activeAgents,
   countNeeds,
+  stageCounts,
   useBudget,
-  useClipCounts,
   useHistory,
   useProject,
   useProjectJobs,
   useSequence,
   useSequenceList,
+  useSequenceStatus,
   useShellLiveRefresh,
+  useShellPipelines,
+  useWorkflowPresets,
+  workflowKeyOf,
   type NeedCounts,
 } from '../components/shell/useShellData';
 import { useShellKeys } from '../components/shell/useShellKeys';
@@ -242,17 +246,32 @@ function Topbar({ projectId, base, status, projectName, seqId, sequence, sequenc
 /* Điều hướng trong dự án                                              */
 /* ------------------------------------------------------------------ */
 
-function NavBadge({ item, needs }: { item: NavItem; needs: number }) {
-  if (item.badge !== 'need' || needs <= 0) return null;
-  return <span className="tnum text-2xs font-semibold text-accent 3xl:ml-auto 3xl:text-xs">{needs > 99 ? '99+' : needs}</span>;
+/** Số đếm trên mục điều hướng: `need` = việc chờ bạn quyết (accent), `review` = take chờ duyệt (`counts.takes_pending`). */
+interface NavCounts {
+  needs: number;
+  review: number;
 }
 
-function ProjectRail({ base, needs }: { base: string; needs: number }) {
+const badgeCount = (item: NavItem, c: NavCounts) => (item.badge === 'need' ? c.needs : item.badge === 'review' ? c.review : 0);
+const badgeLabel = (item: NavItem, n: number) =>
+  item.badge === 'need' ? `${item.label}, ${n} việc chờ bạn` : `${item.label}, ${n} take chờ duyệt`;
+
+function NavBadge({ item, counts }: { item: NavItem; counts: NavCounts }) {
+  const n = badgeCount(item, counts);
+  if (n <= 0) return null;
+  return (
+    <span className={cn('tnum text-2xs font-semibold 3xl:ml-auto 3xl:text-xs', item.badge === 'need' ? 'text-accent' : 'text-fg-2')}>
+      {n > 99 ? '99+' : n}
+    </span>
+  );
+}
+
+function ProjectRail({ base, counts }: { base: string; counts: NavCounts }) {
   const link = (n: NavItem) => (
     <NavLink
       key={n.key}
       to={`${base}/${n.to}`}
-      aria-label={n.badge === 'need' && needs > 0 ? `${n.label}, ${needs} việc chờ bạn` : undefined}
+      aria-label={badgeCount(n, counts) > 0 ? badgeLabel(n, badgeCount(n, counts)) : undefined}
       className={({ isActive }) =>
         cn(
           'grid justify-items-center gap-0.5 whitespace-nowrap border-l-2 border-transparent px-1 py-2 text-2xs text-fg-2 hover:bg-bg-2 hover:text-fg-1',
@@ -265,7 +284,7 @@ function ProjectRail({ base, needs }: { base: string; needs: number }) {
     >
       <n.icon className="sr-ico" aria-hidden />
       <span>{n.label}</span>
-      <NavBadge item={n} needs={needs} />
+      <NavBadge item={n} counts={counts} />
     </NavLink>
   );
   return (
@@ -280,7 +299,7 @@ function ProjectRail({ base, needs }: { base: string; needs: number }) {
   );
 }
 
-function ProjectTabs({ base, needs }: { base: string; needs: number }) {
+function ProjectTabs({ base, counts }: { base: string; counts: NavCounts }) {
   return (
     <nav
       aria-label="Trong dự án"
@@ -293,6 +312,7 @@ function ProjectTabs({ base, needs }: { base: string; needs: number }) {
           ) : null}
           <NavLink
             to={`${base}/${n.to}`}
+            aria-label={badgeCount(n, counts) > 0 ? badgeLabel(n, badgeCount(n, counts)) : undefined}
             className={({ isActive }) =>
               cn(
                 'relative inline-flex min-h-touch flex-none items-center gap-2 whitespace-nowrap px-3 text-sm text-fg-2 hover:text-fg-1',
@@ -304,7 +324,7 @@ function ProjectTabs({ base, needs }: { base: string; needs: number }) {
           >
             <n.icon className="sr-ico" aria-hidden />
             {n.label}
-            <NavBadge item={n} needs={needs} />
+            <NavBadge item={n} counts={counts} />
           </NavLink>
         </span>
       ))}
@@ -312,7 +332,7 @@ function ProjectTabs({ base, needs }: { base: string; needs: number }) {
   );
 }
 
-function PhoneBottomNav({ base, needs }: { base: string; needs: number }) {
+function PhoneBottomNav({ base, needs, review }: { base: string; needs: number; review: number }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const failed = countActive(useJobs((s) => s.jobs)).failed;
@@ -332,7 +352,9 @@ function PhoneBottomNav({ base, needs }: { base: string; needs: number }) {
           ? `${n.label}: ${needs} việc chờ bạn`
           : n.key === 'jobs' && failed > 0
             ? `${n.label}: ${failed} lỗi`
-            : undefined
+            : n.key === 'review' && review > 0
+              ? `${n.label}: ${review} take chờ duyệt`
+              : undefined
       }
       className={({ isActive }) => cn(cell, isActive && activeBar, focusRing)}
     >
@@ -340,6 +362,14 @@ function PhoneBottomNav({ base, needs }: { base: string; needs: number }) {
       {n.label}
       {n.badge === 'need' && needs > 0 ? (
         <CountRing value={needs > 99 ? '99+' : needs} tone="wait" size={20} className="absolute left-[calc(50%+4px)] top-1 bg-bg-1 text-2xs" />
+      ) : null}
+      {n.key === 'review' && review > 0 ? (
+        <span
+          className="absolute left-[calc(50%+6px)] top-1 min-w-4 rounded-full bg-bg-4 px-1 text-center text-2xs font-semibold text-fg-1 tnum"
+          aria-hidden
+        >
+          {review > 99 ? '99+' : review}
+        </span>
       ) : null}
       {n.key === 'jobs' && failed > 0 ? (
         <span
@@ -450,18 +480,25 @@ export function AppShell() {
   const project = useProject(ready ? projectId : null);
   const sequenceList = useSequenceList(ready ? projectId : null);
   const sequence = useSequence(ready ? seqId : null);
-  const clipCounts = useClipCounts(sequence.data);
+  const seqStatus = useSequenceStatus(ready ? seqId : null);
+  const workflows = useWorkflowPresets(ready && !!seqId);
   const history = useHistory(ready ? projectId : null);
   const jobs = useProjectJobs(projectId, ready);
+  const pipelines = useShellPipelines(projectId, ready);
   const sequences = sequenceList.data?.items;
-  const needs = countNeeds(sequences, jobs.data?.items);
+  const projectNum = projectId && /^\d+$/.test(projectId) ? Number(projectId) : null;
+  const needs = countNeeds(pipelines.data, jobs.data?.items, Number(project.data?.counts?.drift ?? 0) || 0, projectNum);
+  const navCounts: NavCounts = { needs: needs.total, review: Number(project.data?.counts?.takes_pending ?? 0) || 0 };
   const agentList = activeAgents(history.data?.items);
   const agents = { count: agentList.length, live: agentList.some((a) => a.live) };
-  const stages = useMemo(
-    // Workflow preset theo `sequence.workflow_key` do Task J cấp; chưa có → workflow mặc định.
-    () => toStages(null, sequence.data?.pipeline, sequence.data?.gates, clipCounts.data ?? null),
-    [sequence.data, clipCounts.data],
-  );
+  const listed = sequences?.find((s) => String(s.id) === seqId);
+  const stages = useMemo(() => {
+    // Lần chạy (nếu có) mang danh sách bước thật; tập chưa chạy → preset của tập (`workflow_key`) → `full_auto`.
+    const seq = sequence.data;
+    const preset = workflows.data?.get(workflowKeyOf(seq)) ?? null;
+    const run = seqStatus.data?.pipeline ?? seq?.pipeline;
+    return toStages(preset, run, seqStatus.data?.gates ?? seq?.gates, stageCounts(seqStatus.data, listed ?? seq));
+  }, [sequence.data, seqStatus.data, workflows.data, listed]);
   const showSpine = !!seqId && !sequence.isError;
 
   useShellKeys({
@@ -538,9 +575,9 @@ export function AppShell() {
         onSearch={() => setPaletteOpen(true)}
         ready={ready}
       />
-      {projectId ? <ProjectTabs base={base} needs={needs.total} /> : null}
+      {projectId ? <ProjectTabs base={base} counts={navCounts} /> : null}
       <div className="flex min-h-0 min-w-0 flex-1">
-        {projectId ? <ProjectRail base={base} needs={needs.total} /> : null}
+        {projectId ? <ProjectRail base={base} counts={navCounts} /> : null}
         <div className="flex min-w-0 flex-1 flex-col">
           {showSpine && seqId ? (
             <StageSpine
@@ -569,7 +606,7 @@ export function AppShell() {
           </main>
         </div>
       </div>
-      {projectId ? <PhoneBottomNav base={base} needs={needs.total} /> : null}
+      {projectId ? <PhoneBottomNav base={base} needs={needs.total} review={navCounts.review} /> : null}
       <ActivityPanel
         ref={panelRef}
         id={PANEL_ID}

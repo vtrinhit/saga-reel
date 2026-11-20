@@ -3,7 +3,12 @@ import {
   cellKey,
   countChars,
   createCalls,
+  draftFrom,
   durationLimit,
+  fullCaption,
+  metaOverride,
+  metaProblems,
+  parseHashtags,
   hashtagsOf,
   issues,
   latestPackage,
@@ -12,7 +17,7 @@ import {
   verdictLabel,
 } from './exportMatrix';
 import { aspectRatio, platformsForAspect, safeInsets } from './studioSafeZone';
-import { latestPlayable, waitingGate, type ExportRow, type RenderRow } from './studioData';
+import { latestPlayable, videoSources, waitingGate, type ExportRow, type RenderRow } from './studioData';
 
 const rep = (errors: string[] = [], warnings: string[] = []) => ({
   errors: errors.map((code) => ({ code, message: code })),
@@ -39,6 +44,32 @@ describe('ô xuất', () => {
       { sequence_ids: [7], platforms: ['tiktok'], langs: ['en', 'vi'] },
       { sequence_ids: [7], platforms: ['fb-reels', 'yt-shorts'], langs: ['vi'] },
     ]);
+  });
+  it('ô có metadata sửa tay: lời gọi riêng kèm metadata cho tập đang xem; tập xuất cùng dùng bản sinh ra', () => {
+    const md = { title: 'Về quê — tập 1' };
+    const calls = createCalls([7, 8], [cellKey('tiktok', 'vi'), cellKey('yt-shorts', 'vi')], { [cellKey('tiktok', 'vi')]: md });
+    expect(calls).toEqual([
+      { sequence_ids: [7], platforms: ['tiktok'], langs: ['vi'], metadata: md },
+      { sequence_ids: [7, 8], platforms: ['yt-shorts'], langs: ['vi'] },
+      { sequence_ids: [8], platforms: ['tiktok'], langs: ['vi'] },
+    ]);
+    expect(createCalls([7], [cellKey('tiktok', 'vi')], { [cellKey('tiktok', 'vi')]: md })).toEqual([
+      { sequence_ids: [7], platforms: ['tiktok'], langs: ['vi'], metadata: md },
+    ]);
+  });
+  it('metadata: hashtag, caption đầy đủ, chỉ gửi khoá đã sửa, giới hạn', () => {
+    // dữ liệu thật của export.check (mẫu): hashtag chưa có # và có dấu cách
+    const gen = { title: 'Về quê', description: 'Về quê', hashtags: ['Truyện bà cháu', 'series'], source: 'template' };
+    const d = draftFrom(gen);
+    expect(d.hashtags).toBe('#Truyện bà cháu, #series');
+    expect(parseHashtags('#a, b\n#a ,  ,c d')).toEqual(['#a', '#b', '#c d']);
+    expect(fullCaption(d)).toBe('Về quê\n\n#Truyện bà cháu #series');
+    expect(metaOverride(d, gen)).toBeNull();
+    expect(metaOverride({ ...d, title: 'Tập 1: Về quê ' }, gen)).toEqual({ title: 'Tập 1: Về quê' });
+    expect(metaOverride({ ...d, hashtags: 'series' }, gen)).toEqual({ hashtags: ['#series'] });
+    const l = metaLimits({ title: { max_chars: 10 }, caption: { max_chars: 12 }, hashtags: { max: 1 } });
+    expect(metaProblems(d, l)).toEqual(['Mô tả + hashtag dài hơn 12 ký tự', '2 hashtag, tối đa 1']);
+    expect(metaProblems({ title: 'ngắn', description: 'x', hashtags: '' }, l)).toEqual([]);
   });
   it('đếm ký tự UTF-16 / code point, hashtag', () => {
     expect(countChars('😀a')).toBe(2);
@@ -85,11 +116,16 @@ describe('safe-zone', () => {
 });
 
 describe('studioData', () => {
-  it('gate đang chờ', () => {
-    expect(waitingGate({ 'gate:animatic': { status: 'waiting' } })).toBe('animatic');
-    expect(waitingGate({ final: 'waiting' })).toBe('final');
-    expect(waitingGate({ 'gate:pilot': { status: 'waiting', enabled: false } })).toBeNull();
+  it('gate đang chờ: đọc sequence.pipeline.run (waiting_review + waiting.gate)', () => {
+    expect(waitingGate({ run: { status: 'waiting_review', waiting: { gate: 'animatic' } }, memory: {} })).toBe('animatic');
+    expect(waitingGate({ run: { status: 'waiting_review', waiting: { gate: 'gate:final' } } })).toBe('final');
+    expect(waitingGate({ run: { status: 'waiting_input', waiting: { step: 'split_clips' } } })).toBeNull();
+    expect(waitingGate({ memory: {} })).toBeNull();
     expect(waitingGate(null)).toBeNull();
+  });
+  it('độ dài nguồn video từ clip.list', () => {
+    const c = (id: number, vt: number | null, src: number | null) => ({ id, video_take_id: vt, source_duration_ms: src }) as never;
+    expect([...videoSources([c(1, 4, 6000), c(2, null, 5000), c(3, 7, null)])]).toEqual([[1, 6000]]);
   });
   it('bản dựng xem được mới nhất', () => {
     const r = (id: number, status: string, url: string | null) => ({ id, status, url }) as RenderRow;

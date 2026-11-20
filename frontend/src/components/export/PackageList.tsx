@@ -4,7 +4,7 @@
  */
 import { Check, Copy, Download, FolderOpen, LoaderCircle, TriangleAlert, X } from 'lucide-react';
 import { useState } from 'react';
-import { callOpLoose } from '../../api/opsLoose';
+import { callOp } from '../../api/ops';
 import { cn, focusRing } from '../../lib/cn';
 import { langLabel, PACKAGE_STATUS } from '../../lib/exportMatrix';
 import { toastError, type ExportRow, type SequenceRow } from '../../lib/studioData';
@@ -25,7 +25,7 @@ export function PackageList({ rows, sequences, platformName, progressFor, hideFo
   const [open, setOpen] = useState<number | null>(null);
   const openFolder = async (id: number) => {
     try {
-      const r = await callOpLoose<{ path: string }>('export.open_folder', { id });
+      const r = (await callOp('export.open_folder', { id })) as unknown as { path: string };
       setFolder((f) => ({ ...f, [id]: r.path }));
     } catch (e) {
       toastError('Không mở được thư mục gói', e);

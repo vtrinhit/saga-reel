@@ -1,29 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import type { SequenceInfo } from '../api/types';
-import { adaptSummary, buildMatrixRows, cellText, inGroup, rowStages, type GroupNode, type PipelineSummary } from './overviewMatrix';
+import { buildMatrixRows, cellText, inGroup, rowStages, type GroupNode, type PipelineSummary } from './overviewMatrix';
 
 const seq = (id: number, extra: Partial<SequenceInfo> = {}): SequenceInfo => ({
   id, project_id: 1, group_id: null, key: `ep${id}`, number: id, title: `Tập ${id}`, synopsis: '', script: '', status: 'draft',
   workflow_key: '', gates: {}, pipeline: {}, counts: { clips: 0 }, ...extra,
 });
 
-describe('adaptSummary + rowStages', () => {
+describe('rowStages', () => {
   it('danh sách bước của pipeline.status → 8 chặng có trạng thái thật', () => {
     const s: PipelineSummary = {
-      sequence_id: 1, status: 'waiting', current: 'gate:storyboard', waiting: null, progress: 40,
+      sequence_id: 1, status: 'waiting_review', current: 'gate:storyboard', waiting: { gate: 'storyboard' }, progress: 40,
       steps: [
         { name: 'outline', enabled: true, status: 'done' },
         { name: 'write_script', enabled: true, status: 'done' },
         { name: 'split_clips', enabled: true, status: 'done' },
-        { name: 'generate_images', enabled: true, status: 'running' },
-        { name: 'gate:storyboard', enabled: true, status: 'waiting' },
+        { name: 'generate_images', enabled: true, status: 'done' },
+        { name: 'gate:storyboard', enabled: true, status: 'waiting_review' },
         { name: 'generate_videos', enabled: false, status: 'skipped' },
       ],
       gates: {},
     };
-    const { workflow, pipeline } = adaptSummary(s);
-    expect(workflow).toHaveLength(6);
-    expect((pipeline as { steps: Record<string, unknown> }).steps.outline).toEqual({ status: 'done' });
     const st = rowStages(seq(1, { counts: { clips: 48 } }), s);
     expect(st).toHaveLength(8);
     expect(st[0].status).toBe('done');

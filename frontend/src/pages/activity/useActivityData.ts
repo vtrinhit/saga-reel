@@ -58,23 +58,38 @@ export function useProjectList(enabled: boolean) {
   });
 }
 
-/** `pipeline.status` cho từng dự án (hộp toàn app gọi theo vòng — backend chưa có bản toàn app). */
-export function usePipelines(projectIds: number[]) {
-  const qs = useQueries({
-    queries: projectIds.map((pid) => ({
-      queryKey: activityKeys.pipelines(pid),
-      queryFn: async () => {
-        const r = (await callOp('pipeline.status', { project_id: pid, active_only: false, limit: 500 })) as unknown as { items: PipelineSummary[] };
-        return (r.items ?? []).map((s) => ({ ...s, project_id: pid }));
-      },
-      retry: false,
-    })),
+/**
+ * `pipeline.status`: một dự án (`project_id`) hoặc toàn app (bỏ trống — server phân trang theo `next_cursor`, mỗi item
+ * kèm `project_id`). Hộp toàn app đọc tới 4 trang × 500 tập.
+ */
+export function usePipelines(projectId: number | null) {
+  const q = useQuery({
+    queryKey: activityKeys.pipelines(projectId ?? 0),
+    queryFn: async () => {
+      if (projectId != null) {
+        const r = (await callOp('pipeline.status', { project_id: projectId, active_only: false, limit: 500 })) as unknown as { items: PipelineSummary[] };
+        return (r.items ?? []).map((s) => ({ ...s, project_id: s.project_id ?? projectId }));
+      }
+      const out: PipelineSummary[] = [];
+      let cursor: number | undefined;
+      for (let page = 0; page < 4; page++) {
+        const r = (await callOp('pipeline.status', { active_only: true, limit: 500, ...(cursor != null ? { cursor } : {}) })) as unknown as {
+          items: PipelineSummary[];
+          next_cursor: number | null;
+        };
+        out.push(...(r.items ?? []));
+        if (r.next_cursor == null) break;
+        cursor = r.next_cursor;
+      }
+      return out;
+    },
+    retry: false,
   });
   return {
-    data: qs.flatMap((q) => q.data ?? []) as (PipelineSummary & { project_id: number })[],
-    isLoading: qs.some((q) => q.isLoading),
-    error: qs.find((q) => q.error)?.error ?? null,
-    refetch: () => Promise.all(qs.map((q) => q.refetch())),
+    data: (q.data ?? []) as (PipelineSummary & { project_id?: number })[],
+    isLoading: q.isLoading,
+    error: q.error,
+    refetch: () => q.refetch(),
   };
 }
 
@@ -110,7 +125,31 @@ export interface TokenBrief {
   name: string;
   role: string;
   active: boolean;
+  /** Agent đang tạm dừng (`token.suspend` / `agents.pause_all`): request bị từ chối 403 tới khi bật lại. */
+  suspended?: boolean;
+  local_only?: boolean;
   last_used_at: string | null;
+}
+
+/** Tạm dừng / bật lại một agent (theo tên token) hoặc mọi agent. */
+export function useAgentControl() {
+  const qc = useQueryClient();
+  const done = (msg: string) => {
+    toast({ message: msg, tone: 'success' });
+    void qc.invalidateQueries({ queryKey: activityKeys.tokens });
+  };
+  const fail = (e: unknown) => toast({ message: errorMessage(e, 'Không đổi được trạng thái agent.'), tone: 'error' });
+  const one = useMutation({
+    mutationFn: (v: { name: string; pause: boolean }) => callOp(v.pause ? 'token.suspend' : 'token.resume', { name: v.name }),
+    onSuccess: (_r, v) => done(v.pause ? `Đã tạm dừng agent ${v.name}: mọi yêu cầu của agent này bị từ chối tới khi bật lại.` : `Đã bật lại agent ${v.name}.`),
+    onError: fail,
+  });
+  const all = useMutation({
+    mutationFn: (pause: boolean) => callOp(pause ? 'agents.pause_all' : 'agents.resume_all'),
+    onSuccess: (_r, pause) => done(pause ? 'Đã tạm dừng mọi agent.' : 'Đã bật lại mọi agent.'),
+    onError: fail,
+  });
+  return { one, all };
 }
 
 /** Token API (tên token = tên agent). Người xem bị 403 → rỗng. */

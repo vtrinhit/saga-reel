@@ -33,13 +33,13 @@ const clip = (id: number, dur: number, extra: Record<string, unknown> = {}) => (
 
 const OPS: Record<string, unknown> = {
   'project.get': { id: 3, key: 'p', name: 'Kiếp Hồ Ly', aspect: '9:16', language: 'vi', languages: ['vi', 'en'], target_platforms: ['tiktok'], settings: {} },
-  'sequence.get': { id: 3, project_id: 3, number: 1, title: 'Đêm trăng máu', script: 'CẢNH 1', gates: { 'gate:animatic': { status: 'waiting' } }, pipeline: {}, counts: { clips: 3 }, settings: {} },
+  'sequence.get': { id: 3, project_id: 3, number: 1, title: 'Đêm trăng máu', script: 'CẢNH 1', gates: {}, pipeline: { run: { workflow: 'full_auto', status: 'waiting_review', waiting: { gate: 'animatic' }, steps: [] }, memory: {} }, counts: { clips: 3 }, settings: {} },
   'sequence.list': { items: [{ id: 3, project_id: 3, number: 1, title: 'Đêm trăng máu', target_platforms: [] }], next_cursor: null },
   'clip.list': { items: [clip(1, 4000), clip(2, 3000, { link: 'fade' }), clip(3, 5000, { transition: { name: 'fadeblack' } })], next_cursor: null },
   'dialogue.list': {
     items: [
       { id: 10, clip_id: 1, text: 'Đêm ấy, trăng ngả màu máu.', offset_ms: 0, subtitle: true, source: 'tts', speaker_asset_id: null, translations: {} },
-      { id: 11, clip_id: 2, text: 'Đừng gõ chuông ấy.', offset_ms: 200, subtitle: true, source: 'tts', speaker_asset_id: 5, audio_take_id: 4, translations: { en: "Don't ring it." } },
+      { id: 11, clip_id: 2, text: 'Đừng gõ chuông ấy.', offset_ms: 200, subtitle: true, source: 'tts', speaker_asset_id: 5, audio_take_id: 4, audio_media_id: 41, audio_duration_ms: 1800, translations: { en: "Don't ring it." } },
     ],
   },
   'timeline.list': { items: [{ id: 20, sequence_id: 3, track: 'music', anchor_clip_id: 1, offset_ms: 0, end_anchor: null, duration_ms: null, media_id: 9, sound_id: 1, params: { volume_db: -18 } }] },
@@ -54,7 +54,7 @@ const OPS: Record<string, unknown> = {
   'audio.generate': { estimate: { lines: 1, cached: 0 } },
   'audio.subtitle_preview': { cues: [{ start_ms: 0, end_ms: 1000, text: 'Đêm ấy,', warnings: [] }] },
   'export.list': [],
-  'export.check': { errors: [], warnings: [{ code: 'no_final_render', message: 'Tập chưa có bản dựng cuối' }], info: { duration_ms: 12000, size: 40_000_000, estimated: true } },
+  'export.check': { errors: [], warnings: [{ code: 'no_final_render', message: 'Tập chưa có bản dựng cuối' }], info: { duration_ms: 12000, size: 40_000_000, estimated: true }, metadata: { title: 'Đêm trăng máu', description: 'Lạc An gõ chuông', hashtags: ['Kiếp Hồ Ly', 'series'], source: 'template' } },
   'auth.status': { authenticated: true, role: 'owner', local: true },
 };
 
@@ -159,5 +159,10 @@ describe('Task I (smoke)', () => {
     expect(t).toContain('Tập chưa có bản dựng cuối');
     expect(t).toContain('Chưa có gói nào');
     expect(container.querySelector('[role="region"][aria-label="Ma trận nền tảng × ngôn ngữ"]')).not.toBeNull();
+    // Metadata điền sẵn bản server sẽ sinh ra (export.check → metadata); hashtag thêm #.
+    expect((container.querySelector('#md-desc') as HTMLTextAreaElement | null)?.value).toBe('Lạc An gõ chuông');
+    expect((container.querySelector('#md-tags') as HTMLInputElement | null)?.value).toBe('#Kiếp Hồ Ly, #series');
+    expect(t).toContain('viết theo mẫu');
+    expect(t).toContain('Dùng khi xuất');
   });
 });

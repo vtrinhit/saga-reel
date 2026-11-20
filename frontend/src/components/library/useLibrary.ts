@@ -210,10 +210,10 @@ export function bibleName(b: BibleItem): string {
 const DRIFT_SEQ_MAX = 200;
 
 /**
- * Clip bị cờ lệch (drift) đang dùng tài sản: `sequence.list` rồi `clip.list(filter flags=drift, asset_id)` từng tập.
- * Backend chưa có số đếm drift theo tài sản — chỉ chạy cho tài sản đang mở, tối đa 200 tập.
+ * Danh sách clip bị cờ lệch (drift) đang dùng tài sản — để biết tập nào: `sequence.list` rồi `clip.list(flags=drift,
+ * asset_id)` từng tập. Số đếm có sẵn ở `asset.counts.drift`, nên chỉ quét khi số đó > 0 (`enabled`).
  */
-export function useAssetDrift(pid: number | null, assetId: number | null) {
+export function useAssetDrift(pid: number | null, assetId: number | null, enabled = true) {
   return useQuery({
     queryKey: libKeys.drift(pid ?? -1, assetId ?? -1),
     queryFn: async () => {
@@ -233,7 +233,7 @@ export function useAssetDrift(pid: number | null, assetId: number | null) {
       }
       return { clips, numbers };
     },
-    enabled: pid != null && assetId != null,
+    enabled: enabled && pid != null && assetId != null,
     staleTime: 30_000,
     retry: false,
   });

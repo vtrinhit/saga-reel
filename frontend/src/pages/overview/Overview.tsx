@@ -3,7 +3,6 @@ import { CircleCheck, Copy, Download, LayoutDashboard, MoreHorizontal, Trash2, U
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { callOp } from '../../api/ops';
-import { callOpLoose } from '../../api/opsLoose';
 import type { BudgetStatus, ProjectInfo, SequenceInfo, SequencePage } from '../../api/types';
 import { errText } from '../../components/clip/useRegenerate';
 import { EpisodeList, ProductionMatrix } from '../../components/pipeline/ProductionMatrix';
@@ -15,6 +14,7 @@ import { ErrorState } from '../../components/ui/ErrorState';
 import { Menu } from '../../components/ui/Menu';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { SkeletonRows } from '../../components/ui/Skeleton';
+import { useWorkflowPresets, workflowKeyOf } from '../../components/shell/useShellData';
 import { useServerEvent } from '../../lib/eventHub';
 import { buildMatrixRows, inGroup, type GroupNode, type PipelineSummary } from '../../lib/overviewMatrix';
 import { toast } from '../../stores/toast';
@@ -33,7 +33,6 @@ function useMedia(q: string): boolean {
   return m;
 }
 
-const PLATFORM: Record<string, string> = { tiktok: 'TikTok', reels: 'Reels', shorts: 'Shorts', youtube: 'YouTube', facebook: 'Facebook' };
 
 /** `/p/:pid/overview` — bàn sản xuất: số liệu thật, ma trận tập × chặng, Cần bạn. */
 export function Overview() {
@@ -48,7 +47,7 @@ export function Overview() {
 
   const project = useQuery({
     queryKey: ['shell', 'project', pid],
-    queryFn: () => callOpLoose<ProjectInfo>('project.get', { id: pid }),
+    queryFn: async () => (await callOp('project.get', { id: pid })) as unknown as ProjectInfo,
     staleTime: 60_000,
     retry: false,
   });
@@ -58,7 +57,7 @@ export function Overview() {
       const out: SequenceInfo[] = [];
       let cursor: string | null = null;
       for (let g = 0; g < 20; g++) {
-        const page: SequencePage = await callOpLoose<SequencePage>('sequence.list', { project_id: pid, limit: 500, cursor });
+        const page = (await callOp('sequence.list', { project_id: pid, limit: 500, ...(cursor ? { cursor } : {}) })) as unknown as SequencePage;
         out.push(...page.items);
         if (!page.next_cursor) break;
         cursor = page.next_cursor;
@@ -85,6 +84,20 @@ export function Overview() {
     staleTime: 60_000,
     retry: false,
   });
+  // Tên hiển thị của thể loại / nền tảng (key → "Phim bộ", "TikTok") — preset đổi hiếm.
+  const names = useQuery({
+    queryKey: ['overview', 'preset-names'],
+    queryFn: async () => {
+      const out = new Map<string, string>();
+      for (const kind of ['genre', 'platform'] as const) {
+        const r = (await callOp('preset.list', { kind })) as unknown as { items: { key: string; name: string }[] };
+        for (const it of r.items ?? []) out.set(`${kind}:${it.key}`, it.name);
+      }
+      return out;
+    },
+    staleTime: 10 * 60_000,
+    retry: false,
+  });
   const budget = useQuery({
     queryKey: ['shell', 'budget'],
     queryFn: async () => (await callOp('budget.status')) as unknown as BudgetStatus,
@@ -93,8 +106,13 @@ export function Overview() {
   });
   const exports = useQuery({
     queryKey: ['overview', pid, 'exports'],
-    queryFn: async () =>
-      ((await callOpLoose<{ items: { sequence_id: number | null }[] }>('export.list', { project_id: pid, status: 'done', limit: 500 })).items ?? []),
+    queryFn: async () => {
+      // `export.list` trả mảng trần (chưa phải `{items}`) — đọc cả hai dạng.
+      const r = (await callOp('export.list', { project_id: pid, status: 'done', limit: 500 })) as unknown as
+        | { sequence_id: number | null }[]
+        | { items: { sequence_id: number | null }[] };
+      return Array.isArray(r) ? r : (r.items ?? []);
+    },
     staleTime: 60_000,
     retry: false,
   });
@@ -109,6 +127,7 @@ export function Overview() {
     }, 800);
   };
   useServerEvent('entity.changed', kick);
+  useServerEvent('pipeline.updated', kick);
   useServerEvent('resync', kick);
   useServerEvent('job.updated', (e) => {
     const j = e.data as { type?: string; project_id?: number; status?: string } | null;
@@ -122,8 +141,12 @@ export function Overview() {
   const [collapsed, setCollapsed] = useState<Set<number | null>>(() => new Set());
   const all = seqs.data ?? [];
   const visible = useMemo(() => (arc == null ? all : all.filter((s) => inGroup(s, arc, groups))), [all, arc, groups]);
-  const rows = useMemo(() => buildMatrixRows(visible, status.data ?? new Map(), groups, collapsed), [visible, status.data, groups, collapsed]);
-  const allRows = useMemo(() => buildMatrixRows(all, status.data ?? new Map(), groups), [all, status.data, groups]);
+  const workflows = useWorkflowPresets(true);
+  const workflowOf = useCallback((s: SequenceInfo) => workflows.data?.get(workflowKeyOf(s)) ?? null, [workflows.data]);
+  const rows = useMemo(
+    () => buildMatrixRows(visible, status.data ?? new Map(), groups, collapsed, workflowOf),
+    [visible, status.data, groups, collapsed, workflowOf],
+  );
 
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const [anchor, setAnchor] = useState<number | null>(null);
@@ -152,7 +175,8 @@ export function Overview() {
   const scripted = all.filter((s) => s.script?.trim()).length;
   const exported = new Set((exports.data ?? []).map((e) => e.sequence_id).filter((x) => x != null)).size;
   const img = budget.data?.image;
-  const platforms = (p?.target_platforms ?? []).map((x) => PLATFORM[String(x)] ?? String(x)).join(', ');
+  const platforms = (p?.target_platforms ?? []).map((x) => names.data?.get(`platform:${x}`) ?? String(x)).join(', ');
+  const genre = p?.genre_key ? (names.data?.get(`genre:${p.genre_key}`) ?? p.genre_key) : null;
 
   const duplicate = async () => {
     for (const id of selIds) {
@@ -195,6 +219,8 @@ export function Overview() {
     void qc.invalidateQueries({ queryKey: ['shell'] });
   };
   const firstSel = all.find((s) => s.id === selIds[0]);
+  const selWorkflows = new Set(all.filter((s) => selected.has(s.id)).map((s) => workflowKeyOf(s)));
+  const commonWorkflow = selWorkflows.size === 1 ? [...selWorkflows][0] : null;
 
   const stat = (value: React.ReactNode, label: string, sub?: React.ReactNode) => (
     <div className="grid min-w-0 content-start gap-0.5 bg-bg-1 px-4 py-3">
@@ -203,7 +229,7 @@ export function Overview() {
     </div>
   );
 
-  const needs = <NeedsColumn base={base} rows={allRows} />;
+  const needs = <NeedsColumn base={base} projectId={pid} />;
 
   return (
     <div className="grid min-w-0 gap-5">
@@ -211,7 +237,7 @@ export function Overview() {
         <div className="grid min-w-0 gap-1">
           <h1 className="truncate py-px text-2xl font-semibold">{p?.name ?? (project.isError ? `Dự án ${pid}` : '…')}</h1>
           <p className="text-sm text-fg-2">
-            {[p?.genre_key, p?.aspect, platforms || null, all.length ? `${scripted} / ${all.length} tập có kịch bản` : null].filter(Boolean).join(' · ')}
+            {[genre, p?.aspect, platforms || null, all.length ? `${scripted} / ${all.length} tập có kịch bản` : null].filter(Boolean).join(' · ')}
           </p>
         </div>
         <Link
@@ -285,7 +311,7 @@ export function Overview() {
         <Button icon={CircleCheck} onClick={() => navigate(`${base}/review?seq=${selIds.join(',')}&part=image`)}>
           Duyệt các take
         </Button>
-        <RunToGateAction sequenceIds={selIds} projectId={pid} />
+        <RunToGateAction sequenceIds={selIds} projectId={pid} workflowKey={commonWorkflow} />
         <Menu
           label="Thêm hành động cho tập đã chọn"
           align="right"
