@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import ForeignKey, Index, Text, text
+from sqlalchemy import ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sagareel.db.base import Base, JSONDict, JSONList, Tracked
@@ -45,6 +45,8 @@ class ChannelStudy(Tracked, Base):
 
 class SkillFile(Tracked, Base):
     __tablename__ = "skill_file"
+    # Duy nhất trong các dòng chưa xoá, không phân biệt hoa thường (Windows; migration 0008).
+    __table_args__ = (Index("ux_skill_file_path", "path", unique=True, sqlite_where=text("deleted_at IS NULL")),)
 
-    path: Mapped[str] = mapped_column(unique=True)
+    path: Mapped[str] = mapped_column(String(collation="NOCASE"))
     body: Mapped[str] = mapped_column(Text, default="")

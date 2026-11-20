@@ -44,5 +44,6 @@ async def export_zip(request: Request, export_id: int) -> StreamingResponse:
         raise Forbidden("Chỉ chủ được tải gói xuất; người xem chỉ xem trực tiếp.")
     services: Services = request.app.state.services
     folder, name = await anyio.to_thread.run_sync(_locate, services, export_id)
-    headers = {"Content-Disposition": f"attachment; filename=\"export-{export_id}.zip\"; filename*=UTF-8''{quote(name)}.zip"}
+    headers = {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox; default-src 'none'",
+               "Content-Disposition": f"attachment; filename=\"export-{export_id}.zip\"; filename*=UTF-8''{quote(name)}.zip"}
     return StreamingResponse(package.iter_zip(folder), media_type="application/zip", headers=headers)

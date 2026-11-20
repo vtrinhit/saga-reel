@@ -10,8 +10,10 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from sagareel.core.context import OpContext
+from sagareel.core.errors import ValidationFailed
 from sagareel.core.ops import op
 from sagareel.services import entities
+from sagareel.services.projects import KEY_RE
 from sagareel.services.spec import export
 from sagareel.services.spec import models as m
 from sagareel.services.spec import plan as spec_plan
@@ -85,15 +87,21 @@ def _counts(spec: m.ProjectSpec) -> dict[str, int]:
 def export_spec(ctx: OpContext, project_id: int, include: list[str] | None, save: bool) -> dict[str, Any]:
     with ctx.services.db.session() as s:
         project = entities.get(s, "project", project_id)
+        if not KEY_RE.fullmatch(project.key or ""):
+            raise ValidationFailed(f"Mã dự án '{project.key}' không hợp lệ để xuất file khai báo.",
+                                   code="invalid_path_part", hint="Đổi mã dự án (chữ không dấu, số, '-', '_').")
         spec = export.build(s, project, include)
     text = export.to_yaml(spec)
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     rel = None
     if save:
-        d = spec_plan.save_dir(ctx.services.settings)
-        d.mkdir(parents=True, exist_ok=True)
+        d = spec_plan.save_dir(ctx.services.settings).resolve()
         name = f"{spec.project.key}-{datetime.now():%Y%m%d-%H%M%S}.yaml"
-        (d / name).write_text(text, encoding="utf-8", newline="\n")
+        target = (d / name).resolve()
+        if target.parent != d:  # tên file không bao giờ được thoát khỏi outputs/specs
+            raise ValidationFailed("Tên file khai báo nằm ngoài thư mục outputs/specs.", code="invalid_path_part")
+        d.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8", newline="\n")
         rel = f"specs/{name}"
     return {"yaml": text, "path": rel, "sha256": digest, "counts": _counts(spec)}
 

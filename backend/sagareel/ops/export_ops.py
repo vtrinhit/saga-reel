@@ -158,7 +158,7 @@ class ExportIdParams(BaseModel):
 
 @op("export.check", summary="Kiểm tra một tập trước khi xuất: độ dài, dung lượng, loudness, phụ đề ngoài vùng an toàn, "
     "metadata vượt giới hạn, nhạc thiếu giấy phép → {errors[], warnings[]}", params=ExportCheckParams,
-    read_only=True, idempotent=True, mcp="tool")
+    read_only=True, idempotent=True, viewer=False, mcp="tool")
 async def export_check(ctx: OpContext, p: ExportCheckParams) -> dict:
     return await package.precheck(ctx.services, p.sequence_id, p.platform, p.lang, split_parts=p.split_parts,
                                   boxes=p.cue_boxes, metadata_override=p.metadata)
@@ -178,7 +178,7 @@ async def export_create(ctx: OpContext, p: ExportCreateParams) -> dict:
             rep = await package.precheck(services, u["sequence_id"], u["platform"], u["lang"],
                                          split_parts=p.options.split_parts, metadata_override=p.options.metadata)
             out.append({**u, "folder": package.rel_path(services, package.package_folder(
-                services, project["key"], u["seq_key"], u["platform"], u["lang"])), **rep})
+                services, project["key"], u["seq_key"], u["platform"], u["lang"], project_id=project["id"])), **rep})
         return {"dry_run": True, "packages": out}
     batch = uuid.uuid4().hex[:12]
 

@@ -45,6 +45,7 @@ from sagareel.core.uow import UnitOfWork
 from sagareel.db.base import utcnow
 from sagareel.db.models import Preset, Project, Sequence
 from sagareel.db.session import Database
+from sagareel.render import filters
 from sagareel.services import entities
 from sagareel.services.llm import DEFAULTS_DIR
 
@@ -269,6 +270,91 @@ class GenreData(BaseModel):
 
 
 _STRICT: dict[str, type[BaseModel]] = {"platform": PlatformData, "genre": GenreData}
+_DOC_KEYS = frozenset({"description", "label", "note"})
+_MOTION_TYPES = frozenset({"zoom", "pan", "zoom_pan", "shake", "post"})
+_ASS_COLOUR_RE = re.compile(r"^&H[0-9A-Fa-f]{6,8}$")
+_SUB_NUMERIC = frozenset({"fontsize", "outline", "shadow", "border_style", "alignment", "margin_l", "margin_r",
+                          "margin_v", "spacing", "max_lines", "max_words_per_chunk", "min_chunk_seconds",
+                          "max_chars_per_second", "lead_ms", "tail_ms", "active_scale"})
+
+
+def _try(errs: list[dict], loc: list[Any], fn, *args) -> None:
+    try:
+        fn(*args)
+    except ValueError as e:
+        errs.append({"loc": loc, "msg": str(e), "type": "value_error"})
+
+
+def _check_transition(data: dict[str, Any]) -> list[dict]:
+    """Preset chuyển cảnh: `xfade` (null = cắt) phải là tên transition của filter xfade; thời lượng là số."""
+    errs: list[dict] = []
+    for k, v in data.items():
+        if k == "xfade":
+            if v is not None:
+                _try(errs, [k], filters.check_xfade, v)
+        elif k in ("duration_ms", "new_scene_duration_ms"):
+            _try(errs, [k], filters.check_number, v, k, 0, 10_000)
+        elif k not in _DOC_KEYS or not isinstance(v, str):
+            errs.append({"loc": [k], "msg": f"Khoá '{k}' không hợp lệ cho preset chuyển cảnh.", "type": "extra"})
+    return errs
+
+
+def _check_motion(data: dict[str, Any]) -> list[dict]:
+    """Preset chuyển động: z/x/y là biểu thức zoompan an toàn; lớp hậu kỳ chỉ dùng bộ lọc cho phép."""
+    errs: list[dict] = []
+    t = data.get("type", "zoom")
+    if t not in _MOTION_TYPES:
+        errs.append({"loc": ["type"], "msg": f"type phải là một trong {', '.join(sorted(_MOTION_TYPES))}.",
+                     "type": "enum"})
+    for k, v in data.items():
+        if k == "type":
+            continue
+        if k == "filter":
+            _try(errs, [k], filters.check_post_filter, v)
+        elif k in ("z", "x", "y"):
+            _try(errs, [k], filters.check_motion_expr, v, k)
+        elif k in ("amt", "zoom", "zoom_base"):
+            _try(errs, [k], filters.check_number, v, k, 0, 10)
+        elif k in ("focus_x", "focus_y"):
+            _try(errs, [k], filters.check_number, v, k, 0, 1)
+        elif k == "post":
+            if not isinstance(v, list) or not all(isinstance(x, str) and KEY_RE.fullmatch(x) for x in v):
+                errs.append({"loc": [k], "msg": "post phải là danh sách key preset hậu kỳ.", "type": "type_error"})
+        elif k not in _DOC_KEYS or not isinstance(v, str):
+            errs.append({"loc": [k], "msg": f"Khoá '{k}' không hợp lệ cho preset chuyển động.", "type": "extra"})
+    if t == "post" and "filter" not in data:
+        errs.append({"loc": ["filter"], "msg": "Lớp hậu kỳ cần `filter`.", "type": "missing"})
+    if t != "post" and t in _MOTION_TYPES and not all(k in data for k in ("z", "x", "y")):
+        errs.append({"loc": ["z"], "msg": "Preset chuyển động cần z, x, y.", "type": "missing"})
+    return errs
+
+
+def _strings(v: Any, loc: list[Any], errs: list[dict]) -> None:
+    if isinstance(v, str):
+        if any(ord(c) < 32 for c in v):
+            errs.append({"loc": loc, "msg": "Chuỗi không được chứa ký tự điều khiển (xuống dòng…).", "type": "value_error"})
+    elif isinstance(v, dict):
+        for k, x in v.items():
+            _strings(x, [*loc, k], errs)
+    elif isinstance(v, list):
+        for i, x in enumerate(v):
+            _strings(x, [*loc, i], errs)
+
+
+def _check_subtitle_style(data: dict[str, Any]) -> list[dict]:
+    """Style phụ đề (ghi vào file ASS): không ký tự điều khiển (không chèn được dòng ASS), màu dạng `&HAABBGGRR`,
+    trường số là số."""
+    errs: list[dict] = []
+    _strings(data, [], errs)
+    for k, v in (data.get("colours") or {}).items() if isinstance(data.get("colours"), dict) else []:
+        if not isinstance(v, str) or not _ASS_COLOUR_RE.match(v):
+            errs.append({"loc": ["colours", k], "msg": "Màu ASS dạng &HAABBGGRR.", "type": "value_error"})
+    for k in _SUB_NUMERIC & set(data):
+        _try(errs, [k], filters.check_number, data[k], k, -10_000, 10_000)
+    return errs
+
+
+_CHECKS = {"transition": _check_transition, "motion": _check_motion, "subtitle_style": _check_subtitle_style}
 
 
 def validate_data(kind: str, data: Any) -> dict[str, Any]:
@@ -282,6 +368,12 @@ def validate_data(kind: str, data: Any) -> dict[str, Any]:
         data = json.loads(json.dumps(data, ensure_ascii=False))
     except (TypeError, ValueError):
         raise ValidationFailed("`data` của preset phải là JSON thuần.", code="preset_invalid") from None
+    check = _CHECKS.get(kind)
+    if check is not None:
+        errs = check(data)
+        if errs:
+            raise ValidationFailed(f"Preset {kind} không hợp lệ: {len(errs)} lỗi.", code="preset_invalid",
+                                   hint="Xem `extra.errors` để biết trường nào sai.", extra={"errors": errs})
     model = _STRICT.get(kind)
     if model is None:
         return data
@@ -308,7 +400,7 @@ def _read_file(path: Path, kind: str) -> dict[str, Any]:
         raise ValueError("file phải là một mapping YAML")
     key = str(raw.get("key") or path.stem)
     name = str(raw.get("name") or key)
-    if not KEY_RE.match(key):
+    if not KEY_RE.fullmatch(key):
         raise ValueError(f"key '{key}' không hợp lệ")
     body = raw["data"] if "data" in raw else {k: v for k, v in raw.items() if k not in _FILE_META}
     return {"kind": kind, "key": key, "name": name, "data": validate_data(kind, body)}
@@ -455,7 +547,7 @@ def _by_ref(s: Session, preset_id: int | None, kind: str | None, key: str | None
 
 
 def _check_key(key: str) -> None:
-    if not KEY_RE.match(key):
+    if not KEY_RE.fullmatch(key):
         raise ValidationFailed("Key preset chỉ gồm chữ thường, số, gạch ngang/gạch dưới (tối đa 64 ký tự).",
                                code="preset_key_invalid")
 
@@ -553,6 +645,16 @@ def _impact_extra(s: Session, rows: list[Any]) -> dict[str, Any]:
 
 
 entities.IMPACT_EXTRA["preset"] = _impact_extra
+
+
+def _patch_validator(s: Session, obj: Preset, values: dict[str, Any]) -> dict[str, Any]:
+    """`entity.patch` trên preset: đổi `data`/`kind` → kiểm lại như preset.create/update."""
+    if "data" in values or "kind" in values:
+        values = {**values, "data": validate_data(values.get("kind", obj.kind), values.get("data", obj.data))}
+    return values
+
+
+entities.PATCH_VALIDATORS["preset"] = _patch_validator
 
 
 def delete_preview(ctx: OpContext, preset_id: int) -> dict[str, Any]:

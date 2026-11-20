@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import ForeignKey, Index, Text, text
+from sqlalchemy import ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sagareel.db.base import Base, JSONDict, JSONList, Tracked
@@ -18,7 +18,7 @@ class Project(Tracked, Base):
     __tablename__ = "project"
     __table_args__ = (Index("ux_project_key", "key", unique=True, sqlite_where=text("deleted_at IS NULL")),)
 
-    key: Mapped[str]
+    key: Mapped[str] = mapped_column(String(collation="NOCASE"))  # không phân biệt hoa thường (migration 0008)
     name: Mapped[str]
     description: Mapped[str] = mapped_column(Text, default="")
     genre_key: Mapped[str] = mapped_column(default="series")

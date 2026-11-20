@@ -62,7 +62,7 @@ def _check_name(name: str, what: str = "Tên") -> str:
 
 
 def _check_key(key: str) -> None:
-    if not KEY_RE.match(key or ""):
+    if not KEY_RE.fullmatch(key or ""):
         raise _invalid("Mã chỉ gồm chữ không dấu, số, '-' hoặc '_' (tối đa 64 ký tự).", "key")
 
 

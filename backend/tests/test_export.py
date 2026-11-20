@@ -142,7 +142,7 @@ def test_package_contents_tiktok(client, settings, seq_id, fakes):
     assert out["job"]["status"] == "succeeded", out["job"]
     assert fakes.renders == [(seq_id, "final", "tiktok", "vi")]  # gọi pipeline.render với nền tảng + ngôn ngữ
     pkg = call(client, "export.get", {"id": out["export_ids"][0]}).json()
-    assert pkg["status"] == "done" and pkg["folder"] == "exports/demo/ep1/tiktok-vi"
+    assert pkg["status"] == "done" and pkg["folder"] == "exports/demo-1/ep1/tiktok-vi"
     folder = outdir(settings, pkg["folder"])
     names = {p.name for p in folder.iterdir()}
     assert {"video.mp4", "cover-1.jpg", "subtitles.srt", "subtitles.vtt", "metadata.json", "metadata.txt"} <= names
@@ -167,9 +167,9 @@ def test_package_contents_tiktok(client, settings, seq_id, fakes):
     assert codes == ["music_license_missing"]  # nhạc chưa có giấy phép bị báo
     assert all(w["code"] != "loudness_off_target" for w in pkg["checks"]["warnings"])
 
-    man = json.loads(outdir(settings, "exports/demo/_batches/" + out["batch"] + "/manifest.json").read_text(encoding="utf-8"))
+    man = json.loads(outdir(settings, "exports/demo-1/_batches/" + out["batch"] + "/manifest.json").read_text(encoding="utf-8"))
     assert man["packages"][0]["folder"] == pkg["folder"] and man["packages"][0]["status"] == "done"
-    rows = list(csv.DictReader(outdir(settings, f"exports/demo/_batches/{out['batch']}/manifest.csv")
+    rows = list(csv.DictReader(outdir(settings, f"exports/demo-1/_batches/{out['batch']}/manifest.csv")
                                .open(encoding="utf-8-sig", newline="")))
     assert rows[0]["platform"] == "tiktok" and rows[0]["errors"] == "1"
 
@@ -177,7 +177,7 @@ def test_package_contents_tiktok(client, settings, seq_id, fakes):
 def test_covers_have_title_inside_safe_zone_and_size_limits(client, settings, seq_id, fakes):
     fast(client, "fb-reels")
     out = export(client, seq_id, ["fb-reels"])
-    folder = outdir(settings, "exports/demo/ep1/fb-reels-vi")
+    folder = outdir(settings, "exports/demo-1/ep1/fb-reels-vi")
     assert out["job"]["status"] == "succeeded"
     covs = sorted(folder.glob("cover-*.jpg"))
     assert 1 <= len(covs) <= 3
@@ -219,7 +219,7 @@ def test_reframe_to_landscape(client, settings, seq_id, fakes, mode):
     fast(client, "yt-long")
     out = export(client, seq_id, ["yt-long"], options={"reframe": mode, "focus_x": 0.3, "focus_y": 0.2})
     assert out["job"]["status"] == "succeeded", out["job"]
-    info = probe.probe(outdir(settings, "exports/demo/ep1/yt-long-vi/video.mp4"))
+    info = probe.probe(outdir(settings, "exports/demo-1/ep1/yt-long-vi/video.mp4"))
     assert (info.width, info.height) == (1920, 1080)
     # video dọc 9:16 trên khung 16:9 + hộp phụ đề: YouTube dài không có vùng an toàn → không cảnh báo
     pkg = call(client, "export.get", {"id": out["export_ids"][0]}).json()
@@ -230,7 +230,7 @@ def test_split_into_parts(client, settings, seq_id, fakes):
     fast(client, "fb-reels", duration_s={"min": 0.1, "max": 0.5, "recommended": [0.1, 0.4]})
     out = export(client, seq_id, ["fb-reels"])
     assert out["job"]["status"] == "succeeded", out["job"]
-    folder = outdir(settings, "exports/demo/ep1/fb-reels-vi")
+    folder = outdir(settings, "exports/demo-1/ep1/fb-reels-vi")
     parts = sorted(folder.glob("video-part*.mp4"))
     assert [p.name for p in parts] == ["video-part1.mp4", "video-part2.mp4"] and not (folder / "video.mp4").exists()
     for p in parts:
@@ -264,7 +264,7 @@ def test_metadata_from_llm_caption_task(client, settings, seq_id, fakes):
     assert r.status_code == 200, r.text
     fast(client, "yt-shorts")
     out = export(client, seq_id, ["yt-shorts"], options={"covers": 1})
-    folder = outdir(settings, "exports/demo/ep1/yt-shorts-vi")
+    folder = outdir(settings, "exports/demo-1/ep1/yt-shorts-vi")
     md = json.loads((folder / "metadata.json").read_text(encoding="utf-8"))
     assert md["source"] == "llm" and md["title"] == "Tiêu đề do AI"
     assert md["hashtags"] == ["#PhimNgắn", "#CổTích"] and md["description"] == "Mô tả do AI viết."
@@ -276,7 +276,7 @@ def test_llm_garbage_falls_back_to_template(client, settings, seq_id, fakes):
                                      "options": {"replies": {"caption": "{\"title\": 5}"}}})
     fast(client, "yt-shorts")
     export(client, seq_id, ["yt-shorts"], options={"covers": 1})
-    md = json.loads((outdir(settings, "exports/demo/ep1/yt-shorts-vi") / "metadata.json").read_text(encoding="utf-8"))
+    md = json.loads((outdir(settings, "exports/demo-1/ep1/yt-shorts-vi") / "metadata.json").read_text(encoding="utf-8"))
     assert md["source"] == "template"
 
 
@@ -290,20 +290,20 @@ def test_batch_platform_x_lang_and_supersede(client, settings, seq_id, fakes):
     assert out["job"]["status"] == "succeeded" and len(out["export_ids"]) == 4
     assert {(r[2], r[3]) for r in fakes.renders} == {("tiktok", "vi"), ("tiktok", "en"), ("fb-reels", "vi"), ("fb-reels", "en")}
     for sub in ("tiktok-vi", "tiktok-en", "fb-reels-vi", "fb-reels-en"):
-        assert (outdir(settings, "exports/demo/ep1") / sub / "video.mp4").is_file()
+        assert (outdir(settings, "exports/demo-1/ep1") / sub / "video.mp4").is_file()
     again = export(client, seq_id, ["tiktok"], langs=["vi"], options={"covers": 1})
     old = call(client, "export.get", {"id": out["export_ids"][0]}).json()
     new = call(client, "export.get", {"id": again["export_ids"][0]}).json()
     assert old["status"] == "superseded" and new["status"] == "done"
     listed = call(client, "export.list", {"project_id": new["project_id"]}).json()["items"]
     assert [r["id"] for r in listed].count(old["id"]) == 0 and len(listed) == 4
-    assert not list(outdir(settings, "exports/demo/ep1").glob("*.part"))  # thư mục tạm đã đổi tên
+    assert not list(outdir(settings, "exports/demo-1/ep1").glob("*.part"))  # thư mục tạm đã đổi tên
 
 
 def test_failed_render_marks_package_and_keeps_old_content(client, settings, seq_id, fakes):
     fast(client, "tiktok")
     first = export(client, seq_id, ["tiktok"], options={"covers": 1})
-    folder = outdir(settings, "exports/demo/ep1/tiktok-vi")
+    folder = outdir(settings, "exports/demo-1/ep1/tiktok-vi")
     before = (folder / "video.mp4").read_bytes()
     fakes.fail = True
     out = export(client, seq_id, ["tiktok"], options={"covers": 1})
@@ -340,7 +340,7 @@ def test_create_dry_run_lists_packages_without_side_effects(client, settings, se
     r = call(client, "export.create", {"sequence_ids": [seq_id], "platforms": ["tiktok", "yt-long"], "dry_run": True})
     body = r.json()
     assert r.status_code == 200 and body["dry_run"] is True and len(body["packages"]) == 2
-    assert body["packages"][0]["folder"] == "exports/demo/ep1/tiktok-vi" and "errors" in body["packages"][0]
+    assert body["packages"][0]["folder"] == "exports/demo-1/ep1/tiktok-vi" and "errors" in body["packages"][0]
     assert call(client, "export.list", {}).json() == {"items": []} and fakes.renders == []
     assert not (settings.outputs_dir / "exports").exists()
 
@@ -403,7 +403,7 @@ def test_zip_stream_and_open_folder(client, settings, seq_id, fakes):
     assert zf.testzip() is None
     names = set(zf.namelist())
     assert {"video.mp4", "cover-1.jpg", "metadata.json", "metadata.txt", "subtitles.srt"} <= names
-    folder = outdir(settings, "exports/demo/ep1/tiktok-vi")
+    folder = outdir(settings, "exports/demo-1/ep1/tiktok-vi")
     assert zf.read("video.mp4") == (folder / "video.mp4").read_bytes()
     assert json.loads(zf.read("metadata.json"))["lang"] == "vi"
     op = call(client, "export.open_folder", {"id": eid}).json()

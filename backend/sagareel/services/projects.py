@@ -70,7 +70,7 @@ def _check_name(name: str) -> str:
 
 
 def _check_key(key: str) -> None:
-    if not KEY_RE.match(key):
+    if not KEY_RE.fullmatch(key):
         raise ValidationFailed(
             "Mã dự án chỉ gồm chữ không dấu, số, '-' hoặc '_' (tối đa 64 ký tự).",
             extra={"errors": [{"loc": ["key"], "msg": "Mã dự án không hợp lệ.", "type": "pattern"}]},

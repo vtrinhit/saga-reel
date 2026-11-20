@@ -136,6 +136,35 @@ def _probe_fields(path: Path, kind: str) -> tuple[int | None, int | None, int | 
     return None, None, None, {}
 
 
+# Định dạng ảnh Pillow nhận ra → mime phục vụ (raster; không có SVG).
+_PIL_MIME = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp", "GIF": "image/gif", "BMP": "image/bmp"}
+_AV_EXT_MIME = {k: v for k, v in _MIME.items() if v.startswith(("video/", "audio/"))}
+
+
+def sniff(path: Path) -> tuple[str, str]:
+    """(kind, mime) suy từ **nội dung** file (không tin tên/khai báo): ảnh raster qua Pillow, video/âm thanh qua
+    ffprobe; còn lại → ("other", "application/octet-stream"). Không bao giờ ném lỗi."""
+    try:
+        with Image.open(path) as im:
+            fmt = (im.format or "").upper()
+        if fmt in _PIL_MIME:
+            return "image", _PIL_MIME[fmt]
+    except (UnidentifiedImageError, OSError, ValueError):
+        pass
+    try:
+        info = probe(path)
+    except Exception:  # noqa: BLE001 — không phải media
+        return "other", "application/octet-stream"
+    ext_mime = _AV_EXT_MIME.get(path.suffix.lower())
+    if ext_mime and ext_mime.startswith("audio/") and info.acodec:  # mp3 có ảnh bìa vẫn là âm thanh
+        return "audio", ext_mime
+    if info.vcodec and (info.duration_ms or 0) > 0:
+        return "video", ext_mime if ext_mime and ext_mime.startswith("video/") else "video/mp4"
+    if info.acodec:
+        return "audio", ext_mime if ext_mime and ext_mime.startswith("audio/") else "audio/mpeg"
+    return "other", "application/octet-stream"
+
+
 @dataclass(frozen=True)
 class PreparedMedia:
     """File đã nằm trong kho, chờ `record` ghi bản ghi. `path` tương đối so với `data_dir` (POSIX)."""
