@@ -15,6 +15,10 @@
      (`security.csrf_for_session`). Riêng `/api/auth/login` chỉ kiểm Origin.
    Sai → 403 `csrf_failed`.
 
+4. **Header bảo mật** cho mọi response HTTP (kể cả lỗi của chính middleware): `nosniff`, `X-Frame-Options: DENY`,
+   `Referrer-Policy: same-origin` và CSP cho SPA đã build (script/style/font/media/kết nối cùng origin; `blob:` cho ảnh
+   xem trước chọn từ máy). Route đã tự đặt header (vd. `/media` với CSP `sandbox`) được giữ nguyên.
+
 Middleware nằm **trong** `UnhandledErrorMiddleware` nhưng **ngoài** handler lỗi của FastAPI, nên tự trả JSON chuẩn
 `payload()` cho lỗi của mình.
 """
@@ -41,6 +45,29 @@ CSRF_COOKIE = "sr_csrf"
 CSRF_HEADER = "x-sr-csrf"
 LOGIN_PATH = "/api/auth/login"
 _MAX_TOKEN_LEN = 512
+# React đặt style qua CSSOM (được phép); 'unsafe-inline' cho style chỉ phòng thư viện chèn thẻ <style>. Không cho
+# script inline/eval.
+SPA_CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; "
+           "media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; "
+           "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+SECURITY_HEADERS: tuple[tuple[bytes, bytes], ...] = (
+    (b"x-content-type-options", b"nosniff"),
+    (b"x-frame-options", b"DENY"),
+    (b"referrer-policy", b"same-origin"),
+    (b"content-security-policy", SPA_CSP.encode()),
+)
+
+
+def _with_security_headers(send: Send) -> Send:
+    async def wrapped(message: dict) -> None:
+        if message["type"] == "http.response.start":
+            headers = list(message.get("headers") or [])
+            present = {k.lower() for k, _ in headers}
+            headers += [(k, v) for k, v in SECURITY_HEADERS if k not in present]
+            message = {**message, "headers": headers}
+        await send(message)
+
+    return wrapped
 
 
 def bearer_token(value: str | None) -> str | None:
@@ -64,6 +91,8 @@ class SecurityMiddleware:
             return
         if scope["type"] not in ("http", "websocket"):
             return  # loại scope lạ: không cho vào app
+        if scope["type"] == "http":
+            send = _with_security_headers(send)
         try:
             error = await self._check(scope)
         except Exception:

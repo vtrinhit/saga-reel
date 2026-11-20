@@ -43,6 +43,8 @@ EXTS: dict[str, frozenset[str]] = {
     "audio": frozenset({".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".flac"}),
     "video": frozenset({".mp4", ".m4v", ".mov", ".webm", ".mkv", ".avi"}),
     "subtitle": frozenset({".srt", ".vtt", ".ass"}),
+    # File bảng/văn bản cho import, kịch bản. Không bao giờ .html/.svg/.js…: /media phục vụ cùng origin với app.
+    "other": frozenset({".csv", ".tsv", ".xlsx", ".xlsm", ".json", ".yaml", ".yml", ".txt", ".md"}),
 }
 STALE_S = 24 * 3600
 PREFIX = "upload:"
