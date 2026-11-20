@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -26,6 +27,7 @@ SKILL_REL = Path(".claude") / "skills" / "sagareel-operator"
 MAX_BODY = 256 * 1024
 MIRROR_PREFIX = "skill_mirror:"
 _PATH_RE = re.compile(r"^[A-Za-z0-9_\-./]+\.md$")
+logger = logging.getLogger("sagareel.skills")
 
 
 def skill_dir(settings: Any) -> Path:
@@ -60,7 +62,13 @@ def _read_disk(root: Path) -> dict[str, str]:
 
 
 def _write_disk(root: Path, path: str, body: str) -> None:
-    f = root / path
+    """Ghi một file skill. Kiểm lại đường dẫn ngay tại chỗ ghi (dòng DB có thể tới từ hoàn tác/sửa tay, không chỉ từ
+    `check_path` ở đầu vào) và chặn mọi thứ giải ra ngoài thư mục skill (symlink, `..`)."""
+    path = check_path(path)
+    base = root.resolve()
+    f = (root / path).resolve()
+    if not f.is_relative_to(base) or f == base:
+        raise AppError("skill_path_invalid", f"Đường dẫn skill '{path}' nằm ngoài thư mục skill.", status=422)
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(body, encoding="utf-8", newline="\n")
 
@@ -71,11 +79,23 @@ def sync(ctx: OpContext) -> None:
     to_write: list[tuple[str, str]] = []
     u = entities.uow(ctx, "Đồng bộ file skill", "skill.sync")
     with u as s:
-        rows = {r.path: r for r in s.scalars(select(SkillFile).where(SkillFile.deleted_at.is_(None)))}
+        rows: dict[str, SkillFile] = {}
+        for r in s.scalars(select(SkillFile).where(SkillFile.deleted_at.is_(None))):
+            try:
+                rows[check_path(r.path).lower()] = r
+            except AppError:
+                logger.warning("Bỏ qua file skill #%s: đường dẫn không hợp lệ.", r.id)
+        disk_rows = {path.lower(): path for path in disk}
         for path, body in disk.items():
-            row = rows.get(path)
+            row = rows.get(path.lower())
             if row is None:
-                s.add(SkillFile(path=path, body=body))
+                row = _find(s, path, alive=False)  # vd. hoàn tác lệnh tạo file: dòng đã xoá mềm → hồi sinh
+                if row is not None:
+                    row.deleted_at = None
+                    row.path = path
+                    row.body = body
+                else:
+                    s.add(SkillFile(path=path, body=body))
                 ss.set(s, MIRROR_PREFIX + path, _hash(body))
             elif row.body != body:
                 if ss.get(s, MIRROR_PREFIX + path) == _hash(body):
@@ -84,12 +104,22 @@ def sync(ctx: OpContext) -> None:
                 else:
                     row.body = body  # file sửa ngoài app → nhập vào DB
                     ss.set(s, MIRROR_PREFIX + path, _hash(body))
-        for path, row in rows.items():
-            if path not in disk:
-                to_write.append((path, row.body))
-                ss.set(s, MIRROR_PREFIX + path, _hash(row.body))
+        for low, row in rows.items():
+            if low not in disk_rows:
+                to_write.append((row.path, row.body))
+                ss.set(s, MIRROR_PREFIX + row.path, _hash(row.body))
     for path, body in to_write:
-        _write_disk(root, path, body)
+        try:
+            _write_disk(root, path, body)
+        except AppError:
+            logger.warning("Bỏ qua file skill '%s': đường dẫn không hợp lệ.", path)
+
+
+def _find(s: Any, path: str, *, alive: bool) -> SkillFile | None:
+    """Dòng theo đường dẫn (cột COLLATE NOCASE: không phân biệt hoa thường); `alive=False` → chỉ dòng đã xoá mềm."""
+    q = select(SkillFile).where(SkillFile.path == path)
+    q = q.where(SkillFile.deleted_at.is_(None) if alive else SkillFile.deleted_at.is_not(None))
+    return s.scalars(q.order_by(SkillFile.id.desc()).limit(1)).first()
 
 
 def _out(row: SkillFile, *, body: bool = True) -> dict[str, Any]:
@@ -102,7 +132,7 @@ def _out(row: SkillFile, *, body: bool = True) -> dict[str, Any]:
 def list_files(ctx: OpContext) -> dict[str, Any]:
     """Chỉ đọc DB (đồng bộ chạy lúc khởi động, trước skill.update và ở op skill.sync)."""
     with ctx.services.db.session() as s:
-        rows = s.scalars(select(SkillFile).where(SkillFile.deleted_at.is_(None)).order_by(SkillFile.path)).all()
+        rows = s.scalars(select(SkillFile).where(SkillFile.deleted_at.is_(None)).order_by(SkillFile.path.collate("BINARY"))).all()
         return {"items": [_out(r, body=False) for r in rows], "dir": SKILL_REL.as_posix()}
 
 
@@ -123,7 +153,7 @@ def update(ctx: OpContext, path: str, body: str, expected_updated_at=None) -> di
     sync(ctx)
     u = entities.uow(ctx, f"Sửa file skill {path}", "skill.update")
     with u as s:
-        row = s.scalar(select(SkillFile).where(SkillFile.path == path))
+        row = _find(s, path, alive=True) or _find(s, path, alive=False)
         if row is None:
             row = SkillFile(path=path, body=body)
             s.add(row)

@@ -71,23 +71,30 @@ class ExportOptions(BaseModel):
 # --- Đường dẫn ------------------------------------------------------------------------------------------------------
 
 
-def exports_root(services: Any, project_key: str) -> Path:
-    return services.settings.outputs_dir / "exports" / project_key
+def project_dir(project_key: str, project_id: int | None = None) -> str:
+    """Tên thư mục project trong `outputs/exports`: key viết thường + `-<id>` (Windows không phân biệt hoa thường)."""
+    return _safe_part(project_key, "dự án").lower() + (f"-{int(project_id)}" if project_id is not None else "")
+
+
+def exports_root(services: Any, project_key: str, project_id: int | None = None) -> Path:
+    return services.settings.outputs_dir / "exports" / project_dir(project_key, project_id)
 
 
 _SAFE_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
 
 
 def _safe_part(value: str, what: str) -> str:
-    if not _SAFE_PART.match(value) or ".." in value:
+    if not _SAFE_PART.fullmatch(value) or ".." in value:
         raise ValidationFailed(f"Giá trị {what} không hợp lệ cho tên thư mục: {value!r}.", code="invalid_path_part")
     return value
 
 
-def package_folder(services: Any, project_key: str, seq_key: str, platform: str, lang: str) -> Path:
-    """Thư mục gói xuất; mọi phần tên được kiểm (chống thoát khỏi `outputs/exports`)."""
+def package_folder(services: Any, project_key: str, seq_key: str, platform: str, lang: str, *,
+                   project_id: int | None = None) -> Path:
+    """Thư mục gói xuất; mọi phần tên được kiểm (chống thoát khỏi `outputs/exports`). Tên viết thường + id project:
+    ổ đĩa Windows không phân biệt hoa thường (`Demo` và `demo` không được chung thư mục)."""
     root = (services.settings.outputs_dir / "exports").resolve()
-    p = (root / _safe_part(project_key, "dự án") / _safe_part(seq_key, "tập")
+    p = (root / project_dir(project_key, project_id) / _safe_part(seq_key, "tập").lower()
          / f"{_safe_part(platform, 'nền tảng')}-{_safe_part(lang or 'und', 'ngôn ngữ')}").resolve()
     if not p.is_relative_to(root):
         raise ValidationFailed("Đường dẫn xuất nằm ngoài thư mục outputs/exports.", code="invalid_path_part")
@@ -138,7 +145,8 @@ def create_rows(services: Any, project: Mapping[str, Any], units: Sequence[Mappi
     ids: list[int] = []
     with services.db.session(immediate=True) as s:
         for u in units:
-            folder = rel_path(services, package_folder(services, project["key"], u["seq_key"], u["platform"], u["lang"]))
+            folder = rel_path(services, package_folder(services, project["key"], u["seq_key"], u["platform"], u["lang"],
+                                                     project_id=project["id"]))
             for old in s.scalars(select(ExportPackage).where(ExportPackage.project_id == project["id"],
                                                              ExportPackage.folder == folder,
                                                              ExportPackage.status != "superseded")):
@@ -207,7 +215,7 @@ def latest_render(services: Any, sequence_id: int, platform: str | None, lang: s
         if best is None:
             return None
         m = media.get(s, best.media_id)
-        return {"render_id": best.id, "media_id": m.id, "path": media.file_path(services.settings, m),
+        return {"render_id": best.id, "media_id": m.id, "sha256": m.sha256, "path": media.file_path(services.settings, m),
                 "duration_ms": best.duration_ms or m.duration_ms, "size": m.size, "width": m.width, "height": m.height}
 
 
@@ -235,6 +243,36 @@ async def measure_loudness(path: Path) -> Any:
     except Exception as e:  # noqa: BLE001 — đo hỏng không được chặn xuất
         logger.warning("Đo loudness lỗi: %s", e)
         return None
+
+
+LOUD_PREFIX = "loudness:"
+
+
+async def cached_loudness(services: Any, render: Mapping[str, Any]) -> Any:
+    """Đo ebur128 một lần cho mỗi nội dung bản dựng (khoá sha256 media, lưu `system_state`): `export.check` gọi nhiều
+    lần (UI sửa metadata, agent) không chạy lại ffmpeg trên cả video."""
+    from sagareel.services import system_state as ss
+
+    sha = render.get("sha256")
+    key = LOUD_PREFIX + sha if sha else None
+    if key is not None:
+        def get() -> Any:
+            with services.db.session() as s:
+                return ss.get(s, key)
+
+        hit = await anyio.to_thread.run_sync(get)
+        if isinstance(hit, dict):
+            return hit
+    loud = await measure_loudness(render["path"])
+    plain = checks.normalize_loudness(loud) if loud is not None else None
+    if key is not None and plain is not None:
+        def put() -> None:
+            with services.db.session() as s:
+                ss.set(s, key, dict(plain))
+
+        await anyio.to_thread.run_sync(put)
+        return plain
+    return loud
 
 
 async def render_final(services: Any, run: Any, sequence_id: int, platform: str, lang: str) -> Any:
@@ -459,7 +497,7 @@ async def run_unit(services: Any, run: Any, export_id: int, step: Any = None) ->
     proj, r, spec, seq, opt = await anyio.to_thread.run_sync(load)
     plat, lang = r["platform"], r["lang"]
     step = step or (lambda frac, stage: None)
-    final = package_folder(services, proj["key"], seq["key"], plat, lang)
+    final = package_folder(services, proj["key"], seq["key"], plat, lang, project_id=proj["id"])
     staging = final.with_name(final.name + ".part")
     await anyio.to_thread.run_sync(lambda: shutil.rmtree(staging, ignore_errors=True))
     staging.mkdir(parents=True)
@@ -541,9 +579,10 @@ async def run_unit(services: Any, run: Any, export_id: int, step: Any = None) ->
 # --- Lô -------------------------------------------------------------------------------------------------------------
 
 
-def write_manifest(services: Any, project_key: str, batch: str, summaries: Sequence[Mapping[str, Any]]) -> list[str]:
+def write_manifest(services: Any, project_key: str, batch: str, summaries: Sequence[Mapping[str, Any]],
+                   project_id: int | None = None) -> list[str]:
     """`manifest.json` + `manifest.csv` của cả lô, trả đường dẫn (tương đối outputs/)."""
-    d = exports_root(services, project_key) / "_batches" / batch
+    d = exports_root(services, project_key, project_id) / "_batches" / _safe_part(batch, "lô")
     d.mkdir(parents=True, exist_ok=True)
     (d / "manifest.json").write_text(json.dumps({"batch": batch, "created_at": utcnow().isoformat(),
                                                  "packages": list(summaries)}, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -561,6 +600,7 @@ async def run_batch(services: Any, run: Any, export_ids: Sequence[int], batch: s
     total = len(export_ids)
     summaries: list[dict[str, Any]] = []
     project_key = ""
+    project_id: int | None = None
     failed = 0
     for i, eid in enumerate(export_ids):
         def claim(eid: int = eid) -> dict[str, Any] | None:
@@ -572,7 +612,8 @@ async def run_batch(services: Any, run: Any, export_ids: Sequence[int], batch: s
                     return None
                 proj = s.get(Project, row.project_id)
                 info = {"export_id": eid, "seq_key": (row.meta_data or {}).get("seq_key", ""), "platform": row.platform,
-                        "lang": row.lang, "folder": row.folder, "project_key": proj.key, "status": row.status,
+                        "lang": row.lang, "folder": row.folder, "project_key": proj.key, "project_id": proj.id,
+                        "status": row.status,
                         "meta": dict(row.meta_data or {}), "checks": dict(row.checks or {})}
                 if row.status != "done":
                     row.status = "running"
@@ -581,7 +622,7 @@ async def run_batch(services: Any, run: Any, export_ids: Sequence[int], batch: s
         info = await anyio.to_thread.run_sync(claim)
         if info is None:
             continue
-        project_key = info["project_key"]
+        project_key, project_id = info["project_key"], info["project_id"]
         if info["status"] == "done":
             m = info["meta"]
             summaries.append({**{k: info[k] for k in ("export_id", "seq_key", "platform", "lang", "folder")},
@@ -614,7 +655,8 @@ async def run_batch(services: Any, run: Any, export_ids: Sequence[int], batch: s
                               "status": "failed", "error": msg, "errors": [], "warnings": []})
     manifest: list[str] = []
     if summaries:
-        manifest = await anyio.to_thread.run_sync(write_manifest, services, project_key, batch, summaries)
+        manifest = await anyio.to_thread.run_sync(write_manifest, services, project_key, batch, summaries,
+                                                   project_id)
         ids = [s["export_id"] for s in summaries]
         await anyio.to_thread.run_sync(lambda: [_set_row(services, i, meta={"manifest": manifest}) for i in ids])
     if failed and failed == len(summaries):
@@ -702,7 +744,7 @@ async def precheck(services: Any, sequence_id: int, platform: str, lang: str | N
     md.update({k: v for k, v in (metadata_override or {}).items() if v is not None})
     if render is not None:
         duration_ms, size, estimated = int(render["duration_ms"] or 0), int(render["size"]), False
-        loud = await measure_loudness(render["path"])
+        loud = await cached_loudness(services, render)
         frame = (render["width"], render["height"]) if render["width"] and render["height"] else None
     else:
         duration_ms = seq["clip_total_ms"]

@@ -206,11 +206,15 @@ def test_project_scoped_preset_overrides_global(client):
 
 
 def test_viewer_can_read_presets_but_not_write():
+    from sagareel import ops as ops_pkg
     from sagareel.core import ops
 
-    for name in ("preset.list", "preset.get", "export.list", "export.check"):
+    ops_pkg.load_all()
+    for name in ("preset.list", "preset.get", "export.list"):
         assert ops.REGISTRY[name].viewer
-    for name in ("preset.create", "preset.update", "preset.delete", "preset.reset_builtin", "export.create", "export.open_folder"):
+    # export.check chạy ffprobe/ebur128 trên bản dựng → chỉ chủ (rà soát bảo mật #10).
+    for name in ("preset.create", "preset.update", "preset.delete", "preset.reset_builtin", "export.create",
+                 "export.open_folder", "export.check"):
         assert not ops.REGISTRY[name].viewer
     assert ops.REGISTRY["preset.delete"].destructive
 

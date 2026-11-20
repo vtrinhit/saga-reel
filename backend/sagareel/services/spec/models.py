@@ -16,7 +16,10 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from sagareel.services.presets import KEY_RE as PRESET_KEY_RE
+from sagareel.services.projects import KEY_RE as ENTITY_KEY_RE
 
 SPEC_VERSION = 1
 SECTIONS = ("presets", "library", "groups", "sequences")
@@ -25,8 +28,18 @@ Section = Literal["presets", "library", "groups", "sequences"]
 MediaRef = str  # khoá trong `media`
 
 
-def _key(desc: str) -> Any:
-    return Field(min_length=1, max_length=128, description=desc)
+# Khoá đi vào đường dẫn file (project → outputs/specs, outputs/exports; tập → outputs/exports) dùng đúng
+# `projects.KEY_RE` như service; khoá preset theo `presets.KEY_RE`. Khoá còn lại (tài sản, look, cảnh, clip, nhóm…)
+# có thể do bộ nhập tạo từ mã trong bảng tính (vd. "Lâm") → chỉ chặn ký tự đường dẫn/điều khiển và dấu chấm đầu.
+SAFE_KEY = r'^[^./\\\x00-\x1f:*?"<>|][^/\\\x00-\x1f:*?"<>|]{0,127}$'
+
+
+def _key(desc: str, pattern: str = ENTITY_KEY_RE.pattern) -> Any:
+    return Field(min_length=1, max_length=128, pattern=pattern, description=desc)
+
+
+def _free_key(desc: str) -> Any:
+    return _key(desc, SAFE_KEY)
 
 
 class _Strict(BaseModel):
@@ -65,20 +78,20 @@ class ProjectBlock(_Strict):
 
 class PresetSpec(_Strict):
     kind: str
-    key: str = _key("Key preset (duy nhất theo kind trong project)")
+    key: str = _key("Key preset (duy nhất theo kind trong project)", PRESET_KEY_RE.pattern)
     name: str
     data: dict[str, Any] = Field(default_factory=dict)
 
 
 class AssetKindSpec(_Strict):
-    key: str = _key("Key loại tài sản riêng của project")
+    key: str = _free_key("Key loại tài sản riêng của project")
     label: str
     icon: str = ""
     ref_priority: int = 0
 
 
 class VoiceSpec(_Strict):
-    key: str = _key("Key hồ sơ giọng")
+    key: str = _free_key("Key hồ sơ giọng")
     name: str
     connection: str = Field(default="", description="Tên kết nối TTS")
     voice: str = ""
@@ -91,7 +104,7 @@ class VoiceSpec(_Strict):
 
 
 class LookSpec(_Strict):
-    key: str = _key("Key look (duy nhất trong tài sản)")
+    key: str = _free_key("Key look (duy nhất trong tài sản)")
     name: str
     description_delta: str = ""
     keep_features: list[Any] = Field(default_factory=list)
@@ -105,7 +118,7 @@ class LookSpec(_Strict):
 
 
 class AssetSpec(_Strict):
-    key: str = _key("Key tài sản (duy nhất trong project)")
+    key: str = _free_key("Key tài sản (duy nhất trong project)")
     kind: str = Field(description="character/location/prop/… (asset_kind.key)")
     name: str
     description: str = Field(default="", description="Khối khoá, dán nguyên văn")
@@ -118,7 +131,7 @@ class AssetSpec(_Strict):
 
 
 class SoundSpec(_Strict):
-    key: str = _key("Nhãn để mục timeline tham chiếu (âm thanh nhận diện theo kind + sha256 media)")
+    key: str = _free_key("Nhãn để mục timeline tham chiếu (âm thanh nhận diện theo kind + sha256 media)")
     kind: str = Field(description="music/sfx/ambience")
     title: str
     media: MediaRef
@@ -136,7 +149,7 @@ class LibrarySpec(_Strict):
 
 
 class GroupSpec(_Strict):
-    key: str = _key("Key nhóm tập")
+    key: str = _free_key("Key nhóm tập")
     kind: str = Field(description="series/season/arc")
     title: str
     parent: str | None = Field(default=None, description="Key nhóm cha")
@@ -144,12 +157,17 @@ class GroupSpec(_Strict):
 
 
 class SceneSpec(_Strict):
-    key: str = _key("Key cảnh (duy nhất trong tập)")
+    key: str = _free_key("Key cảnh (duy nhất trong tập)")
     title: str = ""
     location: str | None = Field(default=None, description="Key tài sản bối cảnh")
     summary: str = ""
     state: dict[str, Any] = Field(default_factory=dict)
     settings: dict[str, Any] = Field(default_factory=dict)
+
+
+# Khoá phụ (ngoài asset/look/role) được giữ nguyên trong `clip.assets[]`; giá trị chỉ là số/chuỗi/bool. Không bao giờ
+# gồm `asset_id`/`variant_id` (id do apply tự giải từ key).
+ASSET_REF_EXTRAS = frozenset({"code", "note", "weight", "view"})
 
 
 class ClipAssetRef(BaseModel):
@@ -159,9 +177,19 @@ class ClipAssetRef(BaseModel):
     look: str | None = Field(default=None, description="Key look gắn rõ (bỏ trống = tự chọn theo tập)")
     role: str | None = None
 
+    @model_validator(mode="after")
+    def _extras(self) -> ClipAssetRef:
+        for k, v in (self.model_extra or {}).items():
+            if k not in ASSET_REF_EXTRAS:
+                raise ValueError(f"Khoá '{k}' không được phép trong assets[] (cho phép: "
+                                 f"{', '.join(sorted(ASSET_REF_EXTRAS))}).")
+            if v is not None and not isinstance(v, (str, int, float, bool)):
+                raise ValueError(f"Giá trị '{k}' phải là số/chuỗi/bool.")
+        return self
+
 
 class DialogueSpec(_Strict):
-    key: str | None = Field(default=None, min_length=1, max_length=128,
+    key: str | None = Field(default=None, min_length=1, max_length=128, pattern=SAFE_KEY,
                             description="Khoá ổn định của câu (cột dialogue_line.key); bỏ trống = theo vị trí")
     speaker: str | None = Field(default=None, description="Key tài sản người nói; null = người kể")
     text: str
@@ -174,7 +202,7 @@ class DialogueSpec(_Strict):
 
 
 class ClipSpec(_Strict):
-    key: str = _key("Key clip (duy nhất trong tập)")
+    key: str = _free_key("Key clip (duy nhất trong tập)")
     scene: str | None = Field(default=None, description="Key cảnh")
     title: str = ""
     image_prompt: str = Field(default="", description="Nguyên văn")
@@ -213,7 +241,7 @@ class ClipSpec(_Strict):
 
 
 class TimelineSpec(_Strict):
-    key: str | None = Field(default=None, min_length=1, max_length=128,
+    key: str | None = Field(default=None, min_length=1, max_length=128, pattern=SAFE_KEY,
                             description="Khoá ổn định của mục (cột timeline_item.key); bỏ trống = theo vị trí")
     track: str = Field(description="music/sfx/title")
     anchor: str | None = Field(default=None, description="Key clip neo (null = đầu tập)")

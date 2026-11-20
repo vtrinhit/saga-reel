@@ -27,7 +27,7 @@ from typing import Any
 
 from sagareel.core.errors import AppError
 from sagareel.media import ffmpeg
-from sagareel.render import cache
+from sagareel.render import cache, filters
 from sagareel.render.builders import DEFAULT, Builders
 from sagareel.render.filters import escape_path, samples, secs
 from sagareel.render.layout import ClipSlot, Placed, Timeline
@@ -199,6 +199,14 @@ def _place_audio(label: str, local_ms: int, seek_ms: int, extra: list[str]) -> s
     return f"[{label}]{','.join(chain)}"
 
 
+def _safe(check: Callable[..., Any], *args: Any) -> Any:
+    """Kiểm giá trị người dùng ngay trước khi đặt vào filtergraph (lớp chặn cuối) → `render_param_invalid` (422)."""
+    try:
+        return check(*args)
+    except ValueError as e:
+        raise AppError("render_param_invalid", f"Tham số dựng không hợp lệ: {e}", status=422) from None
+
+
 def build_graph(
     spec: ChunkSpec,
     *,
@@ -229,7 +237,8 @@ def build_graph(
         local = c.start_ms - spec.start_ms
         if c.overlap_ms and c.xfade:
             d = f"{round(c.overlap_ms * fps / 1000) / fps:.6f}"
-            g.append(f"{v}[in{i}]xfade=transition={c.xfade}:duration={d}:offset={_offset(local, fps)}[v{i}]")
+            xf = _safe(filters.check_xfade, c.xfade)
+            g.append(f"{v}[in{i}]xfade=transition={xf}:duration={d}:offset={_offset(local, fps)}[v{i}]")
             g.append(f"{a}[{i}:a]acrossfade=d={d}:c1=tri:c2=tri[a{i}]")
         else:
             g.append(f"{v}[in{i}]concat=n=2:v=1:a=0[v{i}]")
@@ -246,10 +255,13 @@ def build_graph(
     font = title_font()
     for t, tf in zip(spec.titles, title_files, strict=True):
         st = {**spec.options.title_style, **(t.get("params") or {})}
-        size = int(st.get("fontsize_ratio", 0.055) * prof.height) or 1
+        ratio = _safe(filters.check_number, st.get("fontsize_ratio", 0.055), "fontsize_ratio", 0.005, 0.5)
+        y_ratio = _safe(filters.check_number, st.get("y_ratio", 0.3), "y_ratio", 0.0, 1.0)
+        color = _safe(filters.check_color, st.get("color", "white"))
+        size = int(ratio * prof.height) or 1
         dt = [f"textfile='{escape_path(tf)}'", "expansion=none", f"fontsize={size}",
-              f"fontcolor={st.get('color', 'white')}", f"borderw={max(1, size // 12)}", "bordercolor=black",
-              "x=(w-tw)/2", f"y=h*{float(st.get('y_ratio', 0.3)):.3f}",
+              f"fontcolor={color}", f"borderw={max(1, size // 12)}", "bordercolor=black",
+              "x=(w-tw)/2", f"y=h*{y_ratio:.3f}",
               f"enable='between(t,{secs(t['start'])},{secs(t['end'])})'"]
         if font is not None:
             dt.insert(0, f"fontfile='{escape_path(font)}'")

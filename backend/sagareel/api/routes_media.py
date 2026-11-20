@@ -32,6 +32,30 @@ router = APIRouter(
 )
 
 
+# Chỉ các mime này được trình duyệt hiển thị trực tiếp (raster/video/âm thanh — không SVG, không HTML/XML/văn bản).
+INLINE_MIMES = frozenset({
+    "image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp",
+    "video/mp4", "video/quicktime", "video/webm", "video/x-matroska", "video/x-msvideo",
+    "audio/mpeg", "audio/wav", "audio/x-wav", "audio/mp4", "audio/aac", "audio/ogg", "audio/flac",
+})
+# File người dùng tải lên phục vụ cùng origin với app: không đoán kiểu, không chạy script, không nhúng/điều hướng.
+MEDIA_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "sandbox; default-src 'none'",
+    "Cross-Origin-Resource-Policy": "same-origin",
+}
+
+
+def safe_file_response(path: Path, mime: str, *, filename: str | None = None) -> FileResponse:
+    """FileResponse an toàn cho nội dung do người dùng đưa vào: mime ngoài `INLINE_MIMES` → octet-stream + attachment."""
+    base = (mime or "").split(";", 1)[0].strip().lower()
+    if base in INLINE_MIMES:
+        return FileResponse(path, media_type=base, filename=filename, headers=dict(MEDIA_HEADERS),
+                            content_disposition_type="attachment" if filename else "inline")
+    return FileResponse(path, media_type="application/octet-stream", headers=dict(MEDIA_HEADERS),
+                        filename=filename or path.name, content_disposition_type="attachment")
+
+
 def _load(services: Services, media_id: int) -> tuple[Media, Path]:
     with services.db.session() as s:
         m = media_svc.get(s, media_id)
@@ -45,9 +69,7 @@ async def get_media(request: Request, media_id: int, download: bool = False) -> 
         raise Forbidden("Chỉ chủ được tải file gốc; người xem chỉ xem trực tiếp hoặc ảnh thu nhỏ.")
     services: Services = request.app.state.services
     m, path = await anyio.to_thread.run_sync(_load, services, media_id)
-    if download:
-        return FileResponse(path, media_type=m.mime, filename=f"sagareel-{m.id}{path.suffix}")
-    return FileResponse(path, media_type=m.mime)
+    return safe_file_response(path, m.mime, filename=f"sagareel-{m.id}{path.suffix}" if download else None)
 
 
 @router.get("/media/{media_id}/thumb", response_class=FileResponse, summary="Ảnh thu nhỏ JPEG của ảnh/video")
@@ -67,4 +89,4 @@ async def get_thumb(
             await anyio.to_thread.run_sync(media_svc.image_thumb, src, out, width)
         else:
             await media_svc.video_thumb(src, out, width)
-    return FileResponse(out, media_type="image/jpeg")
+    return safe_file_response(out, "image/jpeg")

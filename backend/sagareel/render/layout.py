@@ -149,7 +149,14 @@ def resolve_transition(
         new_scene = prev.scene_id != cur.scene_id
         d = preset.get("new_scene_duration_ms") if new_scene else None
         d = d if d is not None else preset.get("duration_ms", 500)
-    return name, str(preset["xfade"]), max(0, int(d))
+    from sagareel.render.filters import XFADE_TRANSITIONS
+
+    xf = str(preset["xfade"])
+    if xf not in XFADE_TRANSITIONS:
+        warnings.append({"code": "transition_unknown", "clip_id": cur.id, "name": name,
+                         "message": f"Chuyển cảnh “{name}” có xfade không hợp lệ; dùng cắt thẳng."})
+        return "cut", None, 0
+    return name, xf, max(0, int(d))
 
 
 def compute(

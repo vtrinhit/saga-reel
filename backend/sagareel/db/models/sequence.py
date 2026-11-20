@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import ForeignKey, Index, Text, text
+from sqlalchemy import ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from sagareel.db.base import Base, JSONDict, JSONList, Tracked, new_key
@@ -16,7 +16,7 @@ class Sequence(Tracked, Base):
 
     project_id: Mapped[int] = mapped_column(ForeignKey("project.id"), index=True)
     group_id: Mapped[int | None] = mapped_column(ForeignKey("group_node.id"), index=True)
-    key: Mapped[str]
+    key: Mapped[str] = mapped_column(String(collation="NOCASE"))  # không phân biệt hoa thường (migration 0008)
     number: Mapped[int] = mapped_column(default=1)
     title: Mapped[str]
     synopsis: Mapped[str] = mapped_column(Text, default="")

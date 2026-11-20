@@ -118,7 +118,21 @@ def _alive(s: Session, model, *where) -> list[Any]:
 
 
 def build(s: Session, project: Project, include: Iterable[str] | None = None) -> m.ProjectSpec:
-    """Trạng thái project hiện tại dưới dạng `ProjectSpec` (đủ trường)."""
+    """Trạng thái project hiện tại dưới dạng `ProjectSpec` (đủ trường). Dữ liệu cũ có key không hợp lệ cho file khai
+    báo (vd. ký tự đường dẫn) → `spec_export_invalid` (422) thay vì lỗi 500."""
+    from pydantic import ValidationError
+
+    from sagareel.core.errors import ValidationFailed, clean_validation_errors
+
+    try:
+        return _build(s, project, include)
+    except ValidationError as e:
+        raise ValidationFailed("Dữ liệu dự án có mã (key) không hợp lệ cho file khai báo.", code="spec_export_invalid",
+                               hint="Đổi các mã trong `extra.errors` (không dùng /, gạch chéo ngược hay ký tự điều khiển).",
+                               extra={"errors": clean_validation_errors(e.errors())}) from None
+
+
+def _build(s: Session, project: Project, include: Iterable[str] | None = None) -> m.ProjectSpec:
     sections = set(include) if include is not None else set(m.SECTIONS)
     med = _Media(s)
 
@@ -273,7 +287,8 @@ def _sequence(s: Session, q: Sequence, med: _Media, asset_ref, look_key: dict[in
         for it in items or []:
             if not isinstance(it, dict):
                 continue
-            extra = {k: _plain(v) for k, v in it.items() if k not in ("asset_id", "variant_id", "role")}
+            extra = {k: _plain(v) for k, v in it.items() if k in m.ASSET_REF_EXTRAS
+                     and (v is None or isinstance(v, (str, int, float, bool)))}
             key = asset_ref(it.get("asset_id"))
             if key is None:
                 continue
@@ -337,7 +352,8 @@ _BaseDumper = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
 
 
 class _Dumper(_BaseDumper):  # type: ignore[misc, valid-type]
-    pass
+    def ignore_aliases(self, data: Any) -> bool:  # không sinh anchor/alias (bộ đọc spec giới hạn nút sau khi nở)
+        return True
 
 
 def _str(dumper: yaml.SafeDumper, data: str) -> yaml.ScalarNode:
