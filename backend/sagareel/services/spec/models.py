@@ -28,9 +28,9 @@ Section = Literal["presets", "library", "groups", "sequences"]
 MediaRef = str  # khoá trong `media`
 
 
-# Khoá thực thể mà service kiểm bằng `projects.KEY_RE` (project, tài sản, look, tập, cảnh) dùng đúng regex đó; khoá
-# preset theo `presets.KEY_RE`. Khoá còn lại (clip, nhóm, loại tài sản, giọng, âm thanh, thoại, timeline) có thể là mã
-# người dùng đặt tự do → chỉ chặn ký tự đường dẫn/điều khiển và dấu chấm đầu (không bao giờ thoát được thư mục).
+# Khoá đi vào đường dẫn file (project → outputs/specs, outputs/exports; tập → outputs/exports) dùng đúng
+# `projects.KEY_RE` như service; khoá preset theo `presets.KEY_RE`. Khoá còn lại (tài sản, look, cảnh, clip, nhóm…)
+# có thể do bộ nhập tạo từ mã trong bảng tính (vd. "Lâm") → chỉ chặn ký tự đường dẫn/điều khiển và dấu chấm đầu.
 SAFE_KEY = r'^[^./\\\x00-\x1f:*?"<>|][^/\\\x00-\x1f:*?"<>|]{0,127}$'
 
 
@@ -104,7 +104,7 @@ class VoiceSpec(_Strict):
 
 
 class LookSpec(_Strict):
-    key: str = _key("Key look (duy nhất trong tài sản)")
+    key: str = _free_key("Key look (duy nhất trong tài sản)")
     name: str
     description_delta: str = ""
     keep_features: list[Any] = Field(default_factory=list)
@@ -118,7 +118,7 @@ class LookSpec(_Strict):
 
 
 class AssetSpec(_Strict):
-    key: str = _key("Key tài sản (duy nhất trong project)")
+    key: str = _free_key("Key tài sản (duy nhất trong project)")
     kind: str = Field(description="character/location/prop/… (asset_kind.key)")
     name: str
     description: str = Field(default="", description="Khối khoá, dán nguyên văn")
@@ -157,7 +157,7 @@ class GroupSpec(_Strict):
 
 
 class SceneSpec(_Strict):
-    key: str = _key("Key cảnh (duy nhất trong tập)")
+    key: str = _free_key("Key cảnh (duy nhất trong tập)")
     title: str = ""
     location: str | None = Field(default=None, description="Key tài sản bối cảnh")
     summary: str = ""

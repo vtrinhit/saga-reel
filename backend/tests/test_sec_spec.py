@@ -158,3 +158,29 @@ def test_project_lookup_case_insensitive_in_spec(owner_ctx, project):
     assert p["project_id"] == project
     with owner_ctx.services.db.session() as s:
         assert len(s.scalars(select(Project)).all()) == 1
+
+
+def test_importer_style_keys_round_trip(owner_ctx, project):
+    """Bộ nhập tạo key tài sản/cảnh từ mã trong bảng tính (có dấu, dấu cách) → xuất rồi plan lại vẫn được."""
+    from sagareel.db.models import Scene, Sequence
+    from sagareel.ops.spec_ops import export_spec
+
+    with owner_ctx.uow(op_name="test.seed") as s:
+        s.add(Asset(project_id=project, kind="character", key="Lâm", name="Lâm"))
+        q = Sequence(project_id=project, key="ep1", title="T")
+        s.add(q)
+        s.flush()
+        s.add(Scene(sequence_id=q.id, key="Cảnh 1", rank="a0", title="x"))
+    text_ = export_spec(owner_ctx, project, None, False)["yaml"]
+    p = sp.plan(owner_ctx, text_)
+    assert p["creates"] == [] and p["updates"] == []
+
+
+def test_legacy_bad_key_is_422_not_500(owner_ctx, project):
+    from sagareel.ops.spec_ops import export_spec
+
+    with owner_ctx.uow(op_name="test.seed") as s:
+        s.add(Asset(project_id=project, kind="character", key="a/b", name="X"))
+    with pytest.raises(AppError) as e:
+        export_spec(owner_ctx, project, None, False)
+    assert e.value.code == "spec_export_invalid" and e.value.status == 422
