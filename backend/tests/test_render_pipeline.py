@@ -481,3 +481,13 @@ def test_render_load_uses_clip_duration_for_ai_video(world):
     durs = {c.id: c.dur_ms for c in loaded.seq.clips}
     assert abs(durs[long] - 500) <= 40 and abs(durs[short] - 2000) <= 40
     assert any(w["code"] == "video_short" and w["clip_id"] == short for w in loaded.warnings)
+
+
+def test_render_keeps_source_length_before_continue_clip(world):
+    """Clip sau `continue` bắt đầu từ khung cuối của video nguồn → không cắt đuôi clip trước."""
+    a = world.clip("a", video=world.video("red"), duration_ms=500)
+    world.clip("b", video=world.video("green"), duration_ms=1000, link="continue")
+    loaded = pipeline.load(world.services, world.sequence_id, "draft")
+    durs = {c.id: c.dur_ms for c in loaded.seq.clips}
+    assert abs(durs[a] - 1000) <= 40
+    assert any(w["code"] == "continue_untrimmed" and w["clip_id"] == a for w in loaded.warnings)

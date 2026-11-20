@@ -197,6 +197,7 @@ def cleanup(ctx: OpContext, confirm_token: str | None) -> dict[str, Any]:
     settings = ctx.services.settings
     data_dir = Path(settings.data_dir)
     moved, missing, freed = [], [], 0
+    skipped: list[dict[str, Any]] = []
     with ctx.services.db.session(immediate=True) as s:
         items = candidates(s, settings, f)
         confirm.verify(s, CLEANUP_OP, [it["media_id"] for it in items], {"filters": f}, inner)
@@ -205,14 +206,18 @@ def cleanup(ctx: OpContext, confirm_token: str | None) -> dict[str, Any]:
             m = s.get(Media, it["media_id"])
             src = data_dir / m.path
             if src.is_file():
-                _move(src, trash_path(settings, m))
+                try:
+                    _move(src, trash_path(settings, m))
+                except OSError:  # file đang mở (Windows: đang phát cho trình duyệt) → bỏ qua, lần sau dọn
+                    skipped.append({"media_id": m.id, "reason": "file_busy"})
+                    continue
                 freed += it["size"]
             else:
                 missing.append(m.id)
             m.trashed_at = now
             moved.append(m.id)
     _prune_cache(ctx.services)
-    return {"trashed": moved, "files": len(moved), "bytes": freed, "missing_files": missing}
+    return {"trashed": moved, "files": len(moved), "bytes": freed, "missing_files": missing, "skipped": skipped}
 
 
 def _prune_cache(services: Any) -> dict[str, Any] | None:
@@ -265,7 +270,11 @@ def restore(ctx: OpContext, media_ids: list[int]) -> dict[str, Any]:
             if not src.is_file():
                 skipped.append({"media_id": mid, "reason": "file_missing"})
                 continue
-            _move(src, Path(settings.data_dir) / m.path)
+            try:
+                _move(src, Path(settings.data_dir) / m.path)
+            except OSError:
+                skipped.append({"media_id": mid, "reason": "file_busy"})
+                continue
             m.trashed_at = None
             restored.append(mid)
     return {"restored": restored, "skipped": skipped}

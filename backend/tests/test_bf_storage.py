@@ -94,3 +94,25 @@ def test_cleanup_kinds_filter_and_recent(client, world):
     assert pv["files"] == 0
     pv = _ok(client, "media.cleanup_preview", {"filters": {"unselected_takes_older_than_days": 0}})
     assert world["media"]["recent"] in {it["media_id"] for it in pv["items"]}
+
+
+def test_cleanup_skips_busy_file(client, world, monkeypatch):
+    from sagareel.services import storage
+
+    m = world["media"]
+    real = storage._move
+
+    def flaky(src, dst):
+        if src.name == busy_name:
+            raise PermissionError("đang mở")
+        return real(src, dst)
+
+    pv = _ok(client, "media.cleanup_preview", {})
+    busy = next(it for it in pv["items"] if it["media_id"] == m["unselected"])
+    busy_name = busy["path"].rsplit("/", 1)[-1]
+    monkeypatch.setattr(storage, "_move", flaky)
+    out = _ok(client, "media.cleanup", {"confirm_token": pv["confirm_token"]})
+    assert out["trashed"] == [m["unused2"]] and out["skipped"] == [{"media_id": m["unselected"], "reason": "file_busy"}]
+    assert client.get(f"/media/{m['unselected']}").status_code == 200
+    again = _ok(client, "media.cleanup_preview", {})
+    assert [it["media_id"] for it in again["items"]] == [m["unselected"]]

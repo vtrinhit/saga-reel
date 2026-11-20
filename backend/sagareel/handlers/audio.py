@@ -20,6 +20,9 @@ from sagareel.db.models import Media
 from sagareel.providers.base import TTSRequest
 from sagareel.services import entities
 from sagareel.services.audio import dialogue, mix, timing
+from sagareel.services.jobs import (
+    json_safe,  # -inf LUFS (câu rất ngắn) → null: JSON chuẩn
+)
 from sagareel.services.provider_jobs import _adapter, _plain, _store, provider_job
 
 TTS_JOB = dialogue.TTS_JOB
@@ -44,7 +47,7 @@ async def audio_tts(run: Any) -> dict:
     loud = await anyio.to_thread.run_sync(lambda: mix.normalize_line(raw, out, target_i=float(p["target_lufs"])))
     for w in loud["warnings"]:
         run.log("warning", w["message"])
-    inputs = _plain({
+    inputs = json_safe(_plain({
         "text": p["text"], "voice": p["voice"], "rate": req.rate, "pitch": req.pitch, "volume": req.volume,
         "connection": p.get("connection"), "connection_id": adapter.conn.id, "adapter": adapter.adapter_id,
         "lang": req.lang, "cache_key": p["cache_key"], "target_lufs": p["target_lufs"],
@@ -52,7 +55,7 @@ async def audio_tts(run: Any) -> dict:
         "words_interpolated": wt["interpolated"], "raw_duration_ms": result.duration_ms,
         "loudness": {k: loud.get(k) for k in ("method", "normalization_type", "gain_db", "input", "output")},
         "warnings": loud["warnings"],
-    })
+    }))
     meta = {"dialogue_id": p.get("dialogue_id"), "job_id": run.job_id, **inputs}
     (media_id,) = await _store(run, adapter, [out], kind="audio", meta=meta, spend_kind=None)
     elapsed = round((time.monotonic() - t0) * 1000)

@@ -258,6 +258,8 @@ def test_translate_dub_and_list_audio_duration(client, owner_ctx, project, seq, 
     with owner_ctx.services.db.session() as s:
         en = s.scalars(select(Take).where(Take.owner_type == "dialogue", Take.lang == "en")).all()
     assert len(en) == 2
+    listed = rest(client, "take.list", {"owner_type": "dialogue", "owner_id": l2["id"]})  # "Yes." rất ngắn: -inf LUFS
+    assert listed["items"]
     r = client.post("/api/ops/audio.translate_dub", json={"sequence_id": seq_id, "lang": "vi"})
     assert r.status_code == 422  # ngôn ngữ chính
 
