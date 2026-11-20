@@ -6,6 +6,7 @@ Preset là dữ liệu trong bảng `preset` (kind `platform`, nạp từ `defau
 
 from __future__ import annotations
 
+import itertools
 import math
 from typing import Any
 
@@ -107,9 +108,12 @@ def plan_parts(total_ms: int, max_s: float, *, min_s: float = 1.0,
         cut = min(cand, key=lambda b: abs(b - ideal)) if cand else min(max(ideal, lo), hi)
         cuts.append(cut)
     cuts.append(total_ms)
-    return [(a, b) for a, b in zip(cuts, cuts[1:], strict=False) if b > a]
+    return [(a, b) for a, b in itertools.pairwise(cuts) if b > a]
 
 
-def part_label(index: int, total: int) -> str:
-    """"Phần 1/3" (1-based)."""
-    return f"Phần {index}/{total}"
+PART_WORD = {"vi": "Phần", "en": "Part"}
+
+
+def part_label(index: int, total: int, lang: str = "vi") -> str:
+    """"Phần 1/3" (1-based); ngôn ngữ khác tiếng Việt → "Part 1/3"."""
+    return f"{PART_WORD.get(lang, PART_WORD['en'])} {index}/{total}"

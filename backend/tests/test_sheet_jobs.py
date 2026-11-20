@@ -7,8 +7,6 @@ import json
 
 import pytest
 from PIL import Image
-from sqlalchemy import select
-
 from sagareel.db.models import (
     AssetVariant,
     Clip,
@@ -19,6 +17,7 @@ from sagareel.db.models import (
 )
 from sagareel.providers.fake.image import FakeImageAdapter
 from sagareel.services import media
+from sqlalchemy import select
 
 
 def call(client, name: str, payload: dict | None = None):
@@ -204,6 +203,38 @@ def test_drift_check_flags_and_clears(client, svc, setup, tmp_path):
     assert job["result"]["score"] == 92 and job["result"]["flagged"] is False
     with svc.db.session() as s:
         assert "drift" not in s.get(Clip, cid).flags
+
+
+def test_drift_input_carries_clip_intent(client, svc, setup, tmp_path, monkeypatch):
+    """Đạo cụ cố ý trong prompt clip ("dark fabric bundle") không được tính là lệch: input gửi LLM có ý đồ clip."""
+    from sagareel.services import llm
+
+    project = setup["project"]
+    prop = ok(client, "asset.create", {"project_id": project, "kind": "prop", "name": "Bọc vải",
+                                       "description": "dark fabric bundle"})
+    frame = _register_image(svc, tmp_path, "frame", project)
+    cid, tid = _clip_with_take(svc, project, setup["asset"]["id"], frame)
+    with svc.db.session() as s:
+        c = s.get(Clip, cid)
+        c.assets = [{"asset_id": setup["asset"]["id"]}, {"asset_id": prop["id"]}]
+        c.image_prompt = "An standing on the pier, holding a dark fabric bundle"
+        c.shot_size = "ms"
+        s.get(Take, tid).inputs = {"prompt": "Image 1 is An. An standing on the pier, holding a dark fabric bundle"}
+    seen: list[dict] = []
+    original = llm.run_task
+
+    async def spy(services, task_key, variables, **kw):
+        seen.append({"task": task_key, **variables})
+        return await original(services, task_key, variables, **kw)
+
+    monkeypatch.setattr(llm, "run_task", spy)
+    _llm(svc, {"drift_check": '{"score": 90, "issues": []}'})
+    job = wait(client, ok(client, "drift.check", {"clip_ids": [cid]})["job_ids"])[0]
+    assert job["status"] == "succeeded", job
+    text = next(v["input"] for v in seen if v["task"] == "drift_check")
+    assert "holding a dark fabric bundle" in text and "Shot size: ms" in text
+    assert "Bọc vải" in text and "intended" in text.lower()
+    assert "locked character" in text.lower()
 
 
 def test_drift_check_on_video_take_uses_frame(client, svc, setup, make_clip_tiny):

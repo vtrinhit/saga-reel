@@ -131,6 +131,52 @@ def test_break_prefers_punctuation_and_keeps_number_with_unit():
     assert cues[0].words[-1].text == "Ừ," or len(cues[0].words) >= 2
 
 
+REDUP = "Rồi chiếc ghe quen thuộc từ từ hiện ra trong màn sương."
+REDUP_WORDS = [("Rồi", 0, 180), ("chiếc", 180, 380), ("ghe", 380, 560), ("quen", 560, 740), ("thuộc", 740, 950),
+               ("từ", 950, 1120), ("từ", 1120, 1300), ("hiện", 1300, 1500), ("ra", 1500, 1700),
+               ("trong", 1700, 1900), ("màn", 1900, 2100), ("sương.", 2100, 2700)]
+
+
+def _boundaries(cues) -> list[tuple[str, str]]:
+    """Cặp (từ cuối, từ đầu) ở mọi chỗ ngắt cụm và ngắt dòng."""
+    out = []
+    flat = [w.text for c in cues for w in c.words]
+    pos = 0
+    for c in cues:
+        for ln in c.lines:
+            pos += len(ln)
+            if pos < len(flat):
+                out.append((flat[pos - 1], flat[pos]))
+    return out
+
+
+def test_never_breaks_reduplicated_syllables():
+    st = sub.load_style("9x16")
+    cues = sub.build_cues([line(REDUP, start=15550, dur=2700, words=REDUP_WORDS)], st)
+    assert " ".join(w.text for c in cues for w in c.words) == REDUP
+    for a, b in _boundaries(cues):
+        assert timing._key(a) != timing._key(b), (a, b)
+    for c in cues:
+        assert len(c.words) <= 6
+    for a, b in itertools.pairwise(cues):
+        assert a.end_ms <= b.start_ms
+    assert cues[0].start_ms == 15500 and cues[-1].words[-1].end_ms == 15550 + 2700
+    # chỗ ngắt nên rơi trước từ chức năng mở cụm ("trong"), không phải giữa cụm danh từ
+    assert ("màn", "sương.") not in _boundaries(cues)
+
+
+def test_split_lines_avoids_reduplication_and_prefers_function_words():
+    st = sub.load_style("9x16")
+    words = ["quen", "thuộc", "từ", "từ", "hiện", "ra", "trong", "màn", "sương."]
+    lines = sub.split_lines(words, st, sub.max_text_width(st))
+    assert lines is not None
+    cut = len(lines[0])
+    assert (words[cut - 1], words[cut]) != ("từ", "từ")
+    assert "của" in sub.NO_BREAK_AFTER and "rồi" in sub.BREAK_BEFORE
+    st2 = sub.load_style("9x16", overrides={"break_before_words": ["hiện"]})
+    assert sub._break_cost(["từ", "hiện"], 1, st2) < 0
+
+
 def test_min_duration_and_reading_speed():
     st = sub.load_style("9x16")
     cues = sub.build_cues([line("Đi", start=1000, dur=200)], st)

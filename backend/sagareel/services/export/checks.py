@@ -17,6 +17,9 @@ MIB = 1024 * 1024
 YT_FORBIDDEN_TITLE_CHARS = "<>"
 
 
+WARNING_CODES = frozenset({"hashtags_hidden", "needs_translation"})  # metadata: cảnh báo, không chặn
+
+
 def _issue(code: str, message: str, *, hint: str | None = None, field: str | None = None, **extra: Any) -> dict:
     out: dict[str, Any] = {"code": code, "message": message}
     if hint:
@@ -176,6 +179,11 @@ def check_metadata(spec: Mapping[str, Any], md: Mapping[str, Any]) -> list[dict]
     elif h.get("max_shown") is not None and len(tags) > h["max_shown"]:
         out.append(_issue("hashtags_hidden", f"Chỉ {h['max_shown']} hashtag đầu hiện cạnh tiêu đề (có {len(tags)}).",
                           field="hashtags"))
+    if md.get("needs_translation"):
+        miss = ", ".join(str(x) for x in md["needs_translation"])
+        out.append(_issue("needs_translation", f"Metadata gói {md.get('lang', '')} còn thiếu bản dịch: {miss}.",
+                          hint="Bật LLM (công việc caption) hoặc nhập bản dịch tên/tóm tắt tập rồi xuất lại.",
+                          field="title"))
     kw_cap = spec["tags"].get("max_chars")
     keywords = list(md.get("keywords") or [])
     if kw_cap is not None and keywords:
@@ -214,6 +222,6 @@ def run_checks(spec: Mapping[str, Any], *, duration_s: float, duration_estimated
     warnings += check_subtitle_boxes(spec, cue_boxes, frame or platforms.target_size(dict(spec)))
     if metadata is not None:
         for i in check_metadata(spec, metadata):
-            (warnings if i["code"] == "hashtags_hidden" else errors).append(i)
+            (warnings if i["code"] in WARNING_CODES else errors).append(i)
     me, mw = check_music(music)
     return {"errors": errors + me, "warnings": warnings + mw}

@@ -100,11 +100,15 @@ def shift_chapters(chapters: Sequence[Mapping[str, Any]], start_ms: int, end_ms:
 # --- Nhãn tập / phần ------------------------------------------------------------------------------------------------
 
 
-def episode_label(number: int | None, part: tuple[int, int] | None = None) -> str:
-    """"Tập 3" hoặc, khi có chia phần, "Tập 3 / Phần 1"."""
-    base = f"Tập {number}" if number else ""
+EPISODE_WORD = {"vi": "Tập", "en": "Episode"}
+
+
+def episode_label(number: int | None, part: tuple[int, int] | None = None, lang: str = "vi") -> str:
+    """"Tập 3" hoặc, khi có chia phần, "Tập 3 / Phần 1" (ngôn ngữ khác: "Episode 3 / Part 1")."""
+    word = EPISODE_WORD.get(lang, EPISODE_WORD["en"])
+    base = f"{word} {number}" if number else ""
     if part and part[1] > 1:
-        return f"{base} / Phần {part[0]}".strip(" /")
+        return f"{base} / {platforms.PART_WORD.get(lang, platforms.PART_WORD['en'])} {part[0]}".strip(" /")
     return base
 
 
@@ -129,16 +133,65 @@ _PINNED = {"vi": "Bạn thấy tập này thế nào? Để lại cảm nghĩ b�
            "en": "What did you think of this episode? Tell us in the comments!"}
 
 
+DIALOGUE_DESC_LINES = 3
+DIALOGUE_DESC_CHARS = 600
+
+
+def is_foreign(project: Mapping[str, Any], lang: str) -> bool:
+    """Gói khác ngôn ngữ chính của dự án (mặc định tiếng Việt)."""
+    return (lang or "vi") != (project.get("language") or "vi")
+
+
+def sequence_translation(sequence: Mapping[str, Any], lang: str) -> dict[str, str]:
+    """Bản dịch tên/tóm tắt tập trong `sequence.settings.translations[lang]` (chuỗi = chỉ tên tập)."""
+    tr = ((sequence.get("settings") or {}).get("translations") or {}).get(lang)
+    if isinstance(tr, str):
+        return {"title": nfc(tr)} if nfc(tr) else {}
+    if isinstance(tr, Mapping):
+        return {k: nfc(tr.get(k)) for k in ("title", "synopsis") if nfc(tr.get(k))}
+    return {}
+
+
+def dialogue_translation(sequence: Mapping[str, Any], lang: str) -> str:
+    """Vài câu thoại đầu đã dịch sang `lang` (mô tả dự phòng khi chưa có bản dịch tóm tắt)."""
+    lines = [nfc((d.get("translations") or {}).get(lang)) for d in sequence.get("dialogue") or []]
+    return " ".join([x for x in lines if x][:DIALOGUE_DESC_LINES])[:DIALOGUE_DESC_CHARS]
+
+
 def template_metadata(*, project: Mapping[str, Any], sequence: Mapping[str, Any], lang: str,
                       platform_label: str = "") -> dict[str, Any]:
-    """Tiêu đề/mô tả/hashtag không cần LLM: từ tên tập, tóm tắt, tên dự án, thể loại."""
-    title = nfc(sequence.get("title")) or f"Tập {sequence.get('number') or ''}".strip()
-    synopsis = nfc(sequence.get("synopsis"))
-    description = synopsis or nfc(project.get("description")) or title
+    """Tiêu đề/mô tả/hashtag không cần LLM: từ tên tập, tóm tắt, tên dự án, thể loại.
+
+    Gói khác ngôn ngữ dự án: dùng bản dịch tên/tóm tắt tập (`settings.translations[lang]`), không có thì bản dịch lời
+    thoại cho mô tả; phần còn thiếu ghi vào `needs_translation` (kiểm tra gói báo cảnh báo). Không vẽ tên tập tiếng
+    Việt lên bìa gói ngoại ngữ (`cover_title` = None)."""
+    original = nfc(sequence.get("title"))
     tags = [project.get("name") or "", project.get("genre_key") or ""]
-    keywords = [w for w in {nfc(project.get("name")), nfc(sequence.get("title")), nfc(project.get("genre_key"))} if w]
-    return {"title": title, "description": description, "hashtags": clean_hashtags(tags, len(tags)),
-            "keywords": sorted(keywords), "pinned_comment": _PINNED.get(lang, _PINNED["en"]), "source": "template"}
+    needs: list[str] = []
+    if not is_foreign(project, lang):
+        title = original or episode_label(sequence.get("number"), lang=lang)
+        description = nfc(sequence.get("synopsis")) or nfc(project.get("description")) or title
+        cover_title: str | None = original or None
+        kw_title = original
+    else:
+        tr = sequence_translation(sequence, lang)
+        title = tr.get("title") or ""
+        if not title:
+            needs.append("title")
+            title = original or episode_label(sequence.get("number"), lang=lang)
+        description = tr.get("synopsis") or dialogue_translation(sequence, lang)
+        if not description:
+            needs.append("description")
+            description = nfc(sequence.get("synopsis")) or title
+        cover_title = tr.get("title") or None
+        kw_title = tr.get("title") or ""
+    keywords = [w for w in {nfc(project.get("name")), kw_title, nfc(project.get("genre_key"))} if w]
+    out = {"title": title, "description": description, "hashtags": clean_hashtags(tags, len(tags)),
+           "keywords": sorted(keywords), "pinned_comment": _PINNED.get(lang, _PINNED["en"]), "source": "template",
+           "cover_title": cover_title}
+    if needs:
+        out["needs_translation"] = needs
+    return out
 
 
 async def llm_metadata(services: Any, *, project: Mapping[str, Any], sequence: Mapping[str, Any], lang: str,
@@ -150,12 +203,19 @@ async def llm_metadata(services: Any, *, project: Mapping[str, Any], sequence: M
     limits = {k: v for k, v in {"title_max_chars": platforms.title_limit(dict(spec))["max_chars"],
                                 "caption_max_chars": cap.get("max_chars"), "caption_max_bytes": cap.get("max_bytes"),
                                 "max_hashtags": spec["hashtags"]["max"]}.items() if v is not None}
-    lines = [f"Platform: {spec['label']}", f"Language: {lang}", f"Series: {nfc(project.get('name'))}",
+    lines = [f"Platform: {spec['label']}", f"Target language: {lang}",
+             f"Source language: {project.get('language') or 'vi'}", f"Series: {nfc(project.get('name'))}",
              f"Episode title: {nfc(sequence.get('title'))}", f"Synopsis: {nfc(sequence.get('synopsis'))}",
              f"Script excerpt: {nfc(sequence.get('script'))[:SCRIPT_EXCERPT_CHARS]}",
              "Limits: " + ", ".join(f"{k}={v}" for k, v in limits.items())]
+    if is_foreign(project, lang):
+        tr = sequence_translation(sequence, lang)
+        if tr.get("title"):
+            lines.append(f"Episode title already translated ({lang}): {tr['title']}")
+        lines.append(f"Write EVERY field (title, caption, hashtags, keywords, pinned_comment, cover_title) in {lang}. "
+                     f"Translate the episode title into {lang}; keep proper names of people and places.")
     try:
-        outcome = await llm.run_task(services, TASK_KEY, {"input": "\n".join(lines)})
+        outcome = await llm.run_task(services, TASK_KEY, {"input": "\n".join(lines), "lang": lang})
     except Exception as e:  # noqa: BLE001 — LLM chưa cấu hình/lỗi mạng: dùng mẫu cố định
         logger.info("Công việc caption không chạy được (%s); dùng mẫu cố định", getattr(e, "code", type(e).__name__))
         return None
@@ -165,8 +225,16 @@ async def llm_metadata(services: Any, *, project: Mapping[str, Any], sequence: M
     title, caption, tags = data.get("title"), data.get("caption"), data.get("hashtags")
     if not isinstance(title, str) or not isinstance(caption, str) or not title.strip() or not caption.strip():
         return None
-    return {"title": title, "description": caption,
-            "hashtags": [t for t in tags if isinstance(t, str)] if isinstance(tags, list) else [], "source": "llm"}
+    out: dict[str, Any] = {"title": title, "description": caption, "source": "llm",
+                           "hashtags": [t for t in tags if isinstance(t, str)] if isinstance(tags, list) else []}
+    kw = data.get("keywords")
+    if isinstance(kw, list) and any(isinstance(k, str) and k.strip() for k in kw):
+        out["keywords"] = [k for k in kw if isinstance(k, str) and k.strip()]
+    if isinstance(data.get("pinned_comment"), str) and data["pinned_comment"].strip():
+        out["pinned_comment"] = data["pinned_comment"]
+    ct = data.get("cover_title")
+    out["cover_title"] = nfc(ct) if isinstance(ct, str) and ct.strip() else nfc(title)
+    return out
 
 
 # --- Lắp ráp --------------------------------------------------------------------------------------------------------
@@ -203,14 +271,17 @@ async def build(services: Any, *, spec: Mapping[str, Any], project: Mapping[str,
     if use_llm:
         written = await llm_metadata(services, project=project, sequence=sequence, lang=lang, spec=spec)
         if written is not None:
+            if not is_foreign(project, lang):
+                written["cover_title"] = base["cover_title"]  # bìa cùng ngôn ngữ: tên tập gốc, không phải tiêu đề đăng
             base.update(written)
+            base.pop("needs_translation", None)
     if part and part[1] > 1:
-        base["title"] = f"{base['title']} ({platforms.part_label(*part)})"
+        base["title"] = f"{base['title']} ({platforms.part_label(*part, lang=lang)})"
     md = finalize(spec, base)
     chap = list(chapters) if spec["chapters"]["supported"] else []
     md.update({
         "platform": spec["label"], "lang": lang,
-        "episode_label": episode_label(sequence.get("number"), part),
+        "episode_label": episode_label(sequence.get("number"), part, lang),
         "part": {"index": part[0], "total": part[1]} if part else None,
         "chapters": chap, "chapters_text": chapters_text(chap),
         "ai_generated": True,
@@ -227,15 +298,16 @@ def part_variant(spec: Mapping[str, Any], md: Mapping[str, Any], index: int, tot
                  chapters: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Bản metadata của một phần: tiêu đề kèm "(Phần i/n)" (vẫn vừa giới hạn), chương dời về gốc phần."""
     out = {k: v for k, v in md.items() if k not in ("parts", "covers", "subtitle_files")}
-    suffix = f" ({platforms.part_label(index, total)})"
+    lang = md.get("lang") or "vi"
+    suffix = f" ({platforms.part_label(index, total, lang)})"
     lim = dict(platforms.title_limit(dict(spec)))
     for k, cost in (("max_chars", len(suffix)), ("max_bytes", len(suffix.encode("utf-8")))):
         if lim.get(k) is not None:
             lim[k] = max(1, lim[k] - cost)
-    base = re.sub(r"\s*\(Phần \d+/\d+\)$", "", md["title"])
+    base = re.sub(r"\s*\((?:Phần|Part) \d+/\d+\)$", "", md["title"])
     out["title"] = truncate(base, lim) + suffix
     out["part"] = {"index": index, "total": total}
-    out["episode_label"] = episode_label(_number_from(md.get("episode_label")), (index, total))
+    out["episode_label"] = episode_label(_number_from(md.get("episode_label")), (index, total), lang)
     cap = list(chapters) if spec["chapters"]["supported"] else []
     out["chapters"], out["chapters_text"] = cap, chapters_text(cap)
     out.pop("description_with_chapters", None)
@@ -245,7 +317,7 @@ def part_variant(spec: Mapping[str, Any], md: Mapping[str, Any], index: int, tot
 
 
 def _number_from(label: Any) -> int | None:
-    m = re.match(r"Tập (\d+)", str(label or ""))
+    m = re.match(r"\D*?(\d+)", str(label or ""))
     return int(m.group(1)) if m else None
 
 
