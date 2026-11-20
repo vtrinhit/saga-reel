@@ -13,7 +13,10 @@ from sagareel.db.base import Base, JSONDict, Plain, utcnow
 
 class Job(Plain, Base):
     __tablename__ = "job"
-    __table_args__ = (Index("ix_job_status_lane_priority", "status", "lane", "priority"),)
+    __table_args__ = (
+        Index("ix_job_status_lane_priority", "status", "lane", "priority"),
+        Index("ix_job_project_id_id", "project_id", "id"),  # job.list theo dự án, mới nhất trước (M8)
+    )
 
     type: Mapped[str]
     # queued · running · waiting_review · waiting_input · paused · succeeded · failed · cancelled · interrupted
@@ -58,6 +61,7 @@ class Spend(Plain, Base):
     """Sổ chi tiêu cho ngân sách; thời điểm ghi = `created_at`."""
 
     __tablename__ = "spend"
+    __table_args__ = (Index("ix_spend_job_kind", "job_id", "kind"),)  # tra chi tiêu theo job (M8)
 
     connection_id: Mapped[int | None]
     kind: Mapped[str]

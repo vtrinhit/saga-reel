@@ -333,8 +333,12 @@ def _sequence(s: Session, q: Sequence, med: _Media, asset_ref, look_key: dict[in
 # --- YAML -----------------------------------------------------------------------------------------------------------
 
 
-class _Dumper(yaml.SafeDumper):
-    def ignore_aliases(self, data: Any) -> bool:  # không sinh anchor/alias: bộ đọc spec từ chối chúng
+# libyaml (C) nhanh hơn ~10× bộ phát Python thuần — quyết định thời gian xuất project hàng nghìn clip (M8).
+_BaseDumper = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
+
+
+class _Dumper(_BaseDumper):  # type: ignore[misc, valid-type]
+    def ignore_aliases(self, data: Any) -> bool:  # không sinh anchor/alias (bộ đọc spec giới hạn nút sau khi nở)
         return True
 
 

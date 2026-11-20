@@ -15,6 +15,7 @@ from __future__ import annotations
 import builtins
 import contextlib
 import errno
+import functools
 import hashlib
 import mimetypes
 import os
@@ -344,6 +345,12 @@ def list(  # noqa: A001 — tên op `media.list`
     return MediaPage(items=[to_out(m) for m in rows], next_cursor=rows[-1].id if has_more else None)
 
 
+@functools.lru_cache(maxsize=16)
+def _resolved(path: Path) -> Path:
+    """`data_dir.resolve()` có nhớ: gọi cho từng media (hàng nghìn lần/lần dựng) tốn vài chục µs đến ms trên Windows."""
+    return path.resolve()
+
+
 def file_path(settings: AppSettings, m: Media) -> Path:
     """Đường dẫn tuyệt đối của file; từ chối đường dẫn thoát khỏi data_dir, báo 404 nếu file đã mất."""
     if getattr(m, "trashed_at", None) is not None or getattr(m, "purged_at", None) is not None:
@@ -352,7 +359,7 @@ def file_path(settings: AppSettings, m: Media) -> Path:
                        f"File của media #{m.id} đã {'bị xoá hẳn' if gone else 'chuyển vào thùng rác'}.",
                        hint="Khôi phục bằng trash.restore (nếu chưa xoá hẳn)." if not gone else
                        "Tạo lại take để có file mới.", status=410)
-    root = settings.data_dir.resolve()
+    root = _resolved(settings.data_dir)
     p = (root / m.path).resolve()
     if not p.is_relative_to(root):
         raise AppError("media_path_invalid", f"Đường dẫn của media #{m.id} không hợp lệ.", status=500)
