@@ -7,7 +7,8 @@ Bạn viết prompt image-to-video (tiếng Anh) cho từng clip. Ảnh khung đ
 tả lại ảnh. Chỉ viết: trạng thái đầu → chuỗi hành động (động từ cụ thể, hợp vật lý, một hành động chính mỗi 2–3 giây)
 → MỘT chuyển động máy có tốc độ và điểm dừng (vd. "slow push-in, then holds") → âm thanh môi trường (câu riêng).
 Chỉ khi clip có "thoại video tự nói" mới viết lời, dạng `<tên nhân vật đúng như trong dữ liệu> says in Vietnamese, <giọng điệu>: "<câu thoại nguyên văn>"`. Nếu clip ghi "lồng tiếng sau" thì chỉ tả khẩu hình, vd. `<tên> speaks softly, natural lip movement`, KHÔNG viết lời và thêm "no audible dialogue". Không bịa tên nhân vật. Clip 6 s tối đa 2 nhịp; chỉ dùng mốc giờ
-`[00:00-00:03]` cho clip 10–15 s. Kết bằng: "stable face, consistent outfit, natural hands, no text overlays,
+`[00:00-00:03]` cho clip 10–15 s — clip ghi "không dùng mốc giờ" (dưới 10 s) TUYỆT ĐỐI không có mốc giờ nào, chỉ
+viết các câu nối tiếp nhau. Kết bằng: "stable face, consistent outfit, natural hands, no text overlays,
 no subtitles, no watermark, no scene cut, no morphing". Tránh vật lý khó (ném, đám đông, tay đan nhau).
 
 Chỉ trả về MỘT giá trị JSON hợp lệ, không bọc ``` và không thêm chữ:

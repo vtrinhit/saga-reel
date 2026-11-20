@@ -270,6 +270,26 @@ async def test_image_and_motion_prompts_fill_and_respect_user(owner_ctx, proj, s
     assert "lồng tiếng sau" in motion_clips and "Ai đó?" not in motion_clips
 
 
+async def test_motion_prompts_no_timestamps_for_short_clips(owner_ctx, proj, seq, fake_llm):
+    c1, c2 = await _clips(owner_ctx, proj, seq, fake_llm)
+    with owner_ctx.services.db.session() as s:
+        s.get(Clip, c2.id).duration_ms = 12000
+    fake_llm.on("story_motion_prompts", {"items": [
+        {"clip": "c0001", "prompt": "[00:00-00:03] Linh startles awake. [00:03–00:06] She turns, slow push-in."},
+        {"clip": "c0002", "prompt": "[00:00-00:06] Minh steps out. [00:06-00:12] He stops, camera holds."}]})
+    await writer.write_prompts(owner_ctx, "motion", clip_ids=[c1.id, c2.id])
+    brief = fake_llm.calls_of("story_motion_prompts")[0]["variables"]["clips"].split("\n")
+    assert "không dùng mốc giờ" in brief[0] and "không dùng mốc giờ" not in brief[1]
+    with owner_ctx.services.db.session() as s:
+        assert s.get(Clip, c1.id).motion_prompt == "Linh startles awake. She turns, slow push-in."
+        assert s.get(Clip, c2.id).motion_prompt.startswith("[00:00-00:06] Minh steps out.")
+
+
+def test_strip_timestamps_variants():
+    assert writer.strip_timestamps("[0:00 - 0:03] A. (00:03-00:06) B. [00:06.5—00:09] C.") == "A. B. C."
+    assert writer.strip_timestamps("Hold [close-up] here") == "Hold [close-up] here"
+
+
 async def test_dialogue_only_targets_too_long(owner_ctx, proj, seq, fake_llm):
     c1, _c2 = await _clips(owner_ctx, proj, seq, fake_llm)
     out = await writer.write_dialogue(owner_ctx, sequence_id=seq)

@@ -38,7 +38,16 @@ from sqlalchemy import select
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, NotFound, ValidationFailed
 from sagareel.db.base import utcnow
-from sagareel.db.models import Clip, ExportPackage, Scene, Sound, TimelineItem
+from sagareel.db.models import (
+    Asset,
+    Clip,
+    DialogueLine,
+    ExportPackage,
+    Scene,
+    Sound,
+    Take,
+    TimelineItem,
+)
 from sagareel.media import ffmpeg, probe
 from sagareel.services import entities, media
 from sagareel.services.export import checks, covers, metadata, platforms
@@ -172,11 +181,12 @@ def row_dict(row: ExportPackage) -> dict[str, Any]:
 
 
 def sequence_facts(services: Any, sequence_id: int) -> dict[str, Any]:
-    """Dữ liệu phẳng của tập: mốc cảnh (ms ước tính theo tổng clip), tổng thời lượng clip, nhạc + giấy phép."""
+    """Dữ liệu phẳng của tập: mốc cảnh (ms ước tính theo tổng clip), tổng thời lượng clip, nhạc + giấy phép, ảnh sạch
+    làm bìa (`stills`: ảnh take / video take đã chọn của clip — không dính phụ đề), lời thoại + bản dịch."""
     with services.db.session() as s:
         seq = entities.get(s, "sequence", sequence_id)
         out: dict[str, Any] = {"id": seq.id, "key": seq.key, "number": seq.number, "title": seq.title,
-                               "synopsis": seq.synopsis, "script": seq.script}
+                               "synopsis": seq.synopsis, "script": seq.script, "settings": dict(seq.settings or {})}
         scenes = s.scalars(select(Scene).where(Scene.sequence_id == seq.id, Scene.deleted_at.is_(None))
                            .order_by(Scene.rank)).all()
         scene_title = {sc.id: (sc.title or sc.summary.split("\n")[0][:40] or sc.key) for sc in scenes}
@@ -192,6 +202,12 @@ def sequence_facts(services: Any, sequence_id: int) -> dict[str, Any]:
             t += max(0, int(c.duration_ms))
         out["clip_total_ms"] = t
         out["scene_marks"] = marks
+        out["stills"] = clip_stills(services, s, clips)
+        order = {c.id: i for i, c in enumerate(clips)}
+        lines = s.scalars(select(DialogueLine).where(DialogueLine.clip_id.in_(list(order)),
+                                                     DialogueLine.deleted_at.is_(None))).all()
+        out["dialogue"] = [{"text": ln.text, "translations": dict(ln.translations or {})}
+                           for ln in sorted(lines, key=lambda ln: (order[ln.clip_id], ln.rank))]
         music: list[dict[str, Any]] = []
         for it in s.scalars(select(TimelineItem).where(TimelineItem.sequence_id == seq.id,
                                                        TimelineItem.track == "music",
@@ -201,6 +217,32 @@ def sequence_facts(services: Any, sequence_id: int) -> dict[str, Any]:
                           "license": snd.license if snd else "", "attribution": snd.attribution if snd else ""})
         out["music"] = music
         return out
+
+
+def clip_stills(services: Any, s: Any, clips: Sequence[Clip]) -> list[dict[str, Any]]:
+    """Nguồn bìa sạch theo thứ tự clip: ảnh take đã chọn (ưu tiên) hoặc video take; mốc theo thời lượng clip cộng dồn."""
+    from sagareel.db.models import Media
+
+    char_ids = {a.id for a in s.scalars(select(Asset).where(Asset.kind == "character", Asset.id.in_(
+        [x["asset_id"] for c in clips for x in (c.assets or []) if isinstance(x, dict)
+         and isinstance(x.get("asset_id"), int)])))}
+    out: list[dict[str, Any]] = []
+    t = 0
+    for c in clips:
+        start, t = t, t + max(0, int(c.duration_ms))
+        for kind, take_id in (("image", c.image_take_id), ("video", c.video_take_id)):
+            take = s.get(Take, take_id) if take_id else None
+            m = s.get(Media, take.media_id) if take is not None and take.media_id else None
+            if m is None or m.kind != kind:
+                continue
+            path = media.file_path(services.settings, m)
+            if not Path(path).is_file():
+                continue
+            out.append({"clip_id": c.id, "path": path, "kind": kind, "start_ms": start, "end_ms": t,
+                        "has_character": any(isinstance(x, dict) and x.get("asset_id") in char_ids
+                                             for x in (c.assets or []))})
+            break
+    return out
 
 
 def latest_render(services: Any, sequence_id: int, platform: str | None, lang: str | None) -> dict[str, Any] | None:
@@ -528,20 +570,27 @@ async def run_unit(services: Any, run: Any, export_id: int, step: Any = None) ->
             suffix = "" if n == 1 else f"-part{f['index']}"
             sub_files += await anyio.to_thread.run_sync(write_subtitles, shift_cues(cues, f["start_ms"], f["end_ms"]) if n > 1 else cues, staging, suffix)
 
-        step(0.75, "Tạo ảnh bìa")
-        cover_title = seq["title"] if opt.cover_title else None
-        cover_info = await covers.make_covers(staging / files[0]["file"], staging, spec, duration_ms=files[0]["end_ms"] - files[0]["start_ms"],
-                                              title=cover_title, n=opt.covers, marks_ms=opt.cover_marks_ms)
-
-        step(0.85, "Viết metadata")
+        step(0.75, "Viết metadata")  # trước bìa: chữ trên bìa theo ngôn ngữ gói (tên tập đã dịch)
         chapters = metadata.build_chapters(seq["scene_marks"], total_ms, min_s=spec["chapters"].get("min_seconds", 10),
                                            min_count=spec["chapters"].get("min_count", 3)) if spec["chapters"]["supported"] else []
         md = await metadata.build(services, spec=spec, project=proj, sequence=seq, lang=lang, chapters=chapters,
-                                  music=seq["music"], use_llm=opt.use_llm,
-                                  cover_timestamp_ms=cover_info[0]["timestamp_ms"] if cover_info else None)
+                                  music=seq["music"], use_llm=opt.use_llm)
         if opt.metadata:  # người dùng sửa metadata ở bước kiểm tra → ghi đè bản sinh ra
             md.update({k: v for k, v in opt.metadata.items() if v is not None})
             md["overridden"] = sorted(k for k, v in opt.metadata.items() if v is not None)
+
+        step(0.85, "Tạo ảnh bìa")
+        f0 = files[0]
+        # Chỉ ảnh take/video take của clip nằm trong phần 1 (ảnh sạch, không phụ đề); mốc quy về thời gian phần 1.
+        scale = total_ms / seq["clip_total_ms"] if seq["clip_total_ms"] else 1.0
+        stills = [st for st in seq["stills"] if f0["start_ms"] <= st["start_ms"] * scale < f0["end_ms"]]
+        stills = [{**st, "start_ms": st["start_ms"] - f0["start_ms"] / scale, "end_ms": st["end_ms"] - f0["start_ms"] / scale}
+                  for st in stills]
+        cover_info = await covers.make_covers(staging / f0["file"], staging, spec, duration_ms=f0["end_ms"] - f0["start_ms"],
+                                              title=md.get("cover_title") if opt.cover_title else None, n=opt.covers,
+                                              marks_ms=opt.cover_marks_ms, stills=stills,
+                                              clip_total_ms=round((f0["end_ms"] - f0["start_ms"]) / scale))
+        md["cover_timestamp_ms"] = cover_info[0]["timestamp_ms"] if cover_info else None
         md["covers"] = cover_info
         md["subtitle_files"] = sub_files
         if n > 1:

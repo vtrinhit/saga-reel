@@ -47,6 +47,8 @@ Log = Callable[[str, str], None] | None
 
 STILL_GENRES = frozenset({"storyboard", "narration"})
 PROMPT_BATCH = 20
+TIMESTAMP_MIN_MS = 10_000  # mốc giờ [00:00-00:03] chỉ dùng cho clip 10–15 s
+_TIMESTAMP = re.compile(r"[\[(]\s*\d{1,2}:\d{2}(?:[.,]\d+)?\s*[-–—]\s*\d{1,2}:\d{2}(?:[.,]\d+)?\s*[\])]\s*")
 NARRATOR = frozenset({"narrator", "nguoi_ke", "nguoi ke", "narration", ""})
 TEMPLATE_RESERVE_CHARS = 6000  # chỗ cho thân template + biến nhỏ khi chia ngân sách ngữ cảnh
 
@@ -786,6 +788,8 @@ def clip_brief(c: Clip, assets: dict[int, Asset], lines: list[DialogueLine], sce
     if part == "image" and c.first_frame_desc:
         parts.append(f"khung đầu: {c.first_frame_desc}")
     if part == "motion":
+        if c.duration_ms < TIMESTAMP_MIN_MS:
+            parts.append("không dùng mốc giờ (clip dưới 10 s)")
         if c.last_frame_desc:
             parts.append(f"khung cuối: {c.last_frame_desc}")
         if c.sfx_desc:
@@ -808,6 +812,11 @@ def clip_brief(c: Clip, assets: dict[int, Asset], lines: list[DialogueLine], sce
     if part == "dialogue":
         parts.append(f"giới hạn: {max(0, int((c.duration_ms / 1000 - 2) * 4.5))} ký tự")
     return " | ".join(parts)
+
+
+def strip_timestamps(prompt: str) -> str:
+    """Bỏ mọi mốc giờ kiểu `[00:00-00:03]` / `(0:03–0:06)` khỏi prompt chuyển động."""
+    return re.sub(r"[ \t]{2,}", " ", _TIMESTAMP.sub("", prompt)).strip()
 
 
 async def write_prompts(ctx: OpContext, part: str, *, sequence_id: int | None = None, clip_ids: list[int] | None = None,
@@ -835,7 +844,9 @@ async def write_prompts(ctx: OpContext, part: str, *, sequence_id: int | None = 
             scenes = {sc.id: sc for sc in s.scalars(select(Scene).where(Scene.sequence_id == seq.id))}
             briefs = [clip_brief(c, assets, lines.get(c.id, []), scenes.get(c.scene_id), part) for c in targets]
             cast = load_cast(s, p, seq.number).text
-            return {"briefs": briefs, "keys": {c.key: c.id for c in targets}, "style": p.style_block or "(chưa có)",
+            return {"briefs": briefs, "keys": {c.key: c.id for c in targets},
+                    "short": {c.id for c in targets if c.duration_ms < TIMESTAMP_MIN_MS},
+                    "style": p.style_block or "(chưa có)",
                     "cast": cast, "sequence_id": seq.id, "skipped": len(rows) - len(targets)}
 
     v = await _thread(load)
@@ -854,7 +865,10 @@ async def write_prompts(ctx: OpContext, part: str, *, sequence_id: int | None = 
         for it in out.data.items:
             cid = v["keys"].get(it.clip.strip().strip("[]`"))
             if cid is not None:
-                written[cid] = it.prompt.strip()
+                prompt = it.prompt.strip()
+                if part == "motion" and cid in v["short"]:
+                    prompt = strip_timestamps(prompt)  # clip < 10 s: mốc giờ làm video giật nhịp
+                written[cid] = prompt
     lctx = llm_ctx(ctx, model)
 
     def save() -> None:

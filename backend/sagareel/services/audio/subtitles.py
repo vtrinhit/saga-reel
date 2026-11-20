@@ -39,6 +39,13 @@ MODES = ("outline", "karaoke_fill", "word_pop")
 _BREAK_AFTER = (",", ".", ";", ":", "!", "?", "…", "—", "–")
 _NUMBER = re.compile(r"^\d[\d.,:/]*$")
 _MEASURE_PX = 1000  # đo ở cỡ lớn rồi nhân tỉ lệ (ổn định hơn làm tròn ở cỡ nhỏ)
+# Ngắt cụm/dòng tiếng Việt (style có thể thay bằng `break_before_words` / `no_break_after_words`):
+BREAK_BEFORE = ("rồi", "thì", "mà", "nhưng", "và", "khi", "để", "trong", "với", "nên", "vì")  # từ mở một vế
+NO_BREAK_AFTER = ("của", "những", "các", "một", "mỗi", "từng")  # từ dính với từ sau ("của | mẹ" là sai)
+_COST_PUNCT = -2.0
+_COST_BEFORE = -1.0
+_COST_REDUP = 100.0  # láy/lặp ("từ | từ"): gần như cấm
+_COST_BIND = 50.0
 
 
 # --- Style --------------------------------------------------------------------------------------------------------
@@ -270,6 +277,28 @@ def _glued(a: str, b: str) -> bool:
     return bool(_NUMBER.match(a)) and len(timing._key(b)) <= 5 and not _NUMBER.match(b)
 
 
+def _words_cfg(style: Style, key: str, default: Sequence[str]) -> frozenset[str]:
+    return frozenset(timing._key(w) for w in (style.get(key) if style.get(key) is not None else default))
+
+
+def _break_cost(words: Sequence[str], k: int, style: Style) -> float:
+    """Chi phí ngắt giữa `words[k-1]` và `words[k]` (âm = nên ngắt). Không ngắt giữa hai âm tiết giống nhau
+    (láy/lặp, không phân biệt hoa thường, NFC) hay ngay sau từ dính với từ sau; ưu tiên sau dấu câu và trước từ
+    chức năng mở vế ("rồi", "thì", "mà"…)."""
+    a, b = words[k - 1], words[k]
+    ka, kb = timing._key(a), timing._key(b)
+    cost = 0.0
+    if ka and ka == kb:
+        cost += _COST_REDUP
+    if ka in _words_cfg(style, "no_break_after_words", NO_BREAK_AFTER) and not a.endswith(_BREAK_AFTER):
+        cost += _COST_BIND
+    if a.endswith(_BREAK_AFTER):
+        cost += _COST_PUNCT
+    elif kb in _words_cfg(style, "break_before_words", BREAK_BEFORE):
+        cost += _COST_BEFORE
+    return cost
+
+
 def split_lines(words: Sequence[str], style: Style, max_width: float, max_lines: int | None = None,
                 *, scale_pct: int = 100) -> list[list[int]] | None:
     """Chia `words` thành ≤ `max_lines` dòng vừa `max_width`; trả list chỉ số theo dòng, hoặc None nếu không vừa.
@@ -295,7 +324,7 @@ def split_lines(words: Sequence[str], style: Style, max_width: float, max_lines:
         w = max(width(0, k), width(k, n))
         if w > max_width:
             continue
-        score = w - (0.15 * max_width if words[k - 1].endswith(_BREAK_AFTER) else 0)
+        score = w + 0.075 * max_width * _break_cost(words, k, style)
         if best is None or score < best[0]:
             best = (score, k)
     if best is None:
@@ -304,45 +333,69 @@ def split_lines(words: Sequence[str], style: Style, max_width: float, max_lines:
     return [list(range(k)), list(range(k, n))]
 
 
+def _segments(words: list[CueWord]) -> list[list[CueWord]]:
+    """Cắt câu sau dấu câu khi đoạn đã ≥ 2 từ (mỗi đoạn chia cụm riêng)."""
+    out: list[list[CueWord]] = []
+    cur: list[CueWord] = []
+    for w in words:
+        cur.append(w)
+        if len(cur) >= 2 and w.text.endswith(_BREAK_AFTER):
+            out.append(cur)
+            cur = []
+    if cur:
+        out.append(cur)
+    return out
+
+
 def _chunks(words: list[CueWord], style: Style, max_width: float, scale_pct: int) -> list[list[list[CueWord]]]:
-    """Gom từ thành cụm (≤ N từ, vừa ≤ max_lines dòng); đóng cụm sớm sau dấu câu khi cụm đã ≥ 2 từ."""
+    """Gom từ thành cụm (≤ N từ, vừa ≤ max_lines dòng); đóng cụm sau dấu câu khi cụm đã ≥ 2 từ.
+
+    Mỗi đoạn chia bằng quy hoạch động: không tách láy "từ từ"/sau "của" → ít cụm nhất → chỗ ngắt tốt nhất
+    (`_break_cost`: sau dấu câu, trước "rồi/thì/mà"…) → cụm trước dài hơn. Số + đơn vị không bị tách.
+    """
     max_words = int(style.get("max_words_per_chunk", 6))
     out: list[list[list[CueWord]]] = []
-    cur: list[CueWord] = []
-    cur_lines: list[list[CueWord]] = []
 
     def layout(ws: list[CueWord]) -> list[list[CueWord]] | None:
         idx = split_lines([w.text for w in ws], style, max_width, scale_pct=scale_pct)
         return None if idx is None else [[ws[i] for i in line] for line in idx]
 
-    i = 0
-    while i < len(words):
-        w = words[i]
-        cand = [*cur, w]
-        # Số + đơn vị đi cùng nhau: thử cả cặp.
-        if i + 1 < len(words) and _glued(w.text, words[i + 1].text):
-            cand_pair = [*cand, words[i + 1]]
-            lay = layout(cand_pair) if len(cand_pair) <= max_words else None
-            if lay is not None:
-                cur, cur_lines, i = cand_pair, lay, i + 2
-                continue
-        lay = layout(cand) if len(cand) <= max_words else None
-        if lay is None:
-            if cur:
-                out.append(cur_lines)
-                cur, cur_lines = [], []
-                continue
-            # Một từ dài hơn cả khung: để riêng một dòng (libass tự co/tràn) — hiếm.
-            out.append([[w]])
-            i += 1
-            continue
-        cur, cur_lines = cand, lay
-        i += 1
-        if len(cur) >= 2 and w.text.endswith(_BREAK_AFTER) and i < len(words):
-            out.append(cur_lines)
-            cur, cur_lines = [], []
-    if cur:
-        out.append(cur_lines)
+    for seg in _segments(words):
+        n = len(seg)
+        texts = [w.text for w in seg]
+        lays: dict[tuple[int, int], list[list[CueWord]] | None] = {}
+
+        def lay(i: int, j: int, seg: list[CueWord] = seg,
+                lays: dict[tuple[int, int], list[list[CueWord]] | None] = lays) -> list[list[CueWord]] | None:
+            if (i, j) not in lays:
+                ws = seg[i:j]
+                got = layout(ws) if j - i <= max_words else None
+                lays[(i, j)] = got if got is not None or j - i > 1 else [ws]  # một từ quá dài: để riêng
+            return lays[(i, j)]
+
+        # Khoá so sánh (nhỏ hơn = tốt hơn): (chỗ ngắt bị cấm, số cụm, chi phí ngắt, cỡ cụm đảo dấu = cụm trước dài).
+        best: list[tuple | None] = [None] * (n + 1)
+        best[n] = (0, 0, 0.0, ())
+        nxt: list[int] = [n] * (n + 1)
+        for i in range(n - 1, -1, -1):
+            for j in range(i + 1, min(n, i + max_words) + 1):
+                if best[j] is None or (j < n and _glued(texts[j - 1], texts[j])):
+                    continue
+                if lay(i, j) is None:
+                    break  # dài hơn nữa cũng không vừa
+                bad, c, pen, lex = best[j]
+                cost = _break_cost(texts, j, style) if j < n else 0.0
+                key = (bad + (cost >= _COST_BIND), c + 1, round(pen + cost, 6), (i - j, *lex))
+                if best[i] is None or key < best[i]:
+                    best[i], nxt[i] = key, j
+            if best[i] is None:  # không cách nào vừa (vd. số + đơn vị quá dài): tách một từ
+                bad, c, pen, _lex = best[i + 1]
+                best[i], nxt[i] = (bad, c + 1, pen, ()), i + 1
+        i = 0
+        while i < n:
+            j = nxt[i]
+            out.append(lay(i, j) or [seg[i:j]])
+            i = j
     return out
 
 

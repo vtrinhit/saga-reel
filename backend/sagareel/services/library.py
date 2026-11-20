@@ -43,7 +43,9 @@ SHEET_JOB = "library.sheet"
 DRIFT_JOB = "library.drift_check"
 SCORE_JOB = "library.score_take"
 SYSTEM_ACTOR = "system:library"
-DRIFT_CHECKLIST = ("face", "hair", "outfit", "colors", "props", "hands", "stray text or watermark")
+DRIFT_CHECKLIST = ("face", "hair", "age and body", "outfit", "outfit colors", "signature accessories of the look",
+                   "hands", "stray text or watermark")
+INTENT_CHARS = 600  # độ dài tối đa mỗi phần ý đồ clip đưa vào drift check
 MAX_TAKES = 8
 MAX_IDS = 500
 
@@ -968,6 +970,7 @@ def check_inputs(services, take_id: int, clip_id: int | None) -> dict[str, Any]:
         m = media.get(s, t.media_id)
         refs: list[dict[str, Any]] = []
         characters = []
+        intent: dict[str, Any] = {}
         if clip_id is not None:
             for asset, look in compiler.clip_assets_looks(s, clip_id):
                 mid = (look.anchor_media_id if look else None) or asset.cover_media_id
@@ -975,6 +978,9 @@ def check_inputs(services, take_id: int, clip_id: int | None) -> dict[str, Any]:
                                    "lock_word": look.lock_word if look else ""})
                 if mid is not None:
                     refs.append({"media_id": mid, "name": asset.name, "kind": asset.kind})
+            clip = s.get(Clip, clip_id)
+            if clip is not None:
+                intent = clip_intent(clip, t, [c for c in characters if c["kind"] != "character"])
         elif t.owner_type == "variant":
             lk = s.get(AssetVariant, t.owner_id)
             if lk is not None:
@@ -989,11 +995,37 @@ def check_inputs(services, take_id: int, clip_id: int | None) -> dict[str, Any]:
             if rm is not None and rm.kind == "image":
                 ref_paths.append((r, media.file_path(services.settings, rm)))
         return {"media_id": m.id, "media_kind": m.kind, "path": media.file_path(services.settings, m),
-                "refs": ref_paths, "characters": characters, "prompt": str((t.inputs or {}).get("prompt") or "")}
+                "refs": ref_paths, "characters": characters, "prompt": str((t.inputs or {}).get("prompt") or ""),
+                "intent": intent}
+
+
+def _clip_text(x: Any) -> str:
+    return " ".join(str(x or "").split())[:INTENT_CHARS]
+
+
+def clip_intent(clip: Clip, take: Take, props: list[dict[str, Any]]) -> dict[str, Any]:
+    """Ý đồ của clip (prompt đã biên dịch của take, hành động, cỡ cảnh, đạo cụ/bối cảnh) — để drift check không coi
+    đạo cụ/hành động được mô tả là lệch."""
+    prompt = (take.inputs or {}).get("prompt") or (clip.motion_prompt if take.part == "video" else "")         or clip.image_prompt
+    return {"prompt": _clip_text(prompt), "action": _clip_text((clip.custom or {}).get("action") or clip.title),
+            "shot_size": clip.shot_size or "", "first_frame": _clip_text(clip.first_frame_desc),
+            "props": [f"{p['name']} ({p['kind']}): {_clip_text(p['description'])}" for p in props]}
 
 
 def drift_input(info: dict[str, Any]) -> str:
     lines = ["Continuity check against locked references."]
+    it = info.get("intent") or {}
+    if it:
+        lines.append("Clip intent (everything described here is INTENDED, never a deviation):")
+        for label, key in (("Compiled clip prompt", "prompt"), ("Action", "action"), ("Shot size", "shot_size"),
+                           ("First frame", "first_frame")):
+            if it.get(key):
+                lines.append(f"- {label}: {it[key]}")
+        if it.get("props"):
+            lines.append("- Intended props/locations: " + "; ".join(it["props"]))
+    lines.append("Only identity, outfit or look deviations of the locked characters count as drift. Props, objects "
+                 "held, background, pose, expression, framing and camera angle are NOT drift unless they contradict "
+                 "the clip intent above.")
     for i, (r, _p) in enumerate(info["refs"], start=1):
         lines.append(f"Image {i}: anchor reference of {r['name']} ({r['kind']}).")
     lines.append(f"Image {len(info['refs']) + 1} (the last image): the frame to check.")
