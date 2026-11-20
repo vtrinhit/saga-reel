@@ -15,9 +15,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from sagareel.core import speech
 from sagareel.compile import compiler
-from sagareel.core import rank
+from sagareel.core import rank, speech
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, ValidationFailed
 from sagareel.db.models import Asset, AssetVariant, Clip, DialogueLine, Scene

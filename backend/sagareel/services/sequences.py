@@ -15,8 +15,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from sagareel.core import speech
-from sagareel.core import rank
+from sagareel.core import rank, speech
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, ConfirmRequired, ValidationFailed
 from sagareel.db.base import utcnow

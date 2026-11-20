@@ -28,9 +28,8 @@ import yaml
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from sagareel.core import speech
 from sagareel.compile.contracts import CompiledPrompt, RefItem
-from sagareel.core import templating
+from sagareel.core import speech, templating
 from sagareel.core.errors import AppError, NotFound
 from sagareel.core.resolver import Layer, default_resolver
 from sagareel.db.models import (

@@ -20,9 +20,8 @@ import anyio
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from sagareel.core import speech
 from sagareel.compile import compiler
-from sagareel.core import rank
+from sagareel.core import rank, speech
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, NotFound, ValidationFailed
 from sagareel.db.models import (
@@ -805,8 +804,10 @@ def clip_brief(c: Clip, assets: dict[int, Asset], lines: list[DialogueLine], sce
         spoken = [ln for ln in lines if ln.speaker_asset_id in assets and ln.source == "grok"]
         dubbed = [ln for ln in lines if ln.speaker_asset_id in assets and ln.source != "grok"]
         if spoken:
-            parts.append("thoại video tự nói: " + " / ".join(
-                f"{assets[ln.speaker_asset_id].name} ({ln.emotion or 'tự nhiên'}): \"{ln.text}\"" for ln in spoken))
+            names = ", ".join(dict.fromkeys(assets[ln.speaker_asset_id].name for ln in spoken))
+            parts.append(f"nhân vật tự nói trong video (lời do hệ thống chèn, KHÔNG viết lời): {names}")
+        if any(ln.speaker_asset_id is None and ln.source == "grok" for ln in lines):
+            parts.append("có lời kể voice-over (hệ thống chèn, KHÔNG viết lời, không ai trên hình nói)")
         if dubbed:
             names = ", ".join(dict.fromkeys(assets[ln.speaker_asset_id].name for ln in dubbed))
             parts.append(f"lồng tiếng sau (chỉ khẩu hình, không viết lời): {names}")
