@@ -168,7 +168,7 @@ def test_synced_four_blocks_verbatim_locks_and_ref_order(owner_ctx, mk, project)
     assert f"An: {desc}\n" in text
     assert "Keep exactly:  áo len xanh navy, mặt dây bạc ; face" in text
     assert "Áo dài đỏ" in text and "Must keep: nốt ruồi má trái." in text
-    assert "Phong cách phim Việt 1990, film grain" in text and "Constraints: chữ, logo." in text
+    assert "Phong cách phim Việt 1990, film grain" in text and "Avoid: chữ, logo." in text
     assert "Close-up shot, low angle, shot on 85mm" in text and "Vertical 9:16" in text
     assert "An đứng bên cửa sổ, tay cầm chiếc nhẫn" in text
     # ref: nhân vật (mỏ neo + sheet cận mặt vì shot cu) → bối cảnh → đạo cụ
