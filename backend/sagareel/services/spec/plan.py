@@ -94,8 +94,12 @@ def load_text(ctx: OpContext, spec_text: str | None, upload_id: str | None) -> s
 
 
 def parse(text: str) -> m.ProjectSpec:
+    from sagareel.services import safe_yaml
+
     try:
-        data = yaml.safe_load(text)
+        data = safe_yaml.load(text)
+    except ValueError as e:
+        raise spec_invalid(f"File khai báo không hợp lệ: {e}") from None
     except yaml.YAMLError as e:
         mark = getattr(e, "problem_mark", None)
         where = f" (dòng {mark.line + 1}, cột {mark.column + 1})" if mark is not None else ""
@@ -503,12 +507,15 @@ def estimate(s: Session, ctx: OpContext, spec: m.ProjectSpec, plan: dict[str, An
     }
 
 
-def _media_status(ctx: OpContext, s: Session, spec: m.ProjectSpec) -> tuple[dict[str, int | None], list[dict]]:
+def _media_status(ctx: OpContext, s: Session, spec: m.ProjectSpec, *, sniff: bool = False,
+                  ) -> tuple[dict[str, int | None], list[dict], dict[str, dict[str, Any]]]:
     """sha256 → media id có sẵn, hoặc None nếu cần đăng ký từ `path` (file có thật, sha khớp); cảnh báo cho phần
-    thiếu. Băm file nằm ngoài transaction ghi (gọi trước UoW)."""
+    thiếu. Băm (và `sniff=True`: dò loại/mime/kích thước từ nội dung) nằm ngoài transaction ghi (gọi trước UoW).
+    Loại/mime trong spec KHÔNG bao giờ được tin (file HTML khai là ảnh → phục vụ inline thành XSS)."""
     from sagareel.services import media as media_svc
 
     found: dict[str, int | None] = {}
+    facts: dict[str, dict[str, Any]] = {}
     warnings: list[dict] = []
     data_dir = Path(ctx.services.settings.data_dir).resolve()
     for key, e in spec.media.items():
@@ -520,10 +527,20 @@ def _media_status(ctx: OpContext, s: Session, spec: m.ProjectSpec) -> tuple[dict
         ok = p.is_relative_to(data_dir) and p.is_file() and media_svc.sha256_file(p) == e.sha256
         if ok:
             found[e.sha256] = None
+            if sniff:
+                kind, mime = media_svc.sniff(p)
+                w = h = dur = None
+                if kind != "other":
+                    try:
+                        w, h, dur, _ = media_svc._probe_fields(p, kind)
+                    except AppError:
+                        kind, mime = "other", "application/octet-stream"
+                facts[e.sha256] = {"kind": kind, "mime": mime, "width": w, "height": h, "duration_ms": dur,
+                                   "size": p.stat().st_size}
         else:
             warnings.append({"code": "media_missing", "media": key,
                              "msg": f"Media '{key}' ({e.path}) không có trong kho; tham chiếu tới nó sẽ để trống."})
-    return found, warnings
+    return found, warnings, facts
 
 
 def _connection_warnings(s: Session, spec: m.ProjectSpec) -> list[dict]:
@@ -540,7 +557,7 @@ def plan(ctx: OpContext, text: str) -> dict[str, Any]:
     spec = parse(text)
     with ctx.services.db.session() as s:
         result = compute(s, spec)
-        _found, warnings = _media_status(ctx, s, spec)
+        _found, warnings, _facts = _media_status(ctx, s, spec)
         warnings += _connection_warnings(s, spec)
         result["estimate"] = estimate(s, ctx, spec, result)
     result.pop("_want")
@@ -564,10 +581,12 @@ def _same(a: Any, b: Any) -> bool:
 
 
 class _Writer:
-    def __init__(self, s: Session, spec: m.ProjectSpec, media_ids: dict[str, int | None], settings) -> None:
+    def __init__(self, s: Session, spec: m.ProjectSpec, media_ids: dict[str, int | None], settings,
+                 media_facts: dict[str, dict[str, Any]] | None = None) -> None:
         self.s = s
         self.spec = spec
         self.media_ids = media_ids
+        self.media_facts = media_facts or {}
         self.settings = settings
         self.created = 0
         self.updated = 0
@@ -586,6 +605,10 @@ class _Writer:
             self.updated += 1
 
     def upsert(self, model, where: list[Any], values: dict[str, Any], **ident: Any) -> Any:
+        """Khớp dòng **chưa xoá** (như `export.build` mà plan dựa vào); chỉ có dòng đã xoá mềm → tạo dòng mới (index
+        unique một phần cho phép), không hồi sinh dòng cũ."""
+        if hasattr(model, "deleted_at"):
+            where = [*where, model.deleted_at.is_(None)]
         row = self.s.scalar(select(model).where(*where).order_by(model.id).limit(1))
         if row is None:
             row = model(**ident, **values)
@@ -604,8 +627,10 @@ class _Writer:
             return None
         mid = self.media_ids[e.sha256]
         if mid is None:  # file có trong kho nhưng chưa có bản ghi → đăng ký (bảng media không theo dõi lịch sử)
-            row = Media(kind=e.kind, path=e.path, mime=e.mime, width=e.width, height=e.height,
-                        duration_ms=e.duration_ms, size=e.size, sha256=e.sha256, origin="upload",
+            f = self.media_facts.get(e.sha256) or {"kind": "other", "mime": "application/octet-stream", "width": None,
+                                                   "height": None, "duration_ms": None, "size": e.size}
+            row = Media(kind=f["kind"], path=e.path, mime=f["mime"], width=f["width"], height=f["height"],
+                        duration_ms=f["duration_ms"], size=f["size"], sha256=e.sha256, origin="upload",
                         meta={"from_spec": True})
             self.s.add(row)
             self.s.flush()
@@ -641,7 +666,7 @@ class _Writer:
 def apply(ctx: OpContext, text: str, plan_fingerprint: str) -> dict[str, Any]:
     spec = parse(text)
     with ctx.services.db.session() as s:
-        media_ids, _w = _media_status(ctx, s, spec)
+        media_ids, _w, media_facts = _media_status(ctx, s, spec, sniff=True)
     u = entities.uow(ctx, f"Áp dụng file khai báo project {spec.project.key}", "project.apply")
     try:
         with u as s:
@@ -652,7 +677,7 @@ def apply(ctx: OpContext, text: str, plan_fingerprint: str) -> dict[str, Any]:
                 project_id = plan_now["project_id"]
                 w = None
             else:
-                w = _Writer(s, spec, media_ids, ctx.services.settings)
+                w = _Writer(s, spec, media_ids, ctx.services.settings, media_facts)
                 project_id = _write(w, spec)
                 u.project_id = project_id
     except IntegrityError as e:
@@ -838,13 +863,14 @@ def _write_sequence(w: _Writer, pid: int, q: m.SequenceSpec, group_ids: dict[str
     for c in q.clips:
         assets = []
         for ref in c.assets:
-            item: dict[str, Any] = {"asset_id": asset_ids.get(ref.asset)}
+            # Khoá phụ trước, id giải từ key sau → extras không bao giờ ghi đè asset_id/variant_id/role.
+            item: dict[str, Any] = {k: v for k, v in (ref.model_extra or {}).items() if k in m.ASSET_REF_EXTRAS}
+            item["asset_id"] = asset_ids.get(ref.asset)
             vid = look_id(ref.asset, ref.look)
             if vid is not None:
                 item["variant_id"] = vid
             if ref.role is not None:
                 item["role"] = ref.role
-            item.update(ref.model_extra or {})
             assets.append(item)
         vals = {
             "scene_id": scene_ids.get(c.scene) if c.scene else None, "title": c.title,

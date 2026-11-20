@@ -35,7 +35,7 @@ SEQUENCE_STATUSES = frozenset({"draft", "writing", "producing", "review", "rende
 
 
 def _check_key(key: str, label: str) -> None:
-    if not KEY_RE.match(key):
+    if not KEY_RE.fullmatch(key):
         raise ValidationFailed(f"Mã {label} chỉ gồm chữ không dấu, số, '-' hoặc '_' (tối đa 64 ký tự).",
                                extra={"errors": [{"loc": ["key"], "msg": "Mã không hợp lệ.", "type": "pattern"}]})
 

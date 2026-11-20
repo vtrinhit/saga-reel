@@ -84,7 +84,7 @@ _SAFE_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
 
 
 def _safe_part(value: str, what: str) -> str:
-    if not _SAFE_PART.match(value) or ".." in value:
+    if not _SAFE_PART.fullmatch(value) or ".." in value:
         raise ValidationFailed(f"Giá trị {what} không hợp lệ cho tên thư mục: {value!r}.", code="invalid_path_part")
     return value
 

@@ -42,7 +42,7 @@ from sagareel.db.models import (
     Sequence,
     SystemState,
 )
-from sagareel.services import entities, uploads
+from sagareel.services import entities, safe_yaml, uploads
 from sagareel.services import system_state as ss
 
 TOKEN_TTL_S = 3600
@@ -533,7 +533,7 @@ def _records_from(data: Any, warnings: list[str]) -> list[dict[str, Any]]:
 
 def parse_structured(text: str, kind: str, warnings: list[str]) -> Table:
     try:
-        data = json.loads(text.lstrip("﻿")) if kind == "json" else yaml.safe_load(text.lstrip("﻿"))
+        data = json.loads(text.lstrip("﻿")) if kind == "json" else safe_yaml.load(text.lstrip("﻿"))
     except (ValueError, yaml.YAMLError) as e:
         raise _fail(f"{kind.upper()} không hợp lệ: {str(e).splitlines()[0] if str(e) else 'lỗi cú pháp'}") from None
     recs = _records_from(data, warnings)

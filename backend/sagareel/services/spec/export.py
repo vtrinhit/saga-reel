@@ -273,7 +273,8 @@ def _sequence(s: Session, q: Sequence, med: _Media, asset_ref, look_key: dict[in
         for it in items or []:
             if not isinstance(it, dict):
                 continue
-            extra = {k: _plain(v) for k, v in it.items() if k not in ("asset_id", "variant_id", "role")}
+            extra = {k: _plain(v) for k, v in it.items() if k in m.ASSET_REF_EXTRAS
+                     and (v is None or isinstance(v, (str, int, float, bool)))}
             key = asset_ref(it.get("asset_id"))
             if key is None:
                 continue
@@ -333,7 +334,8 @@ def _sequence(s: Session, q: Sequence, med: _Media, asset_ref, look_key: dict[in
 
 
 class _Dumper(yaml.SafeDumper):
-    pass
+    def ignore_aliases(self, data: Any) -> bool:  # không sinh anchor/alias: bộ đọc spec từ chối chúng
+        return True
 
 
 def _str(dumper: yaml.SafeDumper, data: str) -> yaml.ScalarNode:

@@ -308,7 +308,7 @@ def _read_file(path: Path, kind: str) -> dict[str, Any]:
         raise ValueError("file phải là một mapping YAML")
     key = str(raw.get("key") or path.stem)
     name = str(raw.get("name") or key)
-    if not KEY_RE.match(key):
+    if not KEY_RE.fullmatch(key):
         raise ValueError(f"key '{key}' không hợp lệ")
     body = raw["data"] if "data" in raw else {k: v for k, v in raw.items() if k not in _FILE_META}
     return {"kind": kind, "key": key, "name": name, "data": validate_data(kind, body)}
@@ -455,7 +455,7 @@ def _by_ref(s: Session, preset_id: int | None, kind: str | None, key: str | None
 
 
 def _check_key(key: str) -> None:
-    if not KEY_RE.match(key):
+    if not KEY_RE.fullmatch(key):
         raise ValidationFailed("Key preset chỉ gồm chữ thường, số, gạch ngang/gạch dưới (tối đa 64 ký tự).",
                                code="preset_key_invalid")
 
