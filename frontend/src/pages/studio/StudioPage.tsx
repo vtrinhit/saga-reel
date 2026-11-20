@@ -51,6 +51,7 @@ import {
   useSounds,
   useStudioLiveRefresh,
   useTimelineItems,
+  renderSourceMs,
   videoSources,
   VARIANT_LABEL,
   waitingGate,
@@ -125,6 +126,8 @@ export function StudioPage() {
   const transitions = useMemo(() => transitionTable(transQ.data), [transQ.data]);
   const soundById = useMemo(() => new Map(sounds.map((s) => [s.id, s])), [sounds]);
   const videoSrc = useMemo(() => videoSources(clips), [clips]);
+  // Độ dài trên timeline = độ dài bản dựng: chỉ clip mà render giữ nguyên nguồn mới dài theo nguồn.
+  const layoutSrc = useMemo(() => renderSourceMs(clips, videoSrc), [clips, videoSrc]);
   const maxDur = useMemo(() => {
     const m = new Map<number, number>();
     for (const c of clips) {
@@ -139,8 +142,8 @@ export function StudioPage() {
       const s = it.sound_id != null ? soundById.get(it.sound_id) : undefined;
       return s ? { ...it, params: { title: s.title, ...it.params } } : it;
     });
-    return compute(buildInput(clips, lines, enriched, { fps: FPS, videoSourceMs: (id) => videoSrc.get(id) ?? null }), { transitions, fps: FPS });
-  }, [clips, lines, items, soundById, transitions, videoSrc]);
+    return compute(buildInput(clips, lines, enriched, { fps: FPS, videoSourceMs: (id) => layoutSrc.get(id) ?? null }), { transitions, fps: FPS });
+  }, [clips, lines, items, soundById, transitions, layoutSrc]);
   const clipById = useMemo(() => new Map(clips.map((c) => [c.id, c])), [clips]);
   const slotById = useMemo(() => new Map(tl.clips.map((s) => [s.id, s])), [tl.clips]);
 

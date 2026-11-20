@@ -22,7 +22,7 @@ const TONE: Record<StageStatus, string> = {
 export const MATRIX_ROW_H = 40;
 const GROUP_H = 32;
 /** Tập 200 · (ô chặng + gate 18) × 8 · Chi phí · Sửa gần nhất */
-export const MATRIX_COLS = `200px repeat(8, minmax(104px,1fr) 18px) 96px 120px`;
+export const MATRIX_COLS = `180px repeat(8, minmax(92px,1fr) 14px) 96px 120px`;
 
 /** Một ô chặng (DESIGN §6.2): icon 14 + chữ xs; chờ bạn = vòng đứt accent; chưa tới = "—" + sr-only. */
 export const MatrixCell = memo(function MatrixCell({ stage, href }: { stage: Stage; href: string }) {

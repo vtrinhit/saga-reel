@@ -367,6 +367,23 @@ export function videoSources(clips: ClipRow[]): Map<number, number> {
   return out;
 }
 
+/**
+ * Clip nào bản dựng giữ nguyên độ dài video nguồn (để timeline dài đúng như bản dựng — `render/pipeline.py`):
+ * `ai_video` được khớp về `clip.duration_ms` (dài → cắt, ngắn → chậm/giữ khung cuối) TRỪ khi clip kế nối `continue`
+ * (giữ nguyên nguồn, cảnh báo `continue_untrimmed`); engine khác (`still_motion`, `code_anim`) theo nguồn. Clip còn lại
+ * dài theo `duration_ms`; độ dài nguồn chỉ dùng làm trần khi kéo dài/cắt.
+ */
+export function renderSourceMs(clips: ClipRow[], sources: Map<number, number>): Map<number, number> {
+  const out = new Map<number, number>();
+  clips.forEach((c, i) => {
+    const src = sources.get(c.id);
+    if (src == null) return;
+    const nextContinue = clips[i + 1]?.link === 'continue';
+    if (c.engine !== 'ai_video' || (nextContinue && src > (c.duration_ms ?? 0))) out.set(c.id, src);
+  });
+  return out;
+}
+
 /** Bản dựng xem được mới nhất (ưu tiên đủ tập hơn bản xem trước N giây cùng lúc). */
 export function latestPlayable(renders: RenderRow[] | undefined): RenderRow | null {
   const ok = (renders ?? []).filter((r) => r.status === 'succeeded' && r.url);

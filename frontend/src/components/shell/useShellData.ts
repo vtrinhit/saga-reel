@@ -265,8 +265,10 @@ export function countNeeds(
   drift = 0,
   projectId: number | null = null,
 ): NeedCounts {
-  const list = buildNeeds(pipelines ?? [], jobs ?? [], { projectId });
+  const list = buildNeeds(pipelines ?? [], jobs ?? [], { projectId, drift });
   const gates = list.filter((n) => n.kind === 'gate' || n.kind === 'input').length;
-  const jobN = list.length - gates;
-  return { gates, jobs: jobN, drift, total: gates + jobN + drift };
+  const driftN = list.some((n) => n.kind === 'drift') ? drift : 0;
+  const jobN = list.filter((n) => n.kind !== 'gate' && n.kind !== 'input' && n.kind !== 'drift').length;
+  // total = số dòng của trang Hoạt động (lệch là một dòng) — chip và trang khớp nhau.
+  return { gates, jobs: jobN, drift: driftN, total: list.length };
 }

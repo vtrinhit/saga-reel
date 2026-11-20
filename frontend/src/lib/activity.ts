@@ -247,7 +247,7 @@ export function nextCost(seg: NextSegment, plan: PipelinePlan['sequences'][numbe
 /* Danh sách "Cần bạn"                                                                                                 */
 /* ------------------------------------------------------------------------------------------------------------------ */
 
-export type NeedKind = 'gate' | 'input' | 'pipeline_failed' | 'job_failed' | 'job_attention' | 'budget';
+export type NeedKind = 'gate' | 'input' | 'pipeline_failed' | 'job_failed' | 'job_attention' | 'budget' | 'drift';
 
 export interface Need {
   id: string;
@@ -266,7 +266,7 @@ export interface Need {
   jobIds?: number[];
 }
 
-const RANK: Record<NeedKind, number> = { gate: 0, input: 1, pipeline_failed: 2, job_attention: 3, job_failed: 4, budget: 5 };
+const RANK: Record<NeedKind, number> = { gate: 0, input: 1, pipeline_failed: 2, job_attention: 3, job_failed: 4, drift: 5, budget: 6 };
 
 function errText(e: PipelineSummary['error'] | Job['error_message']): string {
   if (!e) return '';
@@ -295,7 +295,7 @@ const JOB_ATTENTION = new Set(['needs_attention', 'interrupted']);
 export function buildNeeds(
   pipelines: PipelineSummary[],
   jobs: Job[],
-  opts: { projectId: number | null; projectName?: (id: number | null) => string | null } = { projectId: null },
+  opts: { projectId: number | null; projectName?: (id: number | null) => string | null; drift?: number } = { projectId: null },
 ): Need[] {
   const out: Need[] = [];
   const pname = (id: number | null) => (opts.projectName ? opts.projectName(id) : null);
@@ -372,6 +372,14 @@ export function buildNeeds(
       detail: `Nâng ngân sách hoặc huỷ việc${where ? ` · ${where}` : ''}`,
       href: '/settings/budget', at: Math.max(...list.map((j) => parseServerTime(j.updated_at ?? j.created_at) ?? 0)),
       jobIds: list.map((j) => j.id),
+    });
+  }
+  // Clip lệch nhân vật (`project.get counts.drift`) — một dòng cho cả dự án, mở Duyệt đã lọc lệch.
+  if (opts.drift && opts.drift > 0 && opts.projectId != null) {
+    out.push({
+      id: `drift:${opts.projectId}`, kind: 'drift', projectId: opts.projectId, sequenceId: null,
+      title: `${nf.format(opts.drift)} clip lệch nhân vật`,
+      detail: 'So với sheet rồi tạo lại hoặc bỏ cờ lệch', href: `/p/${opts.projectId}/review?filter=drift`, at: 0,
     });
   }
   return out.sort((a, b) => RANK[a.kind] - RANK[b.kind] || b.at - a.at);

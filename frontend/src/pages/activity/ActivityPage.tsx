@@ -6,6 +6,7 @@ import { ApiError } from '../../api/client';
 import { callOp } from '../../api/ops';
 import type { ChangeSet, Job } from '../../api/types';
 import { GateCard } from '../../components/pipeline/GateCard';
+import { useProject } from '../../components/shell/useShellData';
 import { GateRejectDialog } from '../../components/pipeline/GateRejectDialog';
 import { NeedItem } from '../../components/pipeline/NeedItem';
 import { ActorTag } from '../../components/ui/ActorTag';
@@ -82,6 +83,8 @@ export function ActivityView({ projectId }: { projectId: number | null }) {
   const projects = useProjectList(true);
   const pipelines = usePipelines(projectId);
   const agentCtl = useAgentControl();
+  const projectInfo = useProject(projectId != null ? String(projectId) : null);
+  const drift = Number(projectInfo.data?.counts?.drift ?? 0) || 0;
   const jobs = useJobs(projectId);
   const history = useRecentHistory(projectId);
   const budget = useBudgetStatus();
@@ -100,8 +103,8 @@ export function ActivityView({ projectId }: { projectId: number | null }) {
 
   const jobItems: Job[] = useMemo(() => jobs.data?.items ?? [], [jobs.data]);
   const needs = useMemo(
-    () => buildNeeds(pipelines.data, jobItems, { projectId, projectName: inbox ? nameOf : undefined }),
-    [pipelines.data, jobItems, projectId, inbox, nameOf],
+    () => buildNeeds(pipelines.data, jobItems, { projectId, projectName: inbox ? nameOf : undefined, drift }),
+    [pipelines.data, jobItems, projectId, inbox, nameOf, drift],
   );
   const gates = needs.filter((n) => n.kind === 'gate');
   const others = needs.filter((n) => n.kind !== 'gate');

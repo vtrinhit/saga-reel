@@ -194,7 +194,7 @@ function shellBackend() {
   const SUMMARY12 = { sequence_id: 12, number: 12, title: 'Đêm trăng máu', ...RUN12, current: 'gate:animatic', job_id: null, error: null, gates: {}, progress: 70, updated_at: null };
   const routes: Record<string, unknown> = {
     '/api/auth/status': AUTH_OK,
-    '/api/ops/project.get': { id: 3, key: 'khl', name: 'Kiếp Hồ Ly', description: '', genre_key: 'serial', aspect: '9:16', language: 'vi', target_platforms: [], settings: {}, budget: {} },
+    '/api/ops/project.get': { id: 3, key: 'khl', name: 'Kiếp Hồ Ly', description: '', genre_key: 'serial', aspect: '9:16', language: 'vi', target_platforms: [], settings: {}, budget: {}, counts: { takes_pending: 7, drift: 0 } },
     '/api/ops/project.list': { items: [], next_cursor: null },
     '/api/ops/sequence.list': { items: [SEQ(12, 12), SEQ(13, 13)], next_cursor: null },
     '/api/ops/sequence.get': SEQ(12, 12),
@@ -247,6 +247,8 @@ describe('khung v2 (dây chuyền, Cần bạn, agent)', () => {
     const labels = Array.from(rail.querySelectorAll('a')).map((a) => a.textContent?.replace(/\d+$/, ''));
     expect(labels).toEqual(['Tổng quan', 'Câu chuyện', 'Thư viện', 'Duyệt', 'Xuất', 'Hoạt động', 'Lịch sử', 'Cài đặt']);
     expect(rail.querySelector('hr')).not.toBeNull();
+    // Duyệt mang số take chờ duyệt của dự án (`project.get counts.takes_pending`).
+    expect(rail.querySelector('a[aria-label="Duyệt, 7 take chờ duyệt"]')).not.toBeNull();
     const bottom = container.querySelector('nav[aria-label="Điều hướng chính"]')!;
     const items = Array.from(bottom.querySelectorAll('a, button')).map((a) => a.textContent?.replace(/\d+/g, ''));
     expect(items).toEqual(['Cần bạn', 'Duyệt', 'Tập', 'Việc', 'Thêm']);

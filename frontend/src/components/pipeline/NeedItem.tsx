@@ -1,4 +1,4 @@
-import { ChevronRight, CircleAlert, Gauge, PenLine, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { ChevronRight, CircleAlert, Gauge, PenLine, ScanFace, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { Link } from 'react-router';
 import { cn, focusRing } from '../../lib/cn';
 import type { Need, NeedKind } from '../../lib/activity';
@@ -11,6 +11,7 @@ const ICON: Record<Exclude<NeedKind, 'gate'>, { icon: LucideIcon; tone: string }
   job_failed: { icon: TriangleAlert, tone: 'text-state-failed bg-state-failed/15' },
   job_attention: { icon: CircleAlert, tone: 'text-warn bg-warn/15' },
   budget: { icon: Gauge, tone: 'text-warn bg-warn/15' },
+  drift: { icon: ScanFace, tone: 'text-state-drifted bg-state-drifted/15' },
 };
 
 /**

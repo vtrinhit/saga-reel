@@ -11,7 +11,7 @@ import { useIsViewer } from '../../api/auth';
 import { IdeaToVideoDialog } from '../../components/pipeline/IdeaToVideoDialog';
 import { NeedItem } from '../../components/pipeline/NeedItem';
 import { RunToGateDialog } from '../../components/pipeline/RunToGateDialog';
-import { useProjectJobs, useShellPipelines } from '../../components/shell/useShellData';
+import { useProject, useProjectJobs, useShellPipelines } from '../../components/shell/useShellData';
 import { Button } from '../../components/ui/Button';
 import { SkeletonRows } from '../../components/ui/Skeleton';
 import { buildNeeds } from '../../lib/activity';
@@ -58,9 +58,11 @@ export function NeedsColumn({ base, projectId, limit = 5 }: NeedsColumnProps) {
   const pipelines = useShellPipelines(String(projectId), true);
   const jobs = useProjectJobs(String(projectId), true);
   const [ideaOpen, setIdeaOpen] = useState(false);
+  const project = useProject(String(projectId));
+  const drift = Number(project.data?.counts?.drift ?? 0) || 0;
   const needs = useMemo(
-    () => buildNeeds(pipelines.data ?? [], jobs.data?.items ?? [], { projectId }),
-    [pipelines.data, jobs.data, projectId],
+    () => buildNeeds(pipelines.data ?? [], jobs.data?.items ?? [], { projectId, drift }),
+    [pipelines.data, jobs.data, projectId, drift],
   );
   const loading = pipelines.isPending && jobs.isPending;
 
