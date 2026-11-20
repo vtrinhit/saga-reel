@@ -84,6 +84,25 @@ def item_dict(s: Session, item: BibleItem, *, evidence: bool = False) -> dict[st
     return out
 
 
+def item_dicts(s: Session, items: list[BibleItem], *, evidence: bool = False) -> list[dict[str, Any]]:
+    """`item_dict` cho cả danh sách bằng MỘT truy vấn bằng chứng (không N+1)."""
+    if not items:
+        return []
+    ids = [i.id for i in items]
+    by_item: dict[int, list[BibleEvidence]] = {}
+    for e in s.scalars(select(BibleEvidence).where(BibleEvidence.item_id.in_(ids)).order_by(BibleEvidence.id)):
+        by_item.setdefault(e.item_id, []).append(e)
+    out = []
+    for item in items:
+        d = entities.to_dict(item)
+        rows = by_item.get(item.id, [])
+        d["evidence_count"] = len(rows)
+        if evidence:
+            d["evidence"] = [evidence_dict(e) for e in rows]
+        out.append(d)
+    return out
+
+
 def get_item(s: Session, item_id: int) -> BibleItem:
     return entities.get(s, "bible_item", item_id)
 
@@ -113,7 +132,7 @@ def list_items(ctx: OpContext, project_id: int, *, type_: str | None = None, sta
         rows = s.scalars(q.order_by(BibleItem.id).limit(limit + 1)).all()
         more = len(rows) > limit
         rows = rows[:limit]
-        return {"items": [item_dict(s, r) for r in rows], "next_cursor": rows[-1].id if more and rows else None}
+        return {"items": item_dicts(s, rows), "next_cursor": rows[-1].id if more and rows else None}
 
 
 def search_ids(s: Session, project_id: int, query: str, *, mode: str = "and", limit: int = 20,
@@ -151,11 +170,10 @@ def search(ctx: OpContext, project_id: int, q: str, *, types: list[str] | None =
         if not hits:  # không mục nào chứa đủ mọi từ → nới thành OR
             hits = search_ids(s, project_id, q, mode="or", limit=limit, types=types, statuses=sts)
             mode = "or"
-        items = []
-        for item_id, score in hits:
-            d = item_dict(s, s.get(BibleItem, item_id), evidence=True)
+        rows = {r.id: r for r in s.scalars(select(BibleItem).where(BibleItem.id.in_([h[0] for h in hits])))}
+        items = item_dicts(s, [rows[i] for i, _ in hits], evidence=True)
+        for d, (_, score) in zip(items, hits, strict=True):
             d["score"] = round(-score, 4)
-            items.append(d)
     return {"items": items, "query": T.fts_query(q, mode=mode), "mode": mode}
 
 
@@ -301,7 +319,7 @@ def set_status(ctx: OpContext, ids: list[int], status: str, *, lock: bool | None
             if lock is not None:
                 r.locked = bool(lock)
             reindex(s, r)
-        out = [item_dict(s, r) for r in rows]
+        out = item_dicts(s, rows)
     return {"items": out}
 
 
