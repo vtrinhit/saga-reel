@@ -2,13 +2,14 @@
  * Dữ liệu của Studio, Âm thanh và Xuất (Task I): kiểu kết quả op (schema sinh ra trả `unknown` cho các op dạng dict),
  * khoá query dưới `['studio', …]`, hook đọc + làm mới sống theo `entity.changed`/`job.updated`, lỗi tiếng Việt.
  */
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { ApiError } from '../api/client';
-import { callOpLoose } from '../api/opsLoose';
+import { callOp } from '../api/ops';
 import type { ProjectInfo, SequenceInfo } from '../api/types';
 import { toast } from '../stores/toast';
 import { useServerEvent } from './eventHub';
+import type { GeneratedMeta } from './exportMatrix';
 import type { ClipRow, DialogueRow, TimelineItemRow } from './timeline';
 
 // --- Kiểu -----------------------------------------------------------------------------------------------------------
@@ -113,6 +114,8 @@ export interface CheckReport {
   errors: Issue[];
   warnings: Issue[];
   info?: { duration_ms?: number; size?: number; estimated?: boolean; platform?: string; lang?: string };
+  /** Metadata đăng bài sẽ sinh ra khi xuất (mẫu, hoặc bản ghi đè gửi kèm `metadata`). */
+  metadata?: GeneratedMeta;
 }
 
 export interface ExportRow {
@@ -163,10 +166,13 @@ export function toastError(what: string, e: unknown, retry?: () => void): void {
   toast({ tone: 'error', message: errorText(what, e), action: retry ? { label: 'Thử lại', onClick: retry } : undefined });
 }
 
-/** Hoàn tác thao tác gần nhất của chính bạn trong dự án (`history.undo` không chỉ định change set). */
-export async function undoLast(projectId: number): Promise<void> {
+/**
+ * Hoàn tác: đúng change set của thao tác (`change_set_id` mà op ghi trả về) nếu có; không có thì thao tác gần nhất của
+ * chính bạn trong dự án (`history.undo` không chỉ định change set).
+ */
+export async function undoLast(projectId: number, changeSetId?: number | null): Promise<void> {
   try {
-    await callOpLoose('history.undo', { project_id: projectId });
+    await callOp('history.undo', { project_id: projectId, change_set_id: changeSetId ?? null });
     toast({ tone: 'success', message: 'Đã hoàn tác.' });
   } catch (e) {
     toastError('Không hoàn tác được', e);
@@ -223,7 +229,7 @@ export function useStudioLiveRefresh(): void {
 export function useProjectRow(pid: number | null) {
   return useQuery({
     queryKey: sk.project(pid ?? -1),
-    queryFn: () => callOpLoose<ProjectRow>('project.get', { id: pid }),
+    queryFn: async () => (await callOp('project.get', { id: pid! })) as unknown as ProjectRow,
     enabled: pid != null,
     staleTime: 30_000,
   });
@@ -232,7 +238,7 @@ export function useProjectRow(pid: number | null) {
 export function useSequenceRow(id: number | null) {
   return useQuery({
     queryKey: sk.sequence(id ?? -1),
-    queryFn: () => callOpLoose<SequenceRow>('sequence.get', { id }),
+    queryFn: async () => (await callOp('sequence.get', { id: id! })) as unknown as SequenceRow,
     enabled: id != null,
   });
 }
@@ -244,11 +250,10 @@ export function useSequences(pid: number | null) {
       const all: SequenceRow[] = [];
       let cursor: string | null = null;
       do {
-        const page: { items: SequenceRow[]; next_cursor: string | null } = await callOpLoose('sequence.list', {
-          project_id: pid,
-          cursor,
-          limit: 500,
-        });
+        const page = (await callOp('sequence.list', { project_id: pid!, cursor, limit: 500 })) as unknown as {
+          items: SequenceRow[];
+          next_cursor: string | null;
+        };
         all.push(...page.items);
         cursor = page.next_cursor;
       } while (cursor);
@@ -267,11 +272,10 @@ export function useClips(seqId: number | null) {
       const all: ClipRow[] = [];
       let cursor: string | null = null;
       do {
-        const page: { items: ClipRow[]; next_cursor: string | null } = await callOpLoose('clip.list', {
-          sequence_id: seqId,
-          cursor,
-          limit: 500,
-        });
+        const page = (await callOp('clip.list', { sequence_id: seqId!, cursor, limit: 500 })) as unknown as {
+          items: ClipRow[];
+          next_cursor: string | null;
+        };
         all.push(...page.items);
         cursor = page.next_cursor;
       } while (cursor);
@@ -284,7 +288,7 @@ export function useClips(seqId: number | null) {
 export function useLines(seqId: number | null) {
   return useQuery({
     queryKey: sk.lines(seqId ?? -1),
-    queryFn: async () => (await callOpLoose<{ items: DialogueRow[] }>('dialogue.list', { sequence_id: seqId })).items,
+    queryFn: async () => ((await callOp('dialogue.list', { sequence_id: seqId! })) as unknown as { items: DialogueRow[] }).items,
     enabled: seqId != null,
   });
 }
@@ -293,7 +297,7 @@ export function useTimelineItems(seqId: number | null) {
   return useQuery({
     queryKey: sk.items(seqId ?? -1),
     queryFn: async () =>
-      (await callOpLoose<{ items: TimelineItemRow[] }>('timeline.list', { sequence_id: seqId })).items,
+      ((await callOp('timeline.list', { sequence_id: seqId! })) as unknown as { items: TimelineItemRow[] }).items,
     enabled: seqId != null,
   });
 }
@@ -302,7 +306,7 @@ export function useRenders(seqId: number | null) {
   return useQuery({
     queryKey: sk.renders(seqId ?? -1),
     queryFn: async () =>
-      (await callOpLoose<{ items: RenderRow[] }>('render.list', { sequence_id: seqId, limit: 20 })).items,
+      ((await callOp('render.list', { sequence_id: seqId!, limit: 20 })) as unknown as { items: RenderRow[] }).items,
     enabled: seqId != null,
   });
 }
@@ -310,7 +314,7 @@ export function useRenders(seqId: number | null) {
 export function usePresets<D = Record<string, unknown>>(kind: string, pid: number | null) {
   return useQuery({
     queryKey: sk.presets(kind, pid ?? -1),
-    queryFn: async () => (await callOpLoose<{ items: PresetRow<D>[] }>('preset.list', { kind, project_id: pid })).items,
+    queryFn: async () => ((await callOp('preset.list', { kind: kind as never, project_id: pid })) as unknown as { items: PresetRow<D>[] }).items,
     enabled: pid != null,
     staleTime: 5 * 60_000,
   });
@@ -319,7 +323,7 @@ export function usePresets<D = Record<string, unknown>>(kind: string, pid: numbe
 export function useVoices(pid: number | null) {
   return useQuery({
     queryKey: sk.voices(pid ?? -1),
-    queryFn: async () => (await callOpLoose<{ items: VoiceProfile[] }>('voice.list', { project_id: pid })).items,
+    queryFn: async () => ((await callOp('voice.list', { project_id: pid!, include_global: true })) as unknown as { items: VoiceProfile[] }).items,
     enabled: pid != null,
   });
 }
@@ -327,7 +331,7 @@ export function useVoices(pid: number | null) {
 export function useSounds(pid: number | null) {
   return useQuery({
     queryKey: sk.sounds(pid ?? -1),
-    queryFn: async () => (await callOpLoose<{ items: SoundRow[] }>('sound.list', { project_id: pid })).items,
+    queryFn: async () => ((await callOp('sound.list', { project_id: pid!, include_global: true })) as unknown as { items: SoundRow[] }).items,
     enabled: pid != null,
   });
 }
@@ -336,7 +340,7 @@ export function useAssets(pid: number | null) {
   return useQuery({
     queryKey: sk.assets(pid ?? -1),
     queryFn: async () =>
-      (await callOpLoose<{ items: AssetBrief[] }>('asset.list', { project_id: pid, limit: 500 })).items,
+      ((await callOp('asset.list', { project_id: pid!, limit: 500 })) as unknown as { items: AssetBrief[] }).items,
     enabled: pid != null,
     staleTime: 60_000,
   });
@@ -345,36 +349,21 @@ export function useAssets(pid: number | null) {
 export function useExports(pid: number | null) {
   return useQuery({
     queryKey: sk.exports(pid ?? -1),
-    queryFn: () => callOpLoose<ExportRow[]>('export.list', { project_id: pid, limit: 100 }),
+    queryFn: async () => (await callOp('export.list', { project_id: pid, limit: 100 })) as unknown as ExportRow[],
     enabled: pid != null,
   });
 }
 
 /**
- * Độ dài nguồn của video take đang chọn cho từng clip có video (`take.list` → `media.duration_ms`) — để timeline dài
- * theo nguồn như `normalize.plan` và trim ghi `trim_out_ms`. Thiếu trường này trong `clip.list` (xem báo cáo).
+ * Độ dài nguồn của video đang chọn cho từng clip có video (`clip.list` → `source_duration_ms`) — để timeline dài theo
+ * nguồn như `normalize.plan` và trim ghi `trim_out_ms`. Hàm thuần, không gọi op.
  */
-export function useVideoSources(clips: ClipRow[]): Map<number, number> {
-  const withVideo = clips.filter((c) => c.video_take_id != null);
-  const results = useQueries({
-    queries: withVideo.map((c) => ({
-      queryKey: ['studio', 'video-src', c.id, c.video_take_id],
-      queryFn: async () => {
-        const r = await callOpLoose<{ items: { id: number; media: { duration_ms: number | null } | null }[] }>('take.list', {
-          owner_type: 'clip',
-          owner_id: c.id,
-          part: 'video',
-        });
-        return r.items.find((t) => t.id === c.video_take_id)?.media?.duration_ms ?? null;
-      },
-      staleTime: 10 * 60_000,
-    })),
-  });
+export function videoSources(clips: ClipRow[]): Map<number, number> {
   const out = new Map<number, number>();
-  withVideo.forEach((c, i) => {
-    const v = results[i]?.data;
-    if (typeof v === 'number' && v > 0) out.set(c.id, v);
-  });
+  for (const c of clips) {
+    const v = c.source_duration_ms;
+    if (c.video_take_id != null && typeof v === 'number' && v > 0) out.set(c.id, v);
+  }
   return out;
 }
 
@@ -391,15 +380,17 @@ export function activeRender(renders: RenderRow[] | undefined): RenderRow | null
 
 export const VARIANT_LABEL: Record<string, string> = { draft: 'Bản nháp', animatic: 'Bản animatic', final: 'Bản cuối' };
 
-/** Gate đang chờ bạn trong `sequence.gates` (`{"gate:animatic": {status: "waiting"}}` hoặc khoá không tiền tố). */
-export function waitingGate(gates: unknown): string | null {
-  if (!gates || typeof gates !== 'object') return null;
-  for (const [k, v] of Object.entries(gates as Record<string, unknown>)) {
-    const st = v && typeof v === 'object' ? (v as Record<string, unknown>) : { status: v };
-    if (st.enabled === false) continue;
-    if (st.status === 'waiting') return k.startsWith('gate:') ? k.slice(5) : k;
-  }
-  return null;
+/**
+ * Gate quy trình đang chờ bạn duyệt (tên không tiền tố) — đọc `sequence.pipeline.run`: `status === 'waiting_review'` +
+ * `waiting.gate` (`services/pipeline/engine.py`). `sequence.gates` chỉ lưu quyết định (pending/approved/rejected).
+ */
+export function waitingGate(pipeline: unknown): string | null {
+  if (!pipeline || typeof pipeline !== 'object') return null;
+  const run = (pipeline as { run?: unknown }).run;
+  if (!run || typeof run !== 'object') return null;
+  const r = run as { status?: unknown; waiting?: { gate?: unknown } | null };
+  const g = r.status === 'waiting_review' ? r.waiting?.gate : null;
+  return typeof g === 'string' && g ? g.replace(/^gate:/, '') : null;
 }
 
 export const GATE_LABEL: Record<string, string> = {

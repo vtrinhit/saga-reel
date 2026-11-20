@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, FolderOpen, LayoutGrid } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { callOpLoose } from '../../api/opsLoose';
+import { callOp } from '../../api/ops';
 import type { ProjectInfo } from '../../api/types';
 import { cn, focusRing } from '../../lib/cn';
 import { Menu, type MenuItem } from '../ui/Menu';
@@ -18,7 +18,7 @@ export function ProjectSwitcher({ projectId, name, className }: ProjectSwitcherP
   const navigate = useNavigate();
   const list = useQuery({
     queryKey: ['shell', 'projects'],
-    queryFn: () => callOpLoose<{ items: ProjectInfo[] }>('project.list', { limit: 10 }),
+    queryFn: async () => (await callOp('project.list', { limit: 10 })) as unknown as { items: ProjectInfo[] },
     enabled: projectId != null,
     staleTime: 60_000,
     retry: false,

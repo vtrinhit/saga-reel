@@ -373,6 +373,13 @@ export interface ClipRow {
   flags?: Record<string, unknown>;
   review?: string;
   updated_at?: string;
+  /** Media của take đang chọn (`clip.list`, `services/clips.py::selected_media`). */
+  image_media_id?: number | null;
+  video_media_id?: number | null;
+  /** Ảnh, không thì video — thumbnail ở `/media/<id>/thumb`; null nếu file đã vào thùng rác. */
+  thumb_media_id?: number | null;
+  /** Độ dài video provider đang chọn (ms). */
+  source_duration_ms?: number | null;
 }
 
 export interface DialogueRow {
@@ -385,7 +392,8 @@ export interface DialogueRow {
   speaker_asset_id: number | null;
   translations?: Record<string, string>;
   audio_take_id?: number | null;
-  /** Không có trong `dialogue.list` hiện tại — khi backend thêm thì dùng thay ước lượng. */
+  /** Media + độ dài âm thanh của take đang chọn (`dialogue.list`); null = chưa đọc → dùng ước lượng. */
+  audio_media_id?: number | null;
   audio_duration_ms?: number | null;
   emotion?: string;
   voice_override?: Record<string, unknown>;

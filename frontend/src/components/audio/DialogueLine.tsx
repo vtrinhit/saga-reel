@@ -59,7 +59,7 @@ export function DialogueLine({ line, speaker, voiceLabel, lang, primary, job, pl
     return () => window.clearInterval(t);
   }, [job?.next_attempt_at]);
   const st = ttsState(line, job, primary, now);
-  const hasAudio = primary && !!line.audio_take_id;
+  const hasAudio = primary && line.audio_media_id != null;
   const dur = line.audio_duration_ms ?? null;
   const id = `dl-${line.id}-${lang}`;
   const commit = () => {

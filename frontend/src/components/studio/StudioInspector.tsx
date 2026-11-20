@@ -278,7 +278,7 @@ export function LineInspector({ line, placed, readOnly, onUpdate }: {
       <InspectorSection title={`Câu thoại #${line.id}`}>
         <p className="font-mono text-xs tabular-nums text-fg-2">
           {placed ? `${shortTime(placed.start_ms)}–${shortTime(placed.end_ms)} · ${clipSeconds(placed.dur_ms)}` : 'Không nằm trong tập'}
-          {line.audio_take_id ? '' : ' · chưa đọc (độ dài ước tính)'}
+          {line.audio_duration_ms ? '' : line.audio_take_id ? ' · độ dài ước tính' : ' · chưa đọc (độ dài ước tính)'}
         </p>
       </InspectorSection>
       <InspectorSection title="Lời">

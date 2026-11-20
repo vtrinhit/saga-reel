@@ -5,7 +5,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Music, Plus, TriangleAlert, Upload, Waves } from 'lucide-react';
 import { useId, useState } from 'react';
-import { callOpLoose } from '../../api/opsLoose';
+import { callOp } from '../../api/ops';
 import { cn, focusRing } from '../../lib/cn';
 import { errorText, sk, type SoundRow } from '../../lib/studioData';
 import { uploadFile } from '../../lib/studioUpload';
@@ -80,7 +80,7 @@ function AddSoundForm({ projectId, onDone }: { projectId: number; onDone: () => 
   const add = useMutation({
     mutationFn: async () => {
       const { media_id } = await uploadFile(file!, { kind: 'audio', projectId, onProgress: setProgress });
-      return callOpLoose('sound.add', {
+      return callOp('sound.add', {
         media_id,
         kind,
         title: title.trim(),
