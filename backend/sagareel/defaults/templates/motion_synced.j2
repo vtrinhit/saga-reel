@@ -13,7 +13,7 @@ Camera: {{ camera }}.
 {%- if d.narrator %}
 Voice-over (off-screen narrator, nobody on screen speaks it; {{ narrator_voice }}) says in {{ language }}{% if d.emotion %} ({{ d.emotion }}){% endif %}: "{{ d.text }}"
 {%- else %}
-Dialogue: {{ d.name }} says in {{ language }}{% if d.emotion %} ({{ d.emotion }}){% endif %}, natural lip movement: "{{ d.text }}"
+Dialogue: {{ d.name }}{% if d.voice %} ({{ d.voice }}){% endif %} says in {{ language }}{% if d.emotion %} ({{ d.emotion }}){% endif %}, natural lip movement: "{{ d.text }}"
 {%- endif %}
 {%- endfor %}
 {%- if sfx %}

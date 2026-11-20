@@ -580,8 +580,9 @@ def compile_clip_motion(session: Session, clip_id: int) -> CompiledPrompt:
         if line.source != "grok":
             continue
         speaker = session.get(Asset, line.speaker_asset_id) if line.speaker_asset_id else None
+        voice = str((speaker.custom or {}).get("voice_desc") or "") if speaker else ""
         dialogue.append({"name": speaker.name if speaker else "", "narrator": speaker is None,
-                         "emotion": line.emotion or "", "text": line.text})
+                         "emotion": line.emotion or "", "text": line.text, "voice": voice})
     budget = speech.max_syllables(clip.duration_ms / 1000)
     n_syl = sum(speech.syllables(d["text"]) for d in dialogue)
     if dialogue and n_syl > budget:

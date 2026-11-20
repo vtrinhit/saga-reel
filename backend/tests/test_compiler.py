@@ -332,3 +332,19 @@ def test_speech_counts_syllables_not_chars():
     assert speech.syllables("Ba về rồi!") == 3
     assert speech.syllables("Xe đã chở gần hết nhà tôi—vậy mà bố vẫn chừa cho tôi một chỗ.") == 16
     assert speech.max_syllables(6) == 18 and speech.fits("Ba ơi, con đợi ba ở đây nè.", 6)
+
+
+def test_motion_dialogue_includes_character_voice_desc(owner_ctx, project):
+    """Giọng mô tả trong asset.custom.voice_desc đi vào prompt video để giọng nhân vật đồng nhất giữa các clip."""
+    from sagareel.compile import compiler
+    from sagareel.services import clips as clip_svc, library, sequences
+    from sagareel.services.audio import dialogue
+
+    a = library.asset_create(owner_ctx, project_id=project, kind="character", name="Su", key="SU")
+    library.asset_update(owner_ctx, a["id"], {"custom": {"voice_desc": "a cute high-pitched 5-year-old boy's voice"}})
+    seq = sequences.create(owner_ctx, project_id=project, title="T1")["id"]
+    c = clip_svc.create(owner_ctx, seq, {"key": "c1", "engine": "ai_video", "motion_prompt": "Su waves."})["id"]
+    dialogue.create(owner_ctx, clip_id=c, text="Bố ơi!", speaker_asset_id=a["id"], source="grok")
+    with owner_ctx.services.db.session() as s:
+        text = compiler.compile_clip_motion(s, c).text
+    assert "Su (a cute high-pitched 5-year-old boy's voice) says in Vietnamese" in text and '"Bố ơi!"' in text
