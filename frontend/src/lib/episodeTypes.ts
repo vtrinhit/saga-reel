@@ -77,6 +77,12 @@ export interface Clip {
   /** chỉ có khi đọc qua `review.queue` */
   take_counts?: Partial<Record<'image' | 'video', number>>;
   selected_takes?: { image: Take | null; video: Take | null };
+  /** `clip.list`/`review.queue` (BF): media của take đang chọn + ảnh đại diện + độ dài nguồn. */
+  image_media_id?: number | null;
+  video_media_id?: number | null;
+  thumb_media_id?: number | null;
+  source_duration_ms?: number | null;
+  deleted_at?: string | null;
 }
 
 export interface ClipPageFull {
@@ -91,6 +97,8 @@ export interface Scene {
   rank: string;
   title: string;
   summary: string;
+  /** `scene.list`: số clip / tổng thời lượng của cảnh. */
+  counts?: { clips: number; duration_ms: number };
 }
 
 export interface LintWarning {

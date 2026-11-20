@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Check, ChevronRight, CircleDashed, Diamond, History, LoaderCircle, Minus, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { memo } from 'react';
@@ -67,17 +67,46 @@ function GateDot({ stage }: { stage: Stage }) {
   );
 }
 
-/** Chi phí thật của tập — chỉ hàng đang hiện mới gọi (`sequence.cost_summary` theo từng tập). */
-function CostCell({ id }: { id: number }) {
-  const q = useQuery({
-    queryKey: ['episode', id, 'cost', false],
-    queryFn: async () => (await callOp('sequence.cost_summary', { id, per_clip: false })) as unknown as CostSummary,
-    staleTime: 60_000,
-    retry: false,
+/** Số tập mỗi lần gọi `sequence.cost_summary(sequence_ids)` — chia theo vị trí hàng nên khoá query ổn định khi cuộn. */
+export const COST_BUCKET = 50;
+
+/** Chia id tập (theo thứ tự hàng) thành nhóm `size`; trả nhóm chứa ít nhất một id đang hiện. */
+export function costBuckets(ids: number[], visible: Set<number>, size = COST_BUCKET): number[][] {
+  const out: number[][] = [];
+  for (let i = 0; i < ids.length; i += size) {
+    const chunk = ids.slice(i, i + size);
+    if (chunk.some((id) => visible.has(id))) out.push(chunk);
+  }
+  return out;
+}
+
+/** Chi phí thật của các tập đang hiện: một lần gọi cho mỗi nhóm 50 tập (thay vì một lần mỗi hàng). */
+function useVisibleCosts(ids: number[], visible: Set<number>): Map<number, CostSummary | 'error'> {
+  const buckets = costBuckets(ids, visible);
+  const qs = useQueries({
+    queries: buckets.map((chunk) => ({
+      queryKey: ['overview', 'cost', chunk.join(',')],
+      queryFn: async () =>
+        ((await callOp('sequence.cost_summary', { sequence_ids: chunk, per_clip: false })) as unknown as {
+          items: (CostSummary & { sequence_id: number })[];
+        }).items,
+      staleTime: 60_000,
+      retry: false,
+    })),
   });
+  const out = new Map<number, CostSummary | 'error'>();
+  qs.forEach((q, i) => {
+    if (q.isError) for (const id of buckets[i]) out.set(id, 'error');
+    for (const c of q.data ?? []) out.set(c.sequence_id, c);
+  });
+  return out;
+}
+
+function CostCell({ cost }: { cost: CostSummary | 'error' | undefined }) {
+  const c = cost === 'error' ? undefined : cost;
   return (
-    <span className="px-2 text-right font-mono text-xs text-fg-2 tnum" title={q.data ? `${q.data.takes} take · ${q.data.retries} lần tạo lại` : undefined}>
-      {q.data ? `${q.data.total.toLocaleString('vi-VN')} lượt` : q.isError ? '—' : '…'}
+    <span role="cell" className="px-2 text-right font-mono text-xs text-fg-2 tnum" title={c ? `${c.takes} take · ${c.retries} lần tạo lại` : undefined}>
+      {c ? `${c.total.toLocaleString('vi-VN')} lượt` : cost === 'error' ? '—' : '…'}
     </span>
   );
 }
@@ -107,6 +136,16 @@ export function ProductionMatrix({ rows, base, selected, onToggle, onToggleGroup
     getItemKey: (i) => rows[i]?.key ?? i,
   });
   const seqRows = rows.filter((r) => r.kind === 'seq');
+  const items = v.getVirtualItems();
+  const visible = new Set<number>();
+  for (const it of items) {
+    const r = rows[it.index];
+    if (r?.kind === 'seq') visible.add(r.seq.id);
+  }
+  const costs = useVisibleCosts(
+    seqRows.map((r) => (r.kind === 'seq' ? r.seq.id : 0)),
+    visible,
+  );
   return (
     <div
       ref={scrollRef}
@@ -124,7 +163,7 @@ export function ProductionMatrix({ rows, base, selected, onToggle, onToggleGroup
           <span role="columnheader" className="px-2 text-right">Chi phí</span>
           <span role="columnheader" className="px-2">Sửa gần nhất</span>
         </div>
-        {v.getVirtualItems().map((it) => {
+        {items.map((it) => {
           const r = rows[it.index];
           if (r.kind === 'group') {
             const open = !collapsed.has(r.groupId);
@@ -178,7 +217,7 @@ export function ProductionMatrix({ rows, base, selected, onToggle, onToggleGroup
                   <GateDot stage={st} />
                 </span>
               ))}
-              <CostCell id={s.id} />
+              <CostCell cost={costs.get(s.id)} />
               <span role="cell" className="truncate px-2 text-xs text-fg-2">{s.updated_at ? relativeFromServer(s.updated_at) : '—'}</span>
             </div>
           );

@@ -4,7 +4,6 @@ import { ArrowLeft, Check, ClipboardPaste, FileSpreadsheet, FolderOpen, Images, 
 import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { callOp } from '../../api/ops';
-import { callOpLoose } from '../../api/opsLoose';
 import type { SequenceInfo, SequencePage } from '../../api/types';
 import { errText } from '../../components/clip/useRegenerate';
 import { Button } from '../../components/ui/Button';
@@ -43,7 +42,7 @@ export function ImportWizard() {
 
   const seqs = useQuery({
     queryKey: ['shell', 'sequences', pid],
-    queryFn: () => callOpLoose<SequencePage>('sequence.list', { project_id: pid, limit: 500 }),
+    queryFn: async () => (await callOp('sequence.list', { project_id: pid, limit: 500 })) as unknown as SequencePage,
     retry: false,
   });
   const [seqId, setSeqId] = useState<number | null>(() => {

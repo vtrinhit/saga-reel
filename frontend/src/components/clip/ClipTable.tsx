@@ -3,7 +3,8 @@ import { Bot, GripVertical } from 'lucide-react';
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import type { AssetBrief, Clip } from '../../lib/episodeTypes';
-import { buildRows, ENGINE_LABEL, formatClipSeconds, SHOT_ENUMS, shotShort, type ClipView } from '../../lib/episodeView';
+import { useEnumOptions } from '../../lib/episodeData';
+import { buildRows, ENGINE_LABEL, formatClipSeconds, shotShort, type ClipView } from '../../lib/episodeView';
 import { StatusPill } from '../ui/StatusPill';
 import { thumbUrl } from './ClipCard';
 import { SceneHeader, sceneNumbers, type BoardHandle, type BoardViewProps } from './ClipGrid';
@@ -215,6 +216,7 @@ interface RowProps {
 }
 
 const TableRow = memo(function TableRow(p: RowProps) {
+  const enums = useEnumOptions();
   const { clip: c, view } = p;
   const src = thumbUrl(view.take?.media?.id ?? view.take?.media_id, 96);
   const agent = (c.image_prompt_src?.source === 'agent' || String(c.image_prompt_src?.actor ?? '').startsWith('agent:'))
@@ -328,7 +330,7 @@ const TableRow = memo(function TableRow(p: RowProps) {
           className="h-7 w-full rounded-sm border border-line-2 bg-bg-2 px-1 font-mono text-xs hover:border-line-3"
         >
           <option value="">—</option>
-          {SHOT_ENUMS.shot_size.map(([k, label]) => (
+          {enums.shot.shot_size.map(([k, label]) => (
             <option key={k} value={k} title={label}>
               {shotShort(k)}
             </option>
