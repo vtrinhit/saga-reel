@@ -739,11 +739,6 @@
           "title": "Aspect",
           "type": "string"
         },
-        "budget": {
-          "additionalProperties": true,
-          "title": "Budget",
-          "type": "object"
-        },
         "cover": {
           "anyOf": [
             {

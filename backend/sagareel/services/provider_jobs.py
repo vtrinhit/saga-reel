@@ -2,13 +2,10 @@
 
 `params` của job chỉ chứa `connection_id` (không bao giờ có khoá API) và các trường của request. Thứ tự trong handler
 tạo media (ràng buộc UnitOfWork/khoá ghi SQLite):
-1. một phiên ngắn giữ khoá ghi: giữ chỗ ngân sách (`budget.reserve` — kiểm tra trần + chèn dòng `spend` của job);
-   bỏ qua khi provider có thể đã nhận job (`external_id`/`external_state.state`, vd. nối lại sau khi tắt app);
-2. gọi provider — chỉ trả chỗ (`budget.release`) khi chắc chắn provider không nhận (kể cả người dùng huỷ); tắt app
-   hoặc lỗi sau khi provider đã/có thể đã nhận → giữ chỗ (xem `_paid`);
-3. `media.prepare` (băm/probe/đặt file) — **ngoài** mọi transaction;
-4. một phiên ngắn giữ khoá ghi: `media.record` + `budget.finalize`;
-5. `media.reconcile` sau commit.
+1. gọi provider (chống gửi trùng nằm ở `services/jobs`: dấu `submitting`, `external_id` — không bao giờ POST lại mù);
+2. `media.prepare` (băm/probe/đặt file) — **ngoài** mọi transaction;
+3. một phiên ngắn giữ khoá ghi: `media.record` + ghi một dòng sổ `spend` (thống kê lượt đã tạo; không dùng để chặn);
+4. `media.reconcile` sau commit.
 
 Mọi handler đi qua `provider_job(...)`: lỗi nào thoát ra cũng được che khoá API của kết nối trước khi thành
 `job.error_message`/log (lỗi không lường trước được thay bằng `ProviderCrash` mang thông báo đã che).
@@ -27,7 +24,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import anyio
+from sqlalchemy import select
 
+from sagareel.core.errors import AppError
+from sagareel.db.models import Job, Spend
 from sagareel.providers.base import (
     Adapter,
     CapabilityError,
@@ -37,8 +37,8 @@ from sagareel.providers.base import (
     TTSRequest,
     VideoRequest,
 )
-from sagareel.core.errors import AppError
-from sagareel.services import budget, media
+from sagareel.providers.fake import FAKE_PREFIX
+from sagareel.services import media
 from sagareel.services.jobs import JobFailed, NeedsAttention, TransientError, job_handler
 from sagareel.services.providers import ProviderService, redact_secret
 
@@ -79,7 +79,7 @@ async def _adapter(run: JobRun, kind: str) -> Adapter:
 
 
 def _origin(adapter: Adapter) -> str:
-    return "fake" if adapter.adapter_id.startswith(budget.FAKE_PREFIX) else "generated"
+    return "fake" if adapter.adapter_id.startswith(FAKE_PREFIX) else "generated"
 
 
 def _media_path(services: Services, media_id: int, kind: str) -> Path:
@@ -161,57 +161,10 @@ def provider_job(
     return decorator
 
 
-def _reserve(services: Services, kind: str, units: float, job_id: int, connection_id: int) -> None:
-    with services.db.session(immediate=True) as s:  # kiểm tra + giữ chỗ trong cùng khoá ghi
-        budget.reserve(s, kind, units, job_id, connection_id, resolver=services.resolver)
-
-
-def _release(services: Services, job_id: int) -> None:
-    with services.db.session(immediate=True) as s:
-        budget.release(s, job_id)
-
-
-def provider_may_hold_job(run: JobRun) -> bool:
-    """Provider có thể đã nhận (và tính tiền) job này: có `external_id` hoặc `external_state.state` khác rỗng
-    (`submitting` — không rõ; `submitted`). Dấu đã xoá (`state=None`) = lần gửi gần nhất chắc chắn không được nhận."""
-    return bool(run.external_id) or bool((run.external or {}).get("state"))
-
-
-async def _settle(fut: asyncio.Future) -> None:
-    """Chờ `fut` xong hẳn (kể cả khi bị huỷ thêm lần nữa); bỏ qua kết quả/lỗi của nó."""
-    while not fut.done():
-        with contextlib.suppress(BaseException):
-            await asyncio.shield(fut)
-    if not fut.cancelled():
-        fut.exception()  # đã xem lỗi (nếu có): không cảnh báo "exception was never retrieved"
-
-
 async def _paid(run: JobRun, adapter: Adapter, kind: str, units: float, generate: Callable[[], Awaitable[Any]]) -> Any:
-    """Giữ chỗ ngân sách → gọi provider. Không bao giờ để tiền đã tiêu ra khỏi sổ:
-
-    - provider có thể đã nhận job (`provider_may_hold_job`, vd. nối lại sau khi tắt app): không giữ chỗ lại (dòng cũ
-      vẫn còn) và không bao giờ thất bại vì `budget_exceeded`;
-    - chỉ trả chỗ khi chắc chắn provider không nhận (lỗi mà không có `external_id`/dấu `submitting`), kể cả khi người
-      dùng huỷ; tắt app (`CancelledError` khi `run.shutting_down`, người dùng không huỷ) không trả chỗ — nối lại sau;
-    - giữ chỗ chạy trong luồng riêng: bị huỷ giữa chừng thì chờ luồng ghi xong rồi mới trả (không sót dòng).
-    """
-    reserving: asyncio.Future | None = None
-    try:
-        if not provider_may_hold_job(run):
-            reserving = asyncio.ensure_future(
-                anyio.to_thread.run_sync(_reserve, run.services, kind, units, run.job_id, adapter.conn.id))
-            await asyncio.shield(reserving)
-        return await generate()
-    except BaseException as e:
-        if reserving is not None:
-            await _settle(reserving)
-        # Như worker: CancelledError khi worker đang tắt (và người dùng không huỷ) = tắt app → giữ chỗ; mọi CancelledError
-        # khác (người dùng huỷ, handler tự ném) mà provider chưa nhận → trả chỗ.
-        shutdown = isinstance(e, asyncio.CancelledError) and run.shutting_down and not run.cancelled.is_set()
-        if not shutdown and not provider_may_hold_job(run):
-            with contextlib.suppress(Exception):
-                await asyncio.shield(anyio.to_thread.run_sync(_release, run.services, run.job_id))
-        raise
+    """Gọi provider cho một job trả phí. Chống gửi trùng (dấu `submitting`, `external_id`) do adapter + `services/jobs`
+    lo; sổ `spend` chỉ được ghi khi tạo thành công (`_store`)."""
+    return await generate()
 
 
 async def _store(
@@ -223,7 +176,7 @@ async def _store(
     meta: dict,
     spend_kind: str | None,
 ) -> list[int]:
-    """prepare (ngoài transaction) → record + spend (phiên ngắn) → reconcile. Trả id media."""
+    """prepare (ngoài transaction) → record + một dòng `spend` (phiên ngắn) → reconcile. Trả id media."""
     settings = run.services.settings
     prepared = []
     for p in paths:
@@ -236,7 +189,10 @@ async def _store(
         with run.services.db.session(immediate=True) as s:  # expire_on_commit=False: dùng được sau commit
             rows = [media.record(s, pr) for pr in prepared]
             if spend_kind is not None:
-                budget.finalize(s, run.job_id, len(rows), kind=spend_kind, connection_id=adapter.conn.id)
+                project_id = s.scalar(select(Job.project_id).where(Job.id == run.job_id))
+                s.add(Spend(kind=spend_kind, units=float(len(rows)), job_id=run.job_id,
+                            connection_id=adapter.conn.id, project_id=project_id))
+                s.flush()
             return rows
 
     rows = await anyio.to_thread.run_sync(write)

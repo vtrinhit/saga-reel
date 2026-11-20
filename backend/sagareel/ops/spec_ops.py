@@ -114,7 +114,7 @@ def project_export_spec(ctx: OpContext, p: ExportSpecParams) -> dict:
 
 
 @op("project.plan", summary="Lập kế hoạch áp file khai báo: tạo mới / sửa (diff từng trường) / ứng viên xoá (chỉ liệt "
-    "kê) + ước tính ảnh/video/giọng/render + ngân sách + plan_fingerprint", params=SpecInputParams, result=PlanOut,
+    "kê) + ước tính ảnh/video/giọng/render + plan_fingerprint", params=SpecInputParams, result=PlanOut,
     read_only=True, idempotent=True, viewer=False, mcp="tool")
 def project_plan(ctx: OpContext, p: SpecInputParams) -> dict:
     return spec_plan.plan(ctx, spec_plan.load_text(ctx, p.spec_text, p.upload_id))

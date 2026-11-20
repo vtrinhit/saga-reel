@@ -18,7 +18,7 @@
 
   Cài đặt toàn cục (chỉ khoá **chưa** đặt ở tầng global; giá trị schema không nhận → bỏ qua kèm một dòng log không có
   giá trị): `image.model` ← `MAIVIDEO_MODEL`, `video.resolution` ← `MULTIKIT_RESOLUTION`, `video.duration` ←
-  `MULTIKIT_DURATION`, `budget.videos_total` = 0 (video GrokTele không giới hạn). Công việc LLM chưa có route
+  `MULTIKIT_DURATION`. Công việc LLM chưa có route
   (`route.connection` trống) được định tuyến tới `llm-local` (model trống → dùng `default_model` của kết nối).
 
 Mọi ghi đi qua một `UnitOfWork` (actor `system:seed`) nên hiện trong lịch sử; cột `api_key` bị che trong revision.
@@ -60,7 +60,6 @@ _ENV_SETTINGS = (
     ("video.resolution", "MULTIKIT_RESOLUTION"),
     ("video.duration", "MULTIKIT_DURATION"),
 )
-_FIXED_SETTINGS = {"budget.videos_total": 0}  # video GrokTele thật không giới hạn; ảnh giữ mặc định 60
 _INLINE_COMMENT = re.compile(r"\s+#")
 
 
@@ -167,8 +166,6 @@ def _settings_from_env(env: dict[str, str], resolver: Resolver) -> dict[str, Any
             logger.warning("Seed: bỏ qua cài đặt %s từ %s (giá trị không hợp lệ theo settings schema)", key, var)
             continue
         values[key] = value
-    resolver.validate_values(_FIXED_SETTINGS)
-    values.update(_FIXED_SETTINGS)
     return values
 
 

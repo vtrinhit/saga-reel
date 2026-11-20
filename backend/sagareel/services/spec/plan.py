@@ -484,8 +484,6 @@ def compute(s: Session, spec: m.ProjectSpec) -> dict[str, Any]:
 
 def estimate(s: Session, ctx: OpContext, spec: m.ProjectSpec, plan: dict[str, Any]) -> dict[str, Any]:
     """Ước tính cho bước TẠO sau khi áp dụng (bản thân apply không tốn tiền)."""
-    from sagareel.services import budget
-
     want: Canon = plan["_want"]
     changed: dict[tuple[str, str], set[str] | None] = {}
     for c in plan["creates"]:
@@ -509,12 +507,8 @@ def estimate(s: Session, ctx: OpContext, spec: m.ProjectSpec, plan: dict[str, An
             seqs.add(key.split("/", 1)[0])
         elif type_ == "order" and key.startswith(("clips:", "scenes:")):
             seqs.add(key.split(":", 1)[1])
-    status = {k: budget.status(s, k, resolver=ctx.services.resolver) for k in ("image", "video")}
-    need = {"image": images, "video": videos}
-    fits = all(st["remaining"] is None or need[k] <= st["remaining"] for k, st in status.items())
     return {
         "images": images, "videos": videos, "tts_lines": tts, "renders": len(seqs),
-        "budget": {**status, "fits": fits},
         "note": "project.apply không gọi provider (không tốn tiền); số trên là ước tính cho bước tạo ảnh/video/giọng "
                 "và render sau đó.",
     }
@@ -714,7 +708,7 @@ def _write(w: _Writer, spec: m.ProjectSpec) -> int:
         "resolution": pb.resolution, "fps": pb.fps, "language": pb.language, "languages": list(pb.languages),
         "target_platforms": list(pb.target_platforms), "style_block": pb.style_block,
         "negative_block": pb.negative_block, "settings": export.join_settings(pb.settings, spec.providers),
-        "budget": dict(pb.budget), "cover_media_id": w.media(pb.cover),
+        "cover_media_id": w.media(pb.cover),
     }
     project = w.upsert(Project, [Project.key == pb.key], pvals, key=pb.key)
     pid = project.id

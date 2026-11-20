@@ -44,36 +44,32 @@ describe('activity', () => {
     expect(seg.spends.images).toBe(false);
   });
 
-  it('giá bước kế: ngân sách tắt = không giới hạn; vượt ngân sách', () => {
+  it('giá bước kế: số ảnh/video của đoạn kế + tổng lượt', () => {
     const seg = nextSegment(summary().steps, 'animatic');
     const plan = { sequence_id: 12, clips: 48, images: 0, videos: 48, llm_calls: 0, status: 'waiting_review' };
-    const free = nextCost(seg, plan, { image: { enabled: true, total: 100, spent: 0, remaining: 100 }, video: { enabled: false, total: null, spent: 0, remaining: null } });
-    expect(free.amount).toBe('48 video · 0 lượt');
-    expect(free.notes).toContain('video không giới hạn ngân sách');
-    const over = nextCost(seg, plan, { image: { enabled: true, total: 1, spent: 0, remaining: 1 }, video: { enabled: true, total: 10, spent: 0, remaining: 10 } });
-    expect(over.overBudget).toBe(true);
-    expect(over.credits).toBe(48);
-    expect(nextCost(seg, null, null).amount).toBeNull();
+    const v = nextCost(seg, plan);
+    expect(v.amount).toBe('48 video · 48 lượt');
+    expect(v.credits).toBe(48);
+    expect(nextCost(seg, null).amount).toBeNull();
   });
 
   it('tập chưa chia clip: không báo 0 lượt khi đoạn kế có tạo ảnh', () => {
     const steps = [step('gate:outline', 'running'), step('write_script'), step('split_clips'), step('generate_images'), step('gate:storyboard')];
-    const v = nextCost(nextSegment(steps, 'outline'), { sequence_id: 3, clips: 0, images: 0, videos: 0, llm_calls: 4, status: 'waiting_review' }, null);
+    const v = nextCost(nextSegment(steps, 'outline'), { sequence_id: 3, clips: 0, images: 0, videos: 0, llm_calls: 4, status: 'waiting_review' });
     expect(v.amount).toBe('4 lần gọi LLM · ảnh: chưa tính được');
     expect(v.amount).not.toContain('0 lượt');
     expect(v.notes.join(' ')).toContain('chưa chia clip');
   });
 
-  it('gom Cần bạn: gate trước, rồi chờ nhập, lỗi, việc; gộp việc vượt ngân sách', () => {
+  it('gom Cần bạn: gate trước, rồi chờ nhập, lỗi, việc', () => {
     const needs = buildNeeds(
       [summary(), summary({ sequence_id: 13, number: 13, status: 'waiting_input', waiting: { step: 'write_script' }, current: 'write_script' }), summary({ sequence_id: 14, number: 14, status: 'failed', waiting: null, error: { message: 'LLM lỗi' } }), summary({ sequence_id: 15, status: 'running', waiting: null })],
-      [job({ id: 5, status: 'failed', error_message: 'MaiVideo 502' }), job({ id: 6, status: 'needs_attention' }), job({ id: 7, error_code: 'budget_exceeded' }), job({ id: 8, error_code: 'budget_exceeded' }), job({ id: 9, status: 'running' })],
+      [job({ id: 5, status: 'failed', error_message: 'MaiVideo 502' }), job({ id: 6, status: 'needs_attention' }), job({ id: 9, status: 'running' })],
       { projectId: 3 },
     );
-    expect(needs.map((n) => n.kind)).toEqual(['gate', 'input', 'pipeline_failed', 'job_attention', 'job_failed', 'budget']);
+    expect(needs.map((n) => n.kind)).toEqual(['gate', 'input', 'pipeline_failed', 'job_attention', 'job_failed']);
     expect(needs[0].gate).toBe('animatic');
     expect(needs[1].href).toBe('/p/3/story?seq=13');
-    expect(needs.at(-1)!.title).toBe('2 việc chờ vì vượt ngân sách tháng');
   });
 
   it('agent: theo change set + việc đang chạy mang params.actor', () => {

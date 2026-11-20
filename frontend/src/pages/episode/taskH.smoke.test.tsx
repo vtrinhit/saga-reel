@@ -41,7 +41,7 @@ function backend(): AxiosAdapter {
     const data = ((): unknown => {
       switch (op) {
         case 'project.get':
-          return { id: 1, key: 'p', name: 'Kiếp Hồ Ly', aspect: '9:16', genre_key: 'serial', target_platforms: ['tiktok'], counts: {} };
+          return { id: 1, key: 'p', name: 'Kiếp Hồ Ly', aspect: '9:16', genre_key: 'serial', target_platforms: ['tiktok'], counts: { takes_pending: 7 } };
         case 'review.queue':
           return { items: [clip(1), clip(2), clip(3)], next_cursor: null };
         case 'entity.list':
@@ -56,8 +56,6 @@ function backend(): AxiosAdapter {
           return { items: [take(12), take(11)], selected: { image: 11 } };
         case 'pipeline.status':
           return { items: [] };
-        case 'budget.status':
-          return { image: { enabled: true, total: 60, spent: 3, remaining: 57 }, video: { enabled: false, total: null, spent: 0, remaining: null } };
         case 'asset.list':
         case 'export.list':
         case 'job.list':
@@ -143,7 +141,7 @@ describe('Task H — smoke', () => {
     expect(container.textContent).toContain('Kiếp Hồ Ly');
     expect(container.textContent).toContain('Tập theo chặng');
     expect(container.querySelector('[role=region][aria-label="Ma trận tập × chặng"]')).not.toBeNull();
-    expect(container.textContent).toContain('3 / 60');
-    expect(container.textContent).toContain('lượt ảnh tháng này');
+    expect(container.textContent).toContain('take chờ duyệt');
+    expect(container.textContent).not.toContain('ngân sách');
   });
 });

@@ -1076,7 +1076,7 @@ async def test_retry_of_job_held_by_state_without_external_id(svc, op_ctx, st):
     assert ei.value.code == "params_patch_requires_new_job"
     out = (await ops.invoke("job.retry", {"ids": [kept], "force_new": True}, op_ctx))["items"][0]
     assert out["external_state"] == {"gen": 1}
-    assert _spend_rows(svc) == [(None, 1.0)]  # dòng đã trả tiền tách khỏi job, vẫn tính
+    assert _spend_rows(svc) == [(kept, 1.0)]  # sổ chi tiêu không bao giờ bị sửa/xoá khi chạy lại
 
 
 async def test_retry_succeeded_job_held_by_state_needs_force_new(svc, op_ctx):
@@ -1089,11 +1089,11 @@ async def test_retry_succeeded_job_held_by_state_needs_force_new(svc, op_ctx):
 
 
 @pytest.mark.parametrize("action", ["resubmit", "fail"])
-async def test_clear_attention_of_job_held_by_state_detaches_spend(svc, op_ctx, action):
+async def test_clear_attention_of_job_held_by_state_keeps_spend(svc, op_ctx, action):
     a = insert_job(svc, "test.sleep", status="needs_attention", external_state=OPENAI_DONE)
     _add_spend(svc, a)
     out = await ops.invoke("job.clear_attention", {"id": a, "action": action}, op_ctx)
-    assert _spend_rows(svc) == [(None, 1.0)]
+    assert _spend_rows(svc) == [(a, 1.0)]
     assert out["external_state"] == ({"gen": 1} if action == "resubmit" else {})
 
 
@@ -1228,34 +1228,33 @@ def _add_spend(svc, job_id) -> None:
         s.add(Spend(kind="image", units=1.0, job_id=job_id, connection_id=None))
 
 
-@pytest.mark.parametrize("cols, extra, detached", [
-    ({"status": "succeeded"}, {}, True),  # job đồng bộ đã xong (không có external_id): dòng đã chốt
-    ({"status": "succeeded", "external_id": "p-1"}, {"force_new": True}, True),
-    ({"status": "failed", "external_id": "p-1"}, {"force_new": True}, True),  # đã nhận rồi lỗi: có thể đã tính tiền
-    ({"status": "failed", "external_id": "p-1"}, {}, False),  # nối lại đúng job đó: finalize chốt chính dòng này
-    ({"status": "interrupted"}, {}, False),  # chỗ giữ chưa trả tiền (tắt app trước khi gửi): lần sau thay thế
+@pytest.mark.parametrize("cols, extra", [
+    ({"status": "succeeded"}, {}),
+    ({"status": "succeeded", "external_id": "p-1"}, {"force_new": True}),
+    ({"status": "failed", "external_id": "p-1"}, {"force_new": True}),
+    ({"status": "failed", "external_id": "p-1"}, {}),
+    ({"status": "interrupted"}, {}),
 ])
-async def test_job_retry_detaches_spend_of_past_paid_attempts(svc, op_ctx, cols, extra, detached):
-    """Không bao giờ xoá dòng chi tiêu của lần trả tiền trước: chạy lại thành lần gửi mới thì tách dòng khỏi job
-    (`job_id = NULL`, vẫn được tính)."""
+async def test_job_retry_never_touches_spend(svc, op_ctx, cols, extra):
+    """Sổ chi tiêu chỉ để thống kê: chạy lại (nối lại hay gửi mới) không bao giờ sửa/xoá dòng đã ghi."""
     a = insert_job(svc, "test.sleep", external_state={"state": "submitted"} if cols.get("external_id") else {},
                    **cols)
     _add_spend(svc, a)
     await ops.invoke("job.retry", {"ids": [a], **extra}, op_ctx)
-    assert _spend_rows(svc) == [(None if detached else a, 1.0)]
+    assert _spend_rows(svc) == [(a, 1.0)]
 
 
-@pytest.mark.parametrize("cols, action, detached", [
-    ({"external_id": "p-1", "external_state": {"state": "submitted"}}, "resubmit", True),
-    ({"external_id": "p-1", "external_state": {"state": "submitted"}}, "fail", True),
-    ({"external_state": {"state": "submitting"}}, "fail", True),  # giữ chỗ mập mờ: giữ trong sổ (thận trọng)
-    ({"external_state": {"state": "submitting"}}, "resubmit", False),  # người dùng xác nhận chưa tạo: lần sau thay
+@pytest.mark.parametrize("cols, action", [
+    ({"external_id": "p-1", "external_state": {"state": "submitted"}}, "resubmit"),
+    ({"external_id": "p-1", "external_state": {"state": "submitted"}}, "fail"),
+    ({"external_state": {"state": "submitting"}}, "fail"),
+    ({"external_state": {"state": "submitting"}}, "resubmit"),
 ])
-async def test_clear_attention_detaches_spend_that_may_be_paid(svc, op_ctx, cols, action, detached):
+async def test_clear_attention_never_touches_spend(svc, op_ctx, cols, action):
     a = insert_job(svc, "test.sleep", status="needs_attention", **cols)
     _add_spend(svc, a)
     await ops.invoke("job.clear_attention", {"id": a, "action": action}, op_ctx)
-    assert _spend_rows(svc) == [(None if detached else a, 1.0)]
+    assert _spend_rows(svc) == [(a, 1.0)]
 
 
 def test_job_retry_force_new_param_documented():

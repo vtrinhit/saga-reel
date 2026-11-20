@@ -2,7 +2,7 @@ import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { Layers, MoreHorizontal, Pause, Play, RotateCw, ScrollText, XOctagon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { useSearchParams } from 'react-router';
 import { toApiError } from '../api/client';
 import { useIsViewer } from '../api/auth';
 import { knownJobsMap, qk, useConnections } from '../api/hooks';
@@ -115,7 +115,6 @@ function JobRow({
   const canCancel = !readOnly && CANCELLABLE.has(job.status);
   const retryLabel = readOnly ? null : jobActionLabel(jobActions(job));
   const stage = jobStageText(job);
-  const overBudget = job.error_code === 'budget_exceeded';
   const second = err ?? (stage || laneText);
   const onKey = (e: KeyboardEvent) => {
     if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
@@ -150,7 +149,6 @@ function JobRow({
           <span className="min-w-0 truncate text-sm">
             {jobTypeLabel(job.type)} <span className="font-mono text-xs text-fg-3">#{job.id}</span>
           </span>
-          {overBudget ? <StatusPill status="warn" label="vượt ngân sách" className="flex-none" /> : null}
         </span>
         <span className={cn('min-w-0 truncate text-xs xl:hidden', err ? 'text-state-failed' : 'text-fg-2')}>{second}</span>
       </span>
@@ -165,14 +163,6 @@ function JobRow({
       <span className="hidden truncate text-xs text-fg-2 tnum xl:block">{active ? formatEta(jobEtaSeconds(job)) : ''}</span>
       <span className="hidden text-right font-mono text-xs text-fg-2 tnum xl:block">{units != null ? formatCredits(units) : ''}</span>
       <span className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-        {overBudget && !readOnly ? (
-          <Link
-            to="/settings/budget"
-            className={cn('inline-flex h-control items-center rounded-md px-2 text-xs font-medium text-warn hover:bg-bg-3', focusRing)}
-          >
-            Ngân sách
-          </Link>
-        ) : null}
         <span className="hidden items-center gap-1 xl:flex">
           {retryLabel ? <IconButton icon={RotateCw} label={retryLabel} onClick={onRetry} /> : null}
           {canCancel ? <IconButton icon={XOctagon} label="Huỷ việc" onClick={onCancel} /> : null}

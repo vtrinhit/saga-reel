@@ -6,7 +6,7 @@
  * Gate đang chờ = `status === 'waiting_review'` và `waiting.gate`; chờ nhập (kịch bản/prompt do bạn hoặc agent nộp) =
  * `waiting_input`.
  */
-import type { BudgetStatus, Job } from '../api/types';
+import type { Job } from '../api/types';
 import { STAGE_DEFS, type StageKey } from './pipeline';
 import { parseServerTime } from './time';
 
@@ -81,7 +81,7 @@ export interface PipelinePlan {
   steps: PlanStep[];
   step_keys: string[];
   sequences: { sequence_id: number; clips: number; clips_estimated?: boolean; images: number; videos: number; tts?: number; renders?: number; llm_calls: number; status: string }[];
-  estimate: { images: number; videos: number; llm_calls: number; tts?: number; renders?: number; cost?: number | null; clips_estimated?: boolean; budget: BudgetStatus };
+  estimate: { images: number; videos: number; llm_calls: number; tts?: number; renders?: number; cost?: number | null; clips_estimated?: boolean };
   note?: string;
 }
 
@@ -190,10 +190,9 @@ export interface NextCostView {
   lead: string;
   /** "48 video · 0 lượt" — null khi chưa có ước tính. */
   amount: string | null;
-  /** Ghi chú: ngân sách còn, gate kế tiếp. */
+  /** Ghi chú: gate kế tiếp. */
   notes: string[];
-  overBudget: boolean;
-  /** Tổng lượt tính vào ngân sách (ảnh + video có bật ngân sách). */
+  /** Tổng lượt ảnh + video của đoạn kế tiếp. */
   credits: number;
 }
 
@@ -201,16 +200,15 @@ const nf = new Intl.NumberFormat('vi-VN');
 
 /**
  * Khối "giá bước kế" của GateCard. `plan` = dry_run của tập (ước tính toàn bộ phần còn lại của workflow — chỉ lấy loại
- * mà đoạn kế tiếp thật sự tiêu). Ngân sách: kind có `enabled` mới tính lượt; tắt = "không giới hạn".
+ * mà đoạn kế tiếp thật sự tiêu).
  */
-export function nextCost(seg: NextSegment, plan: PipelinePlan['sequences'][number] | null, budget: BudgetStatus | null): NextCostView {
+export function nextCost(seg: NextSegment, plan: PipelinePlan['sequences'][number] | null): NextCostView {
   const lead = seg.stage ? `Nếu duyệt, chạy tiếp chặng ${seg.stage.label}` : 'Nếu duyệt, quy trình chạy tới hết';
   const notes: string[] = [];
   if (seg.nextGate) notes.push(`dừng lại ở gate ${gateLabel(seg.nextGate)}`);
-  if (!plan) return { lead, amount: null, notes, overBudget: false, credits: 0 };
+  if (!plan) return { lead, amount: null, notes, credits: 0 };
   const parts: string[] = [];
   let credits = 0;
-  let overBudget = false;
   // Tập chưa chia clip: dry_run chưa đếm được ảnh/video → không được báo "0 lượt" (duyệt sẽ tốn lượt sau khi chia).
   if ((seg.spends.images || seg.spends.videos) && plan.clips === 0) {
     const what = [seg.spends.images ? 'ảnh' : null, seg.spends.videos ? 'video' : null].filter(Boolean).join(' + ');
@@ -219,35 +217,25 @@ export function nextCost(seg: NextSegment, plan: PipelinePlan['sequences'][numbe
       lead,
       amount: `${llm}${what}: chưa tính được`,
       notes: [...notes, 'tập chưa chia clip — số lượt ảnh/video biết sau bước chia clip'],
-      overBudget: false,
       credits: 0,
     };
   }
   for (const kind of ['images', 'videos'] as const) {
     if (!seg.spends[kind]) continue;
     const n = plan[kind] ?? 0;
-    const bk = budget?.[kind === 'images' ? 'image' : 'video'];
     parts.push(`${nf.format(n)} ${kind === 'images' ? 'ảnh' : 'video'}`);
-    if (bk?.enabled) {
-      credits += n;
-      if (bk.remaining != null) {
-        notes.push(`ngân sách ${kind === 'images' ? 'ảnh' : 'video'} còn ${nf.format(bk.remaining)} lượt`);
-        if (n > bk.remaining) overBudget = true;
-      }
-    } else if (n > 0) {
-      notes.push(`${kind === 'images' ? 'ảnh' : 'video'} không giới hạn ngân sách`);
-    }
+    credits += n;
   }
   if (seg.spends.llm && plan.llm_calls > 0) parts.push(`${nf.format(plan.llm_calls)} lần gọi LLM`);
   const amount = parts.length ? `${parts.join(' · ')} · ${nf.format(credits)} lượt` : 'miễn phí · 0 lượt';
-  return { lead, amount, notes, overBudget, credits };
+  return { lead, amount, notes, credits };
 }
 
 /* ------------------------------------------------------------------------------------------------------------------ */
 /* Danh sách "Cần bạn"                                                                                                 */
 /* ------------------------------------------------------------------------------------------------------------------ */
 
-export type NeedKind = 'gate' | 'input' | 'pipeline_failed' | 'job_failed' | 'job_attention' | 'budget' | 'drift';
+export type NeedKind = 'gate' | 'input' | 'pipeline_failed' | 'job_failed' | 'job_attention' | 'drift';
 
 export interface Need {
   id: string;
@@ -266,7 +254,7 @@ export interface Need {
   jobIds?: number[];
 }
 
-const RANK: Record<NeedKind, number> = { gate: 0, input: 1, pipeline_failed: 2, job_attention: 3, job_failed: 4, drift: 5, budget: 6 };
+const RANK: Record<NeedKind, number> = { gate: 0, input: 1, pipeline_failed: 2, job_attention: 3, job_failed: 4, drift: 5 };
 
 function errText(e: PipelineSummary['error'] | Job['error_message']): string {
   if (!e) return '';
@@ -289,8 +277,7 @@ function inputHref(base: string, s: PipelineSummary): string {
 const JOB_ATTENTION = new Set(['needs_attention', 'interrupted']);
 
 /**
- * Gom việc chờ người: gate mở, bước chờ nhập, quy trình lỗi, việc cần xử lý, việc lỗi, việc chờ vì vượt ngân sách
- * (gộp một dòng mỗi dự án). `projectName` (cho `/inbox`) thêm tên dự án vào chi tiết.
+ * Gom việc chờ người: gate mở, bước chờ nhập, quy trình lỗi, việc cần xử lý, việc lỗi. `projectName` (cho `/inbox`) thêm tên dự án vào chi tiết.
  */
 export function buildNeeds(
   pipelines: PipelineSummary[],
@@ -333,7 +320,6 @@ export function buildNeeds(
     }
   }
 
-  const budgetByProject = new Map<number | null, Job[]>();
   const piped = new Set(pipelines.map((p) => p.sequence_id));
   for (const j of jobs) {
     // Việc quy trình của tập đã có dòng "quy trình dừng vì lỗi" → không lặp lại.
@@ -342,12 +328,6 @@ export function buildNeeds(
     const where = pname(j.project_id);
     const suffix = where ? ` · ${where}` : '';
     const scope = j.sequence_id != null ? ` · tập #${j.sequence_id}` : '';
-    if (j.error_code === 'budget_exceeded' && !['succeeded', 'cancelled', 'failed'].includes(String(j.status))) {
-      const list = budgetByProject.get(j.project_id) ?? [];
-      list.push(j);
-      budgetByProject.set(j.project_id, list);
-      continue;
-    }
     if (JOB_ATTENTION.has(String(j.status))) {
       out.push({
         id: `job:${j.id}`, kind: 'job_attention', projectId: j.project_id, sequenceId: j.sequence_id,
@@ -363,16 +343,6 @@ export function buildNeeds(
         href: `/jobs?job=${j.id}`, at, jobIds: [j.id],
       });
     }
-  }
-  for (const [pid, list] of budgetByProject) {
-    const where = pname(pid);
-    out.push({
-      id: `budget:${pid ?? 'all'}`, kind: 'budget', projectId: pid, sequenceId: null,
-      title: `${nf.format(list.length)} việc chờ vì vượt ngân sách tháng`,
-      detail: `Nâng ngân sách hoặc huỷ việc${where ? ` · ${where}` : ''}`,
-      href: '/settings/budget', at: Math.max(...list.map((j) => parseServerTime(j.updated_at ?? j.created_at) ?? 0)),
-      jobIds: list.map((j) => j.id),
-    });
   }
   // Clip lệch nhân vật (`project.get counts.drift`) — một dòng cho cả dự án, mở Duyệt đã lọc lệch.
   if (opts.drift && opts.drift > 0 && opts.projectId != null) {

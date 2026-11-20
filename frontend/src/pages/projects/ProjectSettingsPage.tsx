@@ -1,10 +1,9 @@
 import { AudioLines, Save } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
 import { ApiError } from '../../api/client';
 import { callOp } from '../../api/ops';
-import type { BudgetStatus } from '../../api/types';
 import { errText, invalidateProject, pidOf, usePresets, useProjectData, useVoices } from '../../components/library/useLibrary';
 import { Button } from '../../components/ui/Button';
 import { Checkbox } from '../../components/ui/Checkbox';
@@ -48,11 +47,6 @@ function SettingsForm({ project }: { project: Project }) {
   const genres = usePresets('genre');
   const platforms = usePresets('platform');
   const voices = useVoices(project.id);
-  const budget = useQuery({
-    queryKey: ['shell', 'budget'],
-    queryFn: async () => (await callOp('budget.status')) as unknown as BudgetStatus,
-    retry: false,
-  });
   const [baseKey, setBaseKey] = useState(project.updated_at);
   const [form, setForm] = useState<ProjectForm>(() => projectToForm(project));
   const [showErrors, setShowErrors] = useState(false);
@@ -97,8 +91,6 @@ function SettingsForm({ project }: { project: Project }) {
   const knownPlatforms = platforms.data ?? [];
   const unknownPlatforms = form.target_platforms.filter((k) => !knownPlatforms.some((p) => p.key === k));
   const linkedVoices = (voices.data ?? []).filter((v) => v.project_id === project.id).length;
-  const img = budget.data?.image;
-  const vid = budget.data?.video;
 
   return (
     <form
@@ -222,57 +214,6 @@ function SettingsForm({ project }: { project: Project }) {
         </fieldset>
       </Section>
 
-      <Section
-        id="ps-budget"
-        title="Ngân sách"
-        note={
-          <>
-            Chốt chặn hiện dùng ngân sách chung ở{' '}
-            <Link to="/settings/budget" className="underline underline-offset-2">
-              Cài đặt › Ngân sách
-            </Link>
-            . Giới hạn riêng của dự án được lưu để áp khi máy chủ hỗ trợ.
-          </>
-        }
-      >
-        {img || vid ? (
-          <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line-1 bg-line-1">
-            {[
-              { label: 'Ảnh · ngân sách chung', s: img },
-              { label: 'Video · ngân sách chung', s: vid },
-            ].map(({ label, s }) => (
-              <div key={label} className="grid gap-0.5 bg-bg-1 px-3 py-2.5">
-                <dt className="order-2 text-xs text-fg-2">{label}</dt>
-                <dd className="order-1 font-mono text-lg tnum">
-                  {s ? formatCount(Math.round(s.spent)) : '—'}
-                  <span className="text-sm text-fg-3">{s?.total != null ? ` / ${formatCount(s.total)}` : ' · không giới hạn'}</span>
-                </dd>
-              </div>
-            ))}
-          </dl>
-        ) : null}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            id="ps-budget-img"
-            label="Lượt ảnh tối đa cho dự án"
-            inputMode="numeric"
-            value={form.budget_images}
-            onChange={(e) => set('budget_images', e.target.value)}
-            placeholder="theo ngân sách chung"
-            error={shown.budget_images}
-          />
-          <Input
-            id="ps-budget-vid"
-            label="Lượt video tối đa cho dự án"
-            inputMode="numeric"
-            value={form.budget_videos}
-            onChange={(e) => set('budget_videos', e.target.value)}
-            placeholder="theo ngân sách chung"
-            error={shown.budget_videos}
-          />
-        </div>
-      </Section>
-
       <Section id="ps-voice" title="Giọng">
         <p className="flex flex-wrap items-center gap-2 text-sm text-fg-2">
           <AudioLines className="sr-ico text-fg-3" aria-hidden />
@@ -315,7 +256,7 @@ function SettingsForm({ project }: { project: Project }) {
   );
 }
 
-/** `/p/:pid/settings` — cài đặt dự án: chung, phong cách, ngôn ngữ + nền tảng, ngân sách, giọng. */
+/** `/p/:pid/settings` — cài đặt dự án: chung, phong cách, ngôn ngữ + nền tảng, giọng. */
 export function ProjectSettingsPage() {
   const { projectId } = useParams();
   const pid = pidOf(projectId);

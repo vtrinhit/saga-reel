@@ -194,7 +194,7 @@ function shellBackend() {
   const SUMMARY12 = { sequence_id: 12, number: 12, title: 'Đêm trăng máu', ...RUN12, current: 'gate:animatic', job_id: null, error: null, gates: {}, progress: 70, updated_at: null };
   const routes: Record<string, unknown> = {
     '/api/auth/status': AUTH_OK,
-    '/api/ops/project.get': { id: 3, key: 'khl', name: 'Kiếp Hồ Ly', description: '', genre_key: 'serial', aspect: '9:16', language: 'vi', target_platforms: [], settings: {}, budget: {}, counts: { takes_pending: 7, drift: 0 } },
+    '/api/ops/project.get': { id: 3, key: 'khl', name: 'Kiếp Hồ Ly', description: '', genre_key: 'serial', aspect: '9:16', language: 'vi', target_platforms: [], settings: {}, counts: { takes_pending: 7, drift: 0 } },
     '/api/ops/project.list': { items: [], next_cursor: null },
     '/api/ops/sequence.list': { items: [SEQ(12, 12), SEQ(13, 13)], next_cursor: null },
     '/api/ops/sequence.get': SEQ(12, 12),
@@ -222,10 +222,6 @@ function shellBackend() {
       next_cursor: null,
     },
     '/api/ops/job.list': { items: [{ id: 1, status: 'needs_attention' }, { id: 2, status: 'succeeded' }], next_cursor: null, paused: false },
-    '/api/ops/budget.status': {
-      image: { enabled: true, total: 1236, spent: 412, remaining: 824 },
-      video: { enabled: false, total: null, spent: 0, remaining: null },
-    },
     '/api/ops': [],
   };
   api.defaults.adapter = async (config) => ({
@@ -279,7 +275,7 @@ describe('khung v2 (dây chuyền, Cần bạn, agent)', () => {
     const need = container.querySelector('a[aria-label^="Cần bạn:"]')!;
     expect(need.getAttribute('aria-label')).toBe('Cần bạn: 1 gate chờ duyệt, 1 việc cần xử lý');
     expect(need.getAttribute('href')).toBe('/p/3/activity');
-    expect(container.querySelector('a[href="/settings/budget"]')?.textContent).toContain('412');
+    expect(container.querySelector('a[href="/settings/budget"]')).toBeNull();
     // Panel Hoạt động: agent + change set có Hoàn tác.
     const panel = document.getElementById('sr-activity-panel')!;
     expect(panel.textContent).toContain('biên-tập');

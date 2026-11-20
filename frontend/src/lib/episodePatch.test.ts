@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { canSkipConfirm } from '../components/clip/useRegenerate';
 import { costBuckets } from '../components/pipeline/ProductionMatrix';
 import { derivedFromTakes, MAX_PATCH, mergePatch, planLivePatch } from './episodePatch';
 import type { Clip, Take } from './episodeTypes';
@@ -65,12 +64,6 @@ describe('BF: hoàn tác theo change set, ngưỡng hỏi lại, enum, hàng đ�
     expect(changeSetOf({ change_set_id: 42 })).toBe(42);
     expect(changeSetOf({ change_set_id: null })).toBeNull();
     expect(changeSetOf(null)).toBeNull();
-  });
-  it('canSkipConfirm: 0 = luôn hỏi; dưới ngưỡng và trong ngân sách thì chạy thẳng', () => {
-    expect(canSkipConfirm(3, 0, null)).toBe(false);
-    expect(canSkipConfirm(3, 5, null)).toBe(true);
-    expect(canSkipConfirm(5, 5, null)).toBe(false);
-    expect(canSkipConfirm(3, 5, 2)).toBe(false);
   });
   it('enumOptions theo meta.enums: thứ tự server, nhãn Việt, giá trị lạ giữ nguyên', () => {
     const o = enumOptions({ shot: { shot_size: ['cu', 'ws', 'xyz'] }, engines: ['still_motion'] });

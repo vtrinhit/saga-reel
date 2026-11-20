@@ -1876,161 +1876,6 @@
  {
   "costly": false,
   "destructive": false,
-  "group": "budget",
-  "idempotent": true,
-  "long_running": false,
-  "mcp": "tool",
-  "name": "budget.status",
-  "params_schema": {
-   "properties": {
-    "project_id": {
-     "anyOf": [
-      {
-       "type": "integer"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "description": "Kèm trần riêng của dự án (project.budget)",
-     "title": "Project Id"
-    }
-   },
-   "title": "BudgetStatusParams",
-   "type": "object"
-  },
-  "read_only": true,
-  "result_schema": {
-   "$defs": {
-    "BudgetKindStatus": {
-     "properties": {
-      "enabled": {
-       "description": "Ngân sách đang bật",
-       "title": "Enabled",
-       "type": "boolean"
-      },
-      "project": {
-       "anyOf": [
-        {
-         "$ref": "#/$defs/BudgetProjectStatus"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "default": null
-      },
-      "remaining": {
-       "anyOf": [
-        {
-         "type": "number"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "description": "Còn lại; null = không giới hạn",
-       "title": "Remaining"
-      },
-      "spent": {
-       "description": "Số đơn vị đã dùng (không tính kết nối giả fake_*)",
-       "title": "Spent",
-       "type": "number"
-      },
-      "total": {
-       "anyOf": [
-        {
-         "type": "integer"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "description": "Trần số đơn vị; null = không giới hạn (tắt hoặc 0)",
-       "title": "Total"
-      }
-     },
-     "required": [
-      "enabled",
-      "total",
-      "spent",
-      "remaining"
-     ],
-     "title": "BudgetKindStatus",
-     "type": "object"
-    },
-    "BudgetProjectStatus": {
-     "properties": {
-      "project_id": {
-       "title": "Project Id",
-       "type": "integer"
-      },
-      "remaining": {
-       "anyOf": [
-        {
-         "type": "number"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "title": "Remaining"
-      },
-      "spent": {
-       "title": "Spent",
-       "type": "number"
-      },
-      "total": {
-       "anyOf": [
-        {
-         "type": "integer"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "description": "Trần của dự án; null = không giới hạn",
-       "title": "Total"
-      }
-     },
-     "required": [
-      "project_id",
-      "total",
-      "spent",
-      "remaining"
-     ],
-     "title": "BudgetProjectStatus",
-     "type": "object"
-    }
-   },
-   "properties": {
-    "confirm_below_units": {
-     "default": 5,
-     "description": "Không hỏi xác nhận lại với thao tác tốn tiền dưới số lượt này",
-     "title": "Confirm Below Units",
-     "type": "integer"
-    },
-    "image": {
-     "$ref": "#/$defs/BudgetKindStatus"
-    },
-    "video": {
-     "$ref": "#/$defs/BudgetKindStatus"
-    }
-   },
-   "required": [
-    "image",
-    "video"
-   ],
-   "title": "BudgetStatus",
-   "type": "object"
-  },
-  "summary": "Ngân sách ảnh/video: trần, đã dùng, còn lại (toàn cục + dự án nếu có project_id; kết nối giả không tính)",
-  "viewer": true
- },
- {
-  "costly": false,
-  "destructive": false,
   "group": "channel",
   "idempotent": false,
   "long_running": true,
@@ -7551,7 +7396,7 @@
     },
     "dry_run": {
      "default": false,
-     "description": "Chỉ ước tính (số ảnh/video/LLM, giây phim, ngân sách)",
+     "description": "Chỉ ước tính (số ảnh/video/LLM, giây phim)",
      "title": "Dry Run",
      "type": "boolean"
     },
@@ -8545,11 +8390,6 @@
      "title": "Aspect",
      "type": "string"
     },
-    "budget": {
-     "additionalProperties": true,
-     "title": "Budget",
-     "type": "object"
-    },
     "counts": {
      "$ref": "#/$defs/ProjectCounts"
     },
@@ -8669,7 +8509,6 @@
     "style_block",
     "negative_block",
     "settings",
-    "budget",
     "cover_media_id",
     "created_at",
     "updated_at",
@@ -8849,11 +8688,6 @@
      "title": "Aspect",
      "type": "string"
     },
-    "budget": {
-     "additionalProperties": true,
-     "title": "Budget",
-     "type": "object"
-    },
     "counts": {
      "$ref": "#/$defs/ProjectCounts"
     },
@@ -8973,7 +8807,6 @@
     "style_block",
     "negative_block",
     "settings",
-    "budget",
     "cover_media_id",
     "created_at",
     "updated_at",
@@ -9143,11 +8976,6 @@
      "title": "Aspect",
      "type": "string"
     },
-    "budget": {
-     "additionalProperties": true,
-     "title": "Budget",
-     "type": "object"
-    },
     "counts": {
      "$ref": "#/$defs/ProjectCounts"
     },
@@ -9267,7 +9095,6 @@
     "style_block",
     "negative_block",
     "settings",
-    "budget",
     "cover_media_id",
     "created_at",
     "updated_at",
@@ -9357,11 +9184,6 @@
       "aspect": {
        "title": "Aspect",
        "type": "string"
-      },
-      "budget": {
-       "additionalProperties": true,
-       "title": "Budget",
-       "type": "object"
       },
       "counts": {
        "$ref": "#/$defs/ProjectCounts"
@@ -9482,7 +9304,6 @@
       "style_block",
       "negative_block",
       "settings",
-      "budget",
       "cover_media_id",
       "created_at",
       "updated_at",
@@ -9680,7 +9501,7 @@
    "title": "PlanOut",
    "type": "object"
   },
-  "summary": "Lập kế hoạch áp file khai báo: tạo mới / sửa (diff từng trường) / ứng viên xoá (chỉ liệt kê) + ước tính ảnh/video/giọng/render + ngân sách + plan_fingerprint",
+  "summary": "Lập kế hoạch áp file khai báo: tạo mới / sửa (diff từng trường) / ứng viên xoá (chỉ liệt kê) + ước tính ảnh/video/giọng/render + plan_fingerprint",
   "viewer": false
  },
  {
@@ -9768,11 +9589,6 @@
     "aspect": {
      "title": "Aspect",
      "type": "string"
-    },
-    "budget": {
-     "additionalProperties": true,
-     "title": "Budget",
-     "type": "object"
     },
     "counts": {
      "$ref": "#/$defs/ProjectCounts"
@@ -9893,7 +9709,6 @@
     "style_block",
     "negative_block",
     "settings",
-    "budget",
     "cover_media_id",
     "created_at",
     "updated_at",

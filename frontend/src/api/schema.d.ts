@@ -531,23 +531,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/ops/budget.status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Ngân sách ảnh/video: trần, đã dùng, còn lại (toàn cục + dự án nếu có project_id; kết nối giả không tính) */
-        post: operations["budget.status"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/ops/channel.analyze": {
         parameters: {
             query?: never;
@@ -2189,7 +2172,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Lập kế hoạch áp file khai báo: tạo mới / sửa (diff từng trường) / ứng viên xoá (chỉ liệt kê) + ước tính ảnh/video/giọng/render + ngân sách + plan_fingerprint */
+        /** Lập kế hoạch áp file khai báo: tạo mới / sửa (diff từng trường) / ứng viên xoá (chỉ liệt kê) + ước tính ảnh/video/giọng/render + plan_fingerprint */
         post: operations["project.plan"];
         delete?: never;
         options?: never;
@@ -4393,63 +4376,6 @@ export interface components {
             /** Expected Updated At */
             expected_updated_at?: string | null;
         };
-        /** BudgetKindStatus */
-        BudgetKindStatus: {
-            /**
-             * Enabled
-             * @description Ngân sách đang bật
-             */
-            enabled: boolean;
-            /**
-             * Total
-             * @description Trần số đơn vị; null = không giới hạn (tắt hoặc 0)
-             */
-            total: number | null;
-            /**
-             * Spent
-             * @description Số đơn vị đã dùng (không tính kết nối giả fake_*)
-             */
-            spent: number;
-            /**
-             * Remaining
-             * @description Còn lại; null = không giới hạn
-             */
-            remaining: number | null;
-            project?: components["schemas"]["BudgetProjectStatus"] | null;
-        };
-        /** BudgetProjectStatus */
-        BudgetProjectStatus: {
-            /** Project Id */
-            project_id: number;
-            /**
-             * Total
-             * @description Trần của dự án; null = không giới hạn
-             */
-            total: number | null;
-            /** Spent */
-            spent: number;
-            /** Remaining */
-            remaining: number | null;
-        };
-        /** BudgetStatus */
-        BudgetStatus: {
-            image: components["schemas"]["BudgetKindStatus"];
-            video: components["schemas"]["BudgetKindStatus"];
-            /**
-             * Confirm Below Units
-             * @description Không hỏi xác nhận lại với thao tác tốn tiền dưới số lượt này
-             * @default 5
-             */
-            confirm_below_units?: number;
-        };
-        /** BudgetStatusParams */
-        BudgetStatusParams: {
-            /**
-             * Project Id
-             * @description Kèm trần riêng của dự án (project.budget)
-             */
-            project_id?: number | null;
-        };
         /** CacheClearParams */
         CacheClearParams: {
             /**
@@ -5491,7 +5417,7 @@ export interface components {
             platforms?: string[];
             /**
              * Dry Run
-             * @description Chỉ ước tính (số ảnh/video/LLM, giây phim, ngân sách)
+             * @description Chỉ ước tính (số ảnh/video/LLM, giây phim)
              * @default false
              */
             dry_run?: boolean;
@@ -6387,10 +6313,6 @@ export interface components {
             negative_block: string;
             /** Settings */
             settings: {
-                [key: string]: unknown;
-            };
-            /** Budget */
-            budget: {
                 [key: string]: unknown;
             };
             /** Cover Media Id */
@@ -9492,48 +9414,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorPayload"];
-                };
-            };
-            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorPayload"];
-                };
-            };
-        };
-    };
-    "budget.status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["BudgetStatusParams"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BudgetStatus"];
                 };
             };
             /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */

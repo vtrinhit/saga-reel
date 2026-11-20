@@ -58,7 +58,7 @@ class JobLog(Plain, Base):
 
 
 class Spend(Plain, Base):
-    """Sổ chi tiêu cho ngân sách; thời điểm ghi = `created_at`."""
+    """Sổ lượt đã tạo (ảnh/video có tiền, một dòng mỗi lần tạo thành công) — chỉ để thống kê; thời điểm ghi = `created_at`."""
 
     __tablename__ = "spend"
     __table_args__ = (Index("ix_spend_job_kind", "job_id", "kind"),)  # tra chi tiêu theo job (M8)
@@ -68,4 +68,4 @@ class Spend(Plain, Base):
     units: Mapped[float] = mapped_column(default=0.0)
     cost: Mapped[float | None]
     job_id: Mapped[int | None]
-    project_id: Mapped[int | None] = mapped_column(index=True)  # ngân sách theo dự án
+    project_id: Mapped[int | None] = mapped_column(index=True)  # thống kê theo dự án

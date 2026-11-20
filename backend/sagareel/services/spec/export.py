@@ -147,7 +147,7 @@ def _build(s: Session, project: Project, include: Iterable[str] | None = None) -
         style_pack=style_pack, aspect=project.aspect, resolution=project.resolution, fps=project.fps,
         language=project.language, languages=_plain(project.languages), target_platforms=_plain(project.target_platforms),
         style_block=project.style_block or "", negative_block=project.negative_block or "", settings=settings,
-        budget=_plain(project.budget), cover=med.ref(project.cover_media_id),
+        cover=med.ref(project.cover_media_id),
     )
 
     assets = _alive(s, Asset, Asset.project_id == project.id)

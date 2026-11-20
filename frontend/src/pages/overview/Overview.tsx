@@ -3,7 +3,7 @@ import { CircleCheck, Copy, Download, LayoutDashboard, MoreHorizontal, Trash2, U
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { callOp } from '../../api/ops';
-import type { BudgetStatus, ProjectInfo, SequenceInfo, SequencePage } from '../../api/types';
+import type { ProjectInfo, SequenceInfo, SequencePage } from '../../api/types';
 import { errText } from '../../components/clip/useRegenerate';
 import { EpisodeList, ProductionMatrix } from '../../components/pipeline/ProductionMatrix';
 import { BatchBar } from '../../components/ui/BatchBar';
@@ -98,12 +98,6 @@ export function Overview() {
     staleTime: 10 * 60_000,
     retry: false,
   });
-  const budget = useQuery({
-    queryKey: ['shell', 'budget'],
-    queryFn: async () => (await callOp('budget.status')) as unknown as BudgetStatus,
-    staleTime: 30_000,
-    retry: false,
-  });
   const exports = useQuery({
     queryKey: ['overview', pid, 'exports'],
     queryFn: async () => {
@@ -173,7 +167,7 @@ export function Overview() {
   const clips = all.reduce((n, s) => n + Number(s.counts?.clips ?? 0), 0);
   const scripted = all.filter((s) => s.script?.trim()).length;
   const exported = new Set((exports.data ?? []).map((e) => e.sequence_id).filter((x) => x != null)).size;
-  const img = budget.data?.image;
+  const takesPending = p?.counts?.takes_pending;
   const platforms = (p?.target_platforms ?? []).map((x) => names.data?.get(`platform:${x}`) ?? String(x)).join(', ');
   const genre = p?.genre_key ? (names.data?.get(`genre:${p.genre_key}`) ?? p.genre_key) : null;
 
@@ -251,11 +245,7 @@ export function Overview() {
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line-2 bg-line-2 xl:grid-cols-4">
         {stat(clips.toLocaleString('vi-VN'), `clip trong ${all.length.toLocaleString('vi-VN')} tập`)}
         {stat(scripted.toLocaleString('vi-VN'), 'tập có kịch bản')}
-        {stat(
-          img ? img.spent.toLocaleString('vi-VN') : '—',
-          'lượt ảnh tháng này',
-          img?.total != null ? <span className="text-base text-fg-2"> / {img.total.toLocaleString('vi-VN')}</span> : null,
-        )}
+        {stat(takesPending != null ? Number(takesPending).toLocaleString('vi-VN') : '—', 'take chờ duyệt')}
         {stat(exports.isError ? '—' : exported.toLocaleString('vi-VN'), 'tập đã xuất gói')}
       </div>
 

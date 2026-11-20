@@ -2,7 +2,6 @@ import { CircleAlert, Play } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { formatCount, formatCredits, formatVnd } from '../../lib/format';
 import { Button } from './Button';
-import { Checkbox } from './Checkbox';
 import { Modal } from './Modal';
 
 export interface EstimateRow {
@@ -22,28 +21,22 @@ export interface EstimateDialogProps {
   rows: EstimateRow[];
   /** Số việc sẽ chạy (cho nhãn nút). Mặc định = tổng số lượng. */
   jobCount?: number;
-  /** Ngân sách còn lại (tổng toàn cục); null = không giới hạn / chưa đặt. */
-  budgetRemaining?: number | null;
   /** Cảnh báo khả năng provider, vd "GrokTele không nhận ảnh tham chiếu thứ 2 — chỉ gửi ảnh đầu." */
   warnings?: ReactNode[];
-  /** Tuỳ chọn "Không hỏi lại dưới 5 lượt". */
-  skipBelow?: { checked: boolean; onChange: (v: boolean) => void; threshold?: number };
   running?: boolean;
   /** Đang mất kết nối: khoá nút trả phí. */
   offline?: boolean;
   title?: string;
 }
 
-/** Trước mọi lần chạy trả phí: bảng theo loại, tổng lượt (2xl mono) và ≈ ₫, ngân sách còn lại, băng warn khi vượt. */
+/** Trước mọi lần chạy trả phí (luôn hỏi, một lần xác nhận): bảng theo loại, tổng lượt (2xl mono) và ≈ ₫, cảnh báo. */
 export function EstimateDialog({
   open,
   onClose,
   onRun,
   rows,
   jobCount,
-  budgetRemaining = null,
   warnings = [],
-  skipBelow,
   running,
   offline,
   title = 'Ước tính chi phí',
@@ -52,7 +45,6 @@ export function EstimateDialog({
   const vndKnown = rows.every((r) => r.unitVnd != null);
   const totalVnd = vndKnown ? rows.reduce((s, r) => s + r.quantity * (r.unitVnd ?? 0), 0) : null;
   const jobs = jobCount ?? rows.reduce((s, r) => s + r.quantity, 0);
-  const overBudget = budgetRemaining != null && totalCredits > budgetRemaining;
 
   return (
     <Modal
@@ -103,19 +95,6 @@ export function EstimateDialog({
           </tfoot>
         </table>
 
-        {budgetRemaining != null ? (
-          <p className="text-xs text-fg-2">
-            Ngân sách còn <span className="font-mono tnum text-fg-1">{formatCredits(budgetRemaining)}</span>
-          </p>
-        ) : null}
-
-        {overBudget ? (
-          <div role="alert" className="sr-warnbox flex items-start gap-2 rounded-sm px-2.5 py-2 text-sm">
-            <CircleAlert className="sr-ico mt-0.5 text-warn" aria-hidden />
-            <span>Vượt ngân sách {formatCredits(totalCredits - (budgetRemaining ?? 0))}.</span>
-          </div>
-        ) : null}
-
         {warnings.map((w, i) => (
           <div key={i} className="sr-warnbox flex items-start gap-2 rounded-sm px-2.5 py-2 text-sm">
             <CircleAlert className="sr-ico mt-0.5 text-warn" aria-hidden />
@@ -125,14 +104,6 @@ export function EstimateDialog({
 
         {offline ? (
           <p className="text-xs text-state-failed">Đang mất kết nối với máy nhà — chưa chạy được việc trả phí.</p>
-        ) : null}
-
-        {skipBelow ? (
-          <Checkbox
-            label={`Không hỏi lại dưới ${skipBelow.threshold ?? 5} lượt`}
-            checked={skipBelow.checked}
-            onChange={(e) => skipBelow.onChange(e.target.checked)}
-          />
         ) : null}
       </div>
     </Modal>

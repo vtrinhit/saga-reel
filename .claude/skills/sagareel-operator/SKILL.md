@@ -12,8 +12,8 @@ catalog op). Đọc `AGENTS.md` ở gốc repo nếu cần chi tiết cửa REST
 
 1. **Ước tính trước khi tốn tiền.** Op tốn tiền (tạo ảnh/video/giọng/LLM: `clip.regenerate`, `audio.generate`,
    `pipeline.run`, `pipeline.idea_to_video`, `clone.from_video`, `sheet.generate`…) luôn chạy `dry_run: true` trước.
-   Render: `sr_estimate` với op `render.estimate`. Xem `sr_budget_status`. Báo người dùng con số (ảnh, video, giây,
-   tiền nếu biết) và **xin đồng ý** khi lớn hơn vài ảnh/video. Lỗi `budget_exceeded` → dừng, báo, không lách.
+   Render: `sr_estimate` với op `render.estimate`. Báo người dùng con số (ảnh, video, giây, tiền nếu biết) và **xin
+   đồng ý** khi lớn hơn vài ảnh/video.
 2. **Tôn trọng gate.** Job `needs_attention` / `waiting_*` / `interrupted` hoặc `sr_pipeline_status` báo đang chờ gate
    → dừng, tóm tắt cho người dùng (ảnh/clip cần duyệt, lý do), chờ quyết định. Chỉ gọi `sr_gate_approve` /
    `sr_gate_reject` (kèm `feedback`) khi người dùng đã nói rõ.
@@ -28,7 +28,7 @@ catalog op). Đọc `AGENTS.md` ở gốc repo nếu cần chi tiết cửa REST
 
 1. `sr_describe_ops` (lọc `group`) nếu chưa rõ op; op không có tool riêng → `sr_call`.
 2. `sr_project_list` → chọn project (hoặc `sr_project_create`).
-3. `sr_provider_list` + `sr_provider_check` nếu sắp tạo media; `sr_budget_status`.
+3. `sr_provider_list` + `sr_provider_check` nếu sắp tạo media.
 
 ## Cách làm việc theo khối lớn: file khai báo
 
@@ -38,7 +38,7 @@ Thay vì gọi hàng trăm op lẻ, sửa cả project bằng file khai báo (YA
    timeline `track@clip#n` theo vị trí).
 2. Sửa YAML (thêm tập, clip, thoại, look…). Bỏ một mục nhóm (library/groups/sequences/presets) = không đụng tới nó.
 3. `sr_project_plan(spec_text)` → `creates`, `updates` (diff từng trường), `delete_candidates`, `estimate`
-   (ảnh/video/giọng/render + ngân sách), `warnings`, `plan_fingerprint`. **Cho người dùng xem tóm tắt.**
+   (ảnh/video/giọng/render), `warnings`, `plan_fingerprint`. **Cho người dùng xem tóm tắt.**
 4. `sr_project_apply(spec_text, plan_fingerprint)` — một change set, hoàn tác bằng `sr_history_undo`. `plan_stale` →
    plan lại. Áp lại cùng file = không đổi gì. Apply không tốn tiền; bước tạo media sau đó mới tốn (theo `estimate`).
 
@@ -51,7 +51,7 @@ Thay vì gọi hàng trăm op lẻ, sửa cả project bằng file khai báo (YA
 | Truyện dài tập chạy hàng loạt (chuyển thể) | `playbooks/long-serial.md` |
 | Clone từ video / kênh mẫu | `playbooks/clone.md` |
 | Lồng tiếng, phụ đề, nhiều ngôn ngữ | `playbooks/dubbing.md` |
-| Lỗi provider, hạn mức, ngân sách | `playbooks/provider-errors.md` |
+| Lỗi provider, hạn mức của provider | `playbooks/provider-errors.md` |
 
 Skill này sửa được trong app (op `skill.update`, có lịch sử): khi người dùng dạy một quy trình mới, đề xuất ghi lại
 vào playbook phù hợp.

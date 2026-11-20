@@ -72,8 +72,15 @@ class ProjectBlock(_Strict):
     style_block: str = ""
     negative_block: str = ""
     settings: dict[str, Any] = Field(default_factory=dict, description="Cài đặt project (trừ *.connection → providers)")
-    budget: dict[str, Any] = Field(default_factory=dict)
     cover: MediaRef | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_legacy(cls, data: Any) -> Any:
+        """Spec cũ còn khối `budget` (tính năng ngân sách đã bỏ) → bỏ qua, không báo lỗi."""
+        if isinstance(data, dict) and "budget" in data:
+            data = {k: v for k, v in data.items() if k != "budget"}
+        return data
 
 
 class PresetSpec(_Strict):

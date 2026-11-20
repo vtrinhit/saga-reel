@@ -130,7 +130,7 @@ export interface ProviderHealthEvent {
   health: Health;
 }
 
-/** `estimate` của `provider.try_* dry_run`: `adapter.estimate()` + thông tin kết nối (+ `budget` cho ảnh/video). */
+/** `estimate` của `provider.try_* dry_run`: `adapter.estimate()` + thông tin kết nối. */
 export interface TryEstimate {
   units?: number;
   cost?: number;
@@ -141,7 +141,6 @@ export interface TryEstimate {
   connection_id: number;
   adapter: string;
   enabled: boolean;
-  budget?: { enabled: boolean; total: number | null; spent: number; remaining: number | null };
 }
 
 export interface DeletePreview {
@@ -196,7 +195,6 @@ export interface ProjectInfo {
   language: string;
   target_platforms: unknown[];
   settings: Record<string, unknown>;
-  budget: Record<string, unknown>;
   counts?: Record<string, number>;
 }
 
@@ -257,15 +255,3 @@ export interface HistoryPage {
   next_cursor: number | null;
 }
 
-/** `budget.status` ← `ops/budget_ops.py::BudgetStatus`. */
-export interface BudgetKindStatus {
-  enabled: boolean;
-  total: number | null;
-  spent: number;
-  remaining: number | null;
-}
-
-export interface BudgetStatus {
-  image: BudgetKindStatus;
-  video: BudgetKindStatus;
-}

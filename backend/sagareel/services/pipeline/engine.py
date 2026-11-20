@@ -372,7 +372,7 @@ async def _call_writer(r: Run, task: str, feedback: str, params: dict[str, Any])
 
 
 async def invoke_op(r: Run, name: str, payload: dict[str, Any]) -> Any:
-    """Gọi op theo tên (qua registry — dùng lại kiểm tra/ngân sách của op). Tách riêng để test thay được."""
+    """Gọi op theo tên (qua registry — dùng lại kiểm tra/ước tính của op). Tách riêng để test thay được."""
     from sagareel.core.ops import invoke
 
     return await invoke(name, payload, r.ctx)
@@ -790,7 +790,7 @@ def start(ctx: OpContext, sequence_ids: list[int], workflow_key: str = W.DEFAULT
 
 def plan(ctx: OpContext, sequence_ids: list[int], workflow_key: str, overrides: dict[str, Any] | None) -> dict:
     """`dry_run`: các bước sẽ chạy + ước tính số ảnh/video cần tạo (chưa tạo gì)."""
-    from sagareel.services import budget, presets
+    from sagareel.services import presets
 
     presets.ensure_builtins(ctx.services)
     with ctx.services.db.session() as s:
@@ -868,8 +868,6 @@ def plan(ctx: OpContext, sequence_ids: list[int], workflow_key: str, overrides: 
                              "cost": cost})
         totals["cost"] = total_cost
         totals["clips_estimated"] = estimated_any
-        totals["budget"] = {k: budget.status(s, k, resolver=ctx.services.resolver, project_id=project_id)
-                            for k in ("image", "video")}
     out = {"dry_run": True, "workflow": workflow_key, "steps": step_out, "step_keys": enabled, "sequences": per,
            "estimate": totals}
     if estimated_any:

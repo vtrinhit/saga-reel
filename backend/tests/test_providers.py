@@ -12,7 +12,6 @@ from PIL import Image
 from sqlalchemy import select
 
 from sagareel.core.errors import AppError
-from sagareel.core.resolver import default_resolver
 from sagareel.db.models import GlobalSettings, Job, Media, ProviderConnection, Revision, Spend
 from sagareel.media.probe import probe
 from sagareel.providers import registry
@@ -24,7 +23,6 @@ from sagareel.providers.base import (
     ProviderUnavailable,
     TTSRequest,
 )
-from sagareel.services import budget
 from sagareel.services.jobs import JobFailed
 from sagareel.services.providers import ProviderService
 
@@ -492,40 +490,6 @@ def test_provider_errors_are_job_errors():
     assert ProviderJobError("rejected", "bị từ chối").code == "provider_rejected"
 
 
-# --- Ngân sách ----------------------------------------------------------------------------------------------------
-
-
-def test_budget_blocks_paid_kind(session):
-    conn = add_connection(session)
-    set_global(session, **{"budget.images_total": 1})
-    budget.check_and_record(session, "image", 1, None, conn.id)
-    with pytest.raises(AppError) as e:
-        budget.check_and_record(session, "image", 1, None, conn.id)
-    assert e.value.code == "budget_exceeded" and e.value.status == 402
-    budget.check_and_record(session, "video", 1, None, conn.id)  # kind khác có hạn mức riêng
-
-
-def test_budget_zero_means_unlimited_and_disabled(session):
-    conn = add_connection(session)
-    set_global(session, **{"budget.videos_total": 0})
-    for _ in range(30):
-        budget.check_and_record(session, "video", 1, None, conn.id)
-    set_global(session, **{"budget.images_total": 1, "budget.enabled": False})
-    budget.check_and_record(session, "image", 5, None, conn.id)
-
-
-def test_budget_ignores_fake_adapters(session):
-    paid = add_connection(session)
-    fake = add_connection(session, adapter="fake_image", name="fake")
-    set_global(session, **{"budget.images_total": 1})
-    for _ in range(3):
-        budget.check_and_record(session, "image", 1, None, fake.id)  # ghi sổ nhưng không tính
-    assert len(session.scalars(select(Spend)).all()) == 3
-    budget.check_and_record(session, "image", 1, None, paid.id)
-    with pytest.raises(AppError):
-        budget.check_and_record(session, "image", 1, None, paid.id)
-
-
 # --- Lane ---------------------------------------------------------------------------------------------------------
 
 
@@ -581,12 +545,6 @@ def test_disabled_connection_raises_provider_unavailable(services):
         ProviderService(services).connection(cid)
 
 
-def test_schema_documents_zero_unlimited():
-    r = default_resolver()
-    assert "0" in r.definition("budget.images_total").description
-    assert "0" in r.definition("budget.videos_total").description
-
-
 def test_startup_calls_no_provider(settings, monkeypatch, make_local_client):
     """Khởi động app không gọi check_health của adapter nào."""
     from sagareel.app import create_app
@@ -605,12 +563,12 @@ def test_startup_calls_no_provider(settings, monkeypatch, make_local_client):
     assert called == [] and issubclass(registry.get("fake_image"), Adapter)
 
 
-# --- Fix round 1: ngân sách giữ chỗ qua op/handler với adapter trả tiền (chỉ test) ---------------------------------
+# --- Fix round 1: op/handler với adapter trả tiền (chỉ test) ---------------------------------
 
 
 @pytest.fixture
 def paid_adapter():
-    """Adapter ảnh "trả tiền" chỉ dùng trong test (id không bắt đầu bằng fake_ → ngân sách có tính)."""
+    """Adapter ảnh "trả tiền" chỉ dùng trong test (id không bắt đầu bằng fake_)."""
     import asyncio
 
     from sagareel.providers.fake.image import FakeImageAdapter
@@ -640,63 +598,37 @@ def paid_adapter():
 PAID = {"kind": "image", "adapter": "test_paid_image", "name": "paid", "api_key": "sk-PAIDSECRET-4321"}
 
 
-def set_cap(client, **values):
-    r = call(client, "settings.set_global", {"values": values})
-    assert r.status_code == 200, r.text
-
-
 def spend_rows(client):
     with client.app.state.services.db.session() as s:
         return [(x.kind, x.units, x.job_id) for x in s.scalars(select(Spend).order_by(Spend.id))]
 
 
-async def test_paid_try_image_op_returns_402_at_cap(client, run_jobs, paid_adapter):
-    create(client, PAID)
-    set_cap(client, **{"budget.images_total": 1})
-    job = await run_jobs(call(client, "provider.try_image", {"connection": "paid", "prompt": "a"}).json()["job_id"])
-    assert job["status"] == "succeeded", job
-    r = call(client, "provider.try_image", {"connection": "paid", "prompt": "b"})
-    assert r.status_code == 402 and r.json()["error_code"] == "budget_exceeded"
-    assert len(spend_rows(client)) == 1
-
-
-async def test_job_queued_before_cap_fails_and_leaves_no_spend(client, run_jobs, paid_adapter):
-    create(client, PAID, concurrency=1)
-    set_cap(client, **{"budget.images_total": 1})
-    services = client.app.state.services
-    services.worker.pause_all()
-    a = call(client, "provider.try_image", {"connection": "paid", "prompt": "a"}).json()["job_id"]
-    b = call(client, "provider.try_image", {"connection": "paid", "prompt": "b"}).json()["job_id"]  # cũng qua op
-    services.worker.resume_all()
-    ja, jb = await run_jobs(a), await run_jobs(b)
-    assert ja["status"] == "succeeded", ja
-    assert jb["status"] == "failed" and jb["error_code"] == "budget_exceeded", jb
-    assert spend_rows(client) == [("image", 1.0, a)]
-
-
-async def test_reservation_never_exceeds_cap_with_concurrent_jobs(client, run_jobs, paid_adapter):
-    n = 2
-    create(client, PAID, concurrency=n + 2, options={"delay": 0.3})
-    set_cap(client, **{"budget.images_total": n})
-    worker = client.app.state.services.worker
-    worker.pause_all()  # xếp đủ n+2 job trước (chỗ đã giữ cũng chặn op), rồi cho chạy cùng lúc
-    ids = [call(client, "provider.try_image", {"connection": "paid", "prompt": str(i)}).json()["job_id"]
-           for i in range(n + 2)]
-    worker.resume_all()
-    results = [await run_jobs(i) for i in ids]
-    ok = [j for j in results if j["status"] == "succeeded"]
-    blocked = [j for j in results if j["error_code"] == "budget_exceeded"]
-    assert len(ok) == n and len(blocked) == 2, [(j["status"], j["error_code"]) for j in results]
-    assert sorted(r[2] for r in spend_rows(client)) == sorted(j["id"] for j in ok)
+async def test_paid_job_never_blocked_by_spend_count(client, run_jobs, paid_adapter):
+    """Không còn ngân sách: sổ `spend` dày tới đâu thì job trả phí vẫn chạy (op không 402, job không bị chặn) và mỗi
+    lần tạo thành công ghi đúng một dòng."""
+    cid = create(client, PAID, concurrency=3)["id"]
+    with client.app.state.services.db.session() as s:
+        s.add_all([Spend(kind="image", units=1.0, connection_id=cid) for _ in range(500)])
+    ids = []
+    for i in range(3):
+        r = call(client, "provider.try_image", {"connection": "paid", "prompt": str(i)})
+        assert r.status_code == 200, r.text
+        ids.append(r.json()["job_id"])
+    for job_id in ids:
+        job = await run_jobs(job_id)
+        assert job["status"] == "succeeded", job
+    rows = spend_rows(client)
+    assert len(rows) == 503 and sorted(r[2] for r in rows if r[2] is not None) == sorted(ids)
+    dry = call(client, "provider.try_image", {"connection": "paid", "prompt": "x", "dry_run": True}).json()
+    assert "budget" not in dry["estimate"]
 
 
 async def test_failed_generation_releases_reservation_and_redacts_key(client, run_jobs, paid_adapter):
     create(client, PAID, options={"fail": True})
-    set_cap(client, **{"budget.images_total": 1})
     job = await run_jobs(call(client, "provider.try_image", {"connection": "paid", "prompt": "a"}).json()["job_id"])
     assert job["status"] == "failed" and job["error_code"] == "provider_rejected"
     assert "PAIDSECRET" not in json.dumps(job) and "••••4321" in job["error_message"]
-    assert spend_rows(client) == []  # chỗ đã giữ được trả
+    assert spend_rows(client) == []  # chỉ ghi sổ khi tạo thành công
 
 
 async def test_unexpected_error_message_is_redacted(client, run_jobs, paid_adapter):
@@ -707,20 +639,6 @@ async def test_unexpected_error_message_is_redacted(client, run_jobs, paid_adapt
     logs = call(client, "job.logs", {"id": job["id"]}).text
     assert "PAIDSECRET" not in json.dumps(job) and "PAIDSECRET" not in logs
     assert spend_rows(client) == []
-
-
-def test_budget_reserve_release_finalize(session):
-    conn = add_connection(session)
-    set_global(session, **{"budget.images_total": 2})
-    budget.reserve(session, "image", 1, 10, conn.id)
-    budget.reserve(session, "image", 1, 10, conn.id)  # giữ lại cho cùng job (thử lại) không giữ thêm
-    budget.reserve(session, "image", 1, 11, conn.id)
-    with pytest.raises(AppError):
-        budget.reserve(session, "image", 1, 12, conn.id)
-    assert budget.release(session, 11) == 1
-    budget.reserve(session, "image", 1, 12, conn.id)
-    budget.finalize(session, 12, 3, kind="image", connection_id=conn.id)  # tiền đã tiêu: ghi đúng thực tế
-    assert budget.spent(session, "image") == 4
 
 
 # --- Fix round 1: registry, năng lực, kiểu options -----------------------------------------------------------------
@@ -927,7 +845,6 @@ def ctl(services):
         s.add(m)
         s.flush()
         c.image_media = m.id
-        set_global(s, **{"budget.images_total": 1, "budget.videos_total": 1})
     try:
         yield c
     finally:
@@ -982,8 +899,8 @@ async def run_idle(services) -> None:
 
 
 @pytest.mark.parametrize("kind", ["image", "video"])
-async def test_stop_mid_poll_keeps_reservation_and_does_not_cancel_on_provider(services, ctl, kind):
-    """Tắt app khi provider đã nhận job: không trả chỗ ngân sách, không báo provider huỷ; job về `queued`."""
+async def test_stop_mid_poll_does_not_cancel_on_provider(services, ctl, kind):
+    """Tắt app khi provider đã nhận job: không báo provider huỷ; job về `queued` giữ `external_id` để nối lại."""
     job_id = submit_try(services, ctl, kind)
     await services.worker.start()
     try:
@@ -993,31 +910,27 @@ async def test_stop_mid_poll_keeps_reservation_and_does_not_cancel_on_provider(s
     job = job_row(services, job_id)
     assert job.status == "queued", (job.status, job.error_code)
     assert job.external_id == f"p-{job_id}" and job.external_state == {"state": "submitted"}
-    assert [(j, u) for _, j, u in spends(services)] == [(job_id, 1.0)]
+    assert spends(services) == []  # chưa tạo xong → chưa ghi sổ
     assert ctl.cancels == []
 
 
-async def test_resume_after_stop_reserves_nothing_and_never_fails_on_budget(services, ctl):
+async def test_resume_after_stop_never_resubmits(services, ctl):
     job_id = submit_try(services, ctl)
     await services.worker.start()
     try:
         await until(lambda: job_row(services, job_id).external_id == f"p-{job_id}")
     finally:
         await services.worker.stop()
-    [(row_id, _, _)] = spends(services)
-    with services.db.session() as s:  # job khác dùng hết trần trong lúc app tắt
-        budget.record(s, "image", 1, None, ctl.image_conn)
     ctl.gate.set()
     await run_idle(services)
     job = job_row(services, job_id)
     assert job.status == "succeeded", (job.status, job.error_code, job.error_message)
     assert ctl.submits == 1  # nối lại job cũ, không gửi lại
-    assert [(r, j, u) for r, j, u in spends(services) if j == job_id] == [(row_id, job_id, 1.0)]
-    assert len(spends(services)) == 2
+    assert [(j, u) for _, j, u in spends(services)] == [(job_id, 1.0)]
 
 
-async def test_handler_raised_cancel_outside_shutdown_releases_reservation(services, ctl):
-    """CancelledError mà worker không tắt và người dùng không huỷ = lỗi (job failed): trả chỗ (provider chưa nhận)."""
+async def test_handler_raised_cancel_outside_shutdown_fails_job(services, ctl):
+    """CancelledError mà worker không tắt và người dùng không huỷ = lỗi (job failed)."""
     ctl.mode = "self_cancel"
     job_id = submit_try(services, ctl)
     await run_idle(services)
@@ -1025,7 +938,7 @@ async def test_handler_raised_cancel_outside_shutdown_releases_reservation(servi
     assert spends(services) == []
 
 
-async def test_definite_rejection_releases_reservation(services, ctl):
+async def test_definite_rejection_records_no_spend(services, ctl):
     ctl.mode = "reject"
     job_id = submit_try(services, ctl)
     await run_idle(services)
@@ -1035,137 +948,53 @@ async def test_definite_rejection_releases_reservation(services, ctl):
 
 
 @pytest.mark.parametrize("mode, status", [("unknown", "needs_attention"), ("fail_after_accept", "failed")])
-async def test_failure_after_provider_may_have_charged_keeps_reservation(services, ctl, mode, status):
-    """Dấu `submitting` còn (không rõ) hoặc đã có `external_id` (provider đã nhận): không trả chỗ."""
+async def test_failure_after_provider_may_have_charged_keeps_marker(services, ctl, mode, status):
+    """Dấu `submitting` còn (không rõ) hoặc đã có `external_id` (provider đã nhận): giữ dấu, không gửi lại."""
     ctl.mode = mode
     job_id = submit_try(services, ctl)
     await run_idle(services)
-    assert job_row(services, job_id).status == status
-    assert [(j, u) for _, j, u in spends(services)] == [(job_id, 1.0)]
+    job = job_row(services, job_id)
+    assert job.status == status and ctl.submits == 1
+    if mode == "unknown":
+        assert job.external_state.get("state") == "submitting" and not job.external_id
+    else:
+        assert job.external_id == f"p-{job_id}"
 
 
-@pytest.mark.parametrize("mode, released", [("hang_before_submit", True), ("hang_submitting", False),
-                                            ("accept", False)])
-async def test_user_cancel_releases_only_never_accepted(services, ctl, mode, released):
+@pytest.mark.parametrize("mode", ["hang_before_submit", "hang_submitting", "accept"])
+async def test_user_cancel_cancels_on_provider_only_when_accepted(services, ctl, mode):
     ctl.mode = mode
     job_id = submit_try(services, ctl, "video")
     await services.worker.start()
     try:
-        await until(lambda: bool(spends(services)) and (
-            mode == "hang_before_submit" or job_row(services, job_id).external_state.get("state") is not None))
+        if mode == "hang_before_submit":
+            await until(lambda: job_row(services, job_id).status == "running")
+        else:
+            await until(lambda: job_row(services, job_id).external_state.get("state") is not None)
         if mode == "accept":
             await until(lambda: job_row(services, job_id).external_id is not None)
         assert await services.worker.cancel(job_id)
     finally:
         await services.worker.stop()
     assert job_row(services, job_id).status == "cancelled"
-    assert [(j, u) for _, j, u in spends(services)] == ([] if released else [(job_id, 1.0)])
+    assert spends(services) == []
     assert ctl.cancels == ([f"p-{job_id}"] if mode == "accept" else [])  # chỉ huỷ phía provider khi người dùng huỷ
 
 
-async def test_cancel_landing_during_reserve_does_not_leak_a_row(services, ctl, monkeypatch):
-    import asyncio
-    import threading
-
-    from sagareel.services import provider_jobs
-
-    entered, go, done = threading.Event(), threading.Event(), threading.Event()
-    orig = provider_jobs._reserve
-
-    def slow_reserve(*args):
-        entered.set()
-        go.wait(10)
-        try:
-            orig(*args)
-        finally:
-            done.set()
-
-    monkeypatch.setattr(provider_jobs, "_reserve", slow_reserve)
-    job_id = submit_try(services, ctl)
-    await services.worker.start()
-    try:
-        assert await anyio.to_thread.run_sync(entered.wait, 10)
-        cancelling = asyncio.create_task(services.worker.cancel(job_id))
-        await asyncio.sleep(0.2)  # huỷ tới trước khi luồng giữ chỗ kịp ghi
-        go.set()
-        assert await cancelling
-    finally:
-        go.set()
-        await services.worker.stop()
-    assert await anyio.to_thread.run_sync(done.wait, 10)  # luồng giữ chỗ đã ghi xong (nếu có ghi)
-    assert job_row(services, job_id).status == "cancelled"
-    assert spends(services) == []
-
-
-def test_reserve_never_drops_or_blocks_row_of_accepted_job(session):
-    """Job đã được provider nhận (`external_id`): `reserve` giữ nguyên dòng cũ, không kiểm tra trần."""
-    conn = add_connection(session)
-    set_global(session, **{"budget.images_total": 1})
-    job = Job(type="provider.try_image", status="running", lane="L", params={}, external_id="p-1")
-    session.add(job)
-    session.flush()
-    row = budget.record(session, "image", 1, job.id, conn.id)
-    budget.record(session, "image", 1, None, conn.id)  # trần đã đầy
-    assert budget.reserve(session, "image", 1, job.id, conn.id).id == row.id
-    assert budget.spent(session, "image") == 2
-    other = Job(type="provider.try_image", status="running", lane="L", params={}, external_id="p-2")
-    session.add(other)
-    session.flush()
-    budget.reserve(session, "image", 1, other.id, conn.id)  # đã tiêu tiền: ghi, không ném budget_exceeded
-    assert budget.spent(session, "image") == 3
-    # Adapter đồng bộ (openai_images): `state="completed"` không có external_id — provider vẫn giữ job (đã trả tiền)
-    done = Job(type="provider.try_image", status="running", lane="L", params={},
-               external_state={"state": "completed", "result_file": "a.png"})
-    session.add(done)
-    session.flush()
-    paid = budget.record(session, "image", 1, done.id, conn.id)
-    assert budget.reserve(session, "image", 1, done.id, conn.id).id == paid.id
-    assert budget.spent(session, "image") == 4
-
-
-async def test_force_new_retry_keeps_earlier_spend_counted(services, ctl):
-    """job.retry(force_new) sau một lần đã trả tiền: dòng cũ vẫn được tính (tách khỏi job) → trần 1 chặn lần mới;
-    nâng trần lên 2 thì lần mới chạy và tổng = 2."""
+async def test_force_new_retry_submits_again_and_records_each_success(services, ctl):
+    """job.retry(force_new) sau một lần đã trả tiền: lần gửi mới chạy (không gì chặn), mỗi lần thành công một dòng."""
     from sagareel.services import jobs
 
     ctl.gate.set()
     job_id = submit_try(services, ctl)
     await run_idle(services)
     assert job_row(services, job_id).status == "succeeded"
-
-    def retry(**kw) -> None:
-        with services.db.session(immediate=True) as s:
-            jobs.retry_job(s, job_id, **kw)
-
-    retry(force_new=True)
+    with services.db.session(immediate=True) as s:
+        jobs.retry_job(s, job_id, force_new=True)
     await run_idle(services)
     job = job_row(services, job_id)
-    assert (job.status, job.error_code) == ("failed", "budget_exceeded")
-    assert [(j, u) for _, j, u in spends(services)] == [(None, 1.0)]
-    with services.db.session() as s:
-        set_global(s, **{"budget.images_total": 2})
-    retry()
-    await run_idle(services)
-    assert job_row(services, job_id).status == "succeeded" and ctl.submits == 2
-    assert [(j, u) for _, j, u in spends(services)] == [(None, 1.0), (job_id, 1.0)]
-    with services.db.session() as s:
-        assert budget.spent(s, "image") == 2
-
-
-@pytest.mark.parametrize("accepted", [False, True])
-def test_cancel_idle_job_releases_only_never_accepted(services, ctl, accepted):
-    """Job `queued` còn chỗ giữ từ lần tắt app: người dùng huỷ → trả chỗ nếu provider chưa nhận."""
-    from sagareel.services import jobs
-
-    job_id = submit_try(services, ctl)
-    with services.db.session() as s:
-        budget.record(s, "image", 1, job_id, ctl.image_conn)
-        if accepted:
-            j = s.get(Job, job_id)
-            j.external_id, j.external_state = "p-9", {"state": "submitted"}
-    with services.db.session() as s:
-        assert jobs.cancel_idle(s, job_id) is not None
-    assert len(spends(services)) == (1 if accepted else 0)
+    assert job.status == "succeeded" and ctl.submits == 2, (job.status, job.error_code)
+    assert [(j, u) for _, j, u in spends(services)] == [(job_id, 1.0), (job_id, 1.0)]
 
 
 @pytest.mark.parametrize(("code", "expected"), [
@@ -1189,28 +1018,3 @@ def test_adapters_use_shared_health_rule():
     for mod in (maivideo, openai_images, openai_audio, multikit, openai_compat):
         assert getattr(mod, "http_health_status", None) is base.http_health_status, mod.__name__
         assert not hasattr(mod, "health_status_for") and not hasattr(mod, "_health_status_for"), mod.__name__
-
-
-# --- budget.status ----------------------------------------------------------------------------------------------
-
-
-def test_budget_status_op_reports_totals_and_spend_excluding_fakes(client):
-    real = create(client, {"kind": "image", "adapter": "openai_images", "name": "real-img"})
-    fake = create(client, FAKE_IMG)
-    r = call(client, "settings.set_global", {"values": {"budget.images_total": 10, "budget.videos_total": 0}})
-    assert r.status_code == 200, r.text
-    with client.app.state.services.db.session() as s:
-        budget.record(s, "image", 3, None, real["id"])
-        budget.record(s, "image", 5, None, fake["id"])  # kết nối giả: không tính
-        s.commit()
-
-    r = call(client, "budget.status")
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["image"] == {"enabled": True, "total": 10, "spent": 3.0, "remaining": 7.0, "project": None}
-    # 0 = không giới hạn → total/remaining null
-    assert body["video"] == {"enabled": True, "total": None, "spent": 0.0, "remaining": None, "project": None}
-
-    call(client, "settings.set_global", {"values": {"budget.enabled": False}})
-    body = call(client, "budget.status").json()
-    assert body["image"]["enabled"] is False and body["image"]["total"] is None and body["image"]["spent"] == 3.0

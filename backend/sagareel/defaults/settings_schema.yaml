@@ -59,19 +59,6 @@ prompt.mode:
   choices: [verbatim, synced]
   description: Gửi prompt nguyên văn (verbatim) hay đồng bộ theo nhân vật/bối cảnh (synced).
 
-budget.enabled:
-  type: bool
-  default: true
-  description: Bật giới hạn ngân sách tạo ảnh/video.
-budget.images_total:
-  type: int
-  default: 60
-  description: Số ảnh tối đa được tạo trong ngân sách; 0 = không giới hạn. Kết nối giả (fake_*) không tính.
-budget.videos_total:
-  type: int
-  default: 20
-  description: Số video tối đa được tạo trong ngân sách; 0 = không giới hạn (vd. video GrokTele). Kết nối giả (fake_*) không tính.
-
 jobs.ffmpeg_concurrency:
   type: int
   default: 2
@@ -208,10 +195,6 @@ render.scene_max_s:
   description: Cảnh dài hơn số giây này được tách thành nhiều khối dựng.
 
 # --- task bf ---
-budget.confirm_below_units:
-  type: int
-  default: 5
-  description: Không hỏi xác nhận lại với thao tác tốn tiền dưới số lượt (ảnh + video) này; 0 = luôn hỏi.
 storage.trash_keep_days:
   type: int
   default: 30

@@ -36,7 +36,6 @@ class ProjectOut(BaseModel):
     style_block: str
     negative_block: str
     settings: dict[str, Any]
-    budget: dict[str, Any]
     cover_media_id: int | None
     created_at: datetime
     updated_at: datetime

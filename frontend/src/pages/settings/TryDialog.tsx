@@ -12,7 +12,6 @@ import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { Select } from '../../components/ui/Select';
 import { Textarea } from '../../components/ui/Textarea';
-import { formatCredits } from '../../lib/format';
 import { estimateRows, INITIAL, supportsDryRun, tryReducer } from '../../lib/tryFlow';
 import { useConnection } from '../../stores/connection';
 import { JobWatch } from '../jobs/JobWatch';
@@ -168,14 +167,13 @@ export function TryDialog({ conn, adapter, onClose }: TryDialogProps) {
         title={`Ước tính chi phí · ${conn.name}`}
         rows={estimateRows(e)}
         jobCount={1}
-        budgetRemaining={e.budget?.remaining ?? null}
         running={state.step === 'running'}
         offline={offline}
         onClose={() => dispatch({ type: 'back' })}
         onRun={runNow}
         warnings={[
           ...(e.enabled ? [] : ['Kết nối đang tắt — việc sẽ thất bại với lỗi provider không dùng được. Bật kết nối trước khi thử.']),
-          ...(e.adapter.startsWith('fake_') ? ['Kết nối giả: không tốn lượt thật, không tính vào ngân sách.'] : []),
+          ...(e.adapter.startsWith('fake_') ? ['Kết nối giả: không tốn lượt thật.'] : []),
           ...(state.error ? [`${state.error.detail}${state.error.hint ? ` ${state.error.hint}` : ''}`] : []),
         ]}
       />
@@ -320,9 +318,6 @@ export function TryDialog({ conn, adapter, onClose }: TryDialogProps) {
             <p className="text-sm text-warn">Kết nối đang tắt — bật trong Sửa kết nối để lần thử chạy được.</p>
           ) : null}
           {error}
-          {state.estimate?.budget?.remaining != null ? (
-            <p className="text-xs text-fg-2">Ngân sách còn {formatCredits(state.estimate.budget.remaining)}.</p>
-          ) : null}
           <button type="submit" hidden aria-hidden tabIndex={-1} />
         </form>
       )}
