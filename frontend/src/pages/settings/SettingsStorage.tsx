@@ -70,10 +70,11 @@ const KIND: Record<Kind, { label: string; icon: LucideIcon }> = {
 };
 
 /** "12 ảnh · 3 video" từ `by_kind`. */
-export function kindSummary(byKind: FilePreview['by_kind']): string {
+export function kindSummary(byKind: FilePreview['by_kind'] | undefined): string {
+  const b = byKind ?? {};
   return (Object.keys(KIND) as Kind[])
-    .filter((k) => byKind[k]?.files)
-    .map((k) => `${nf.format(byKind[k]!.files)} ${KIND[k].label}`)
+    .filter((k) => b[k]?.files)
+    .map((k) => `${nf.format(b[k]!.files)} ${KIND[k].label}`)
     .join(' · ');
 }
 
@@ -132,7 +133,7 @@ function CleanupSection({ viewer }: { viewer: boolean }) {
       else n.add(k);
       return n;
     });
-  const p = preview.data;
+  const p = typeof preview.data?.files === 'number' ? preview.data : undefined;
 
   return (
     <section aria-labelledby="cleanup-h" className="grid gap-3">
@@ -165,7 +166,7 @@ function CleanupSection({ viewer }: { viewer: boolean }) {
             ) : preview.isError ? (
               <p className="text-sm text-state-failed">{errMsg(preview.error, 'Không xem trước được.')}</p>
             ) : !p ? (
-              <p className="text-sm text-fg-2">Đang tìm file có thể dọn…</p>
+              <p className="text-sm text-fg-2">{preview.isFetching ? 'Đang tìm file có thể dọn…' : 'Chưa có số liệu.'}</p>
             ) : p.files === 0 ? (
               <p className="text-sm text-fg-2">Không có file nào để dọn với điều kiện này.</p>
             ) : (
@@ -244,7 +245,7 @@ function TrashSection({ viewer }: { viewer: boolean }) {
       else n.add(id);
       return n;
     });
-  const pp = purgePreview.data;
+  const pp = typeof purgePreview.data?.files === 'number' ? purgePreview.data : undefined;
 
   return (
     <section aria-labelledby="trash-h" className="grid gap-3">
@@ -372,10 +373,11 @@ function CacheSection({ viewer }: { viewer: boolean }) {
     },
     onError: (e) => toast({ message: errMsg(e, 'Không xoá được cache.'), tone: 'error' }),
   });
-  const clearBtn = (scope: Scope, what: string, files: number | undefined) =>
+  const clearBtn = (scope: Scope, what: string, files: number | undefined, label?: string) =>
     viewer ? null : (
       <ConfirmDelete
         what={what}
+        label={label}
         icon={Trash2}
         disabled={!files}
         loading={clear.isPending && clear.variables === scope}
@@ -421,7 +423,7 @@ function CacheSection({ viewer }: { viewer: boolean }) {
                 {formatBytes(stats.data.total?.bytes ?? 0)} · {nf.format(stats.data.total?.files ?? 0)} file
               </span>
             </p>
-            {clearBtn('all', 'toàn bộ cache', stats.data.total?.files)}
+            {clearBtn('all', 'toàn bộ cache', stats.data.total?.files, 'Xoá toàn bộ cache')}
           </div>
         </div>
       )}
