@@ -1,0 +1,813 @@
+{
+ "_note": "Dữ liệu thật từ backend W2+BF (worktree uf, 2026-11-20): sequence.get, pipeline.status, preset.get kind=workflow.",
+ "sequenceGetWaitingGate": {
+  "id": 1,
+  "workflow_key": "",
+  "gates": {},
+  "pipeline": {
+   "run": {
+    "workflow": "full_auto",
+    "status": "waiting_review",
+    "steps": [
+     {
+      "name": "write_bible",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "outline",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "gate:outline",
+      "enabled": false,
+      "status": "skipped",
+      "attempts": 1
+     },
+     {
+      "name": "write_script",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "memory_summarize",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "split_clips",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "image_prompts",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "motion_prompts",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "dialogue",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "generate_images",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "auto_select",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "generate_audio",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "subtitles",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "render_animatic",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "gate:animatic",
+      "enabled": true,
+      "status": "waiting_review",
+      "attempts": 1
+     },
+     {
+      "name": "gate:pilot",
+      "enabled": false,
+      "status": "skipped",
+      "attempts": 1
+     },
+     {
+      "name": "generate_videos",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "render",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "gate:final",
+      "enabled": false,
+      "status": "skipped",
+      "attempts": 1
+     },
+     {
+      "name": "export",
+      "enabled": false,
+      "status": "skipped",
+      "attempts": 1
+     }
+    ],
+    "waiting": {
+     "gate": "animatic",
+     "since": "2026-11-20T00:40:00+00:00"
+    },
+    "updated_at": "2026-11-20T00:40:00+00:00"
+   }
+  }
+ },
+ "sequenceGetWaitingInput": {
+  "id": 3,
+  "workflow_key": "",
+  "gates": {},
+  "pipeline": {
+   "run": {
+    "workflow": "storyboard_first",
+    "status": "waiting_input",
+    "steps": [
+     {
+      "name": "write_bible",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "outline",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "gate:outline",
+      "enabled": false,
+      "status": "skipped",
+      "attempts": 1
+     },
+     {
+      "name": "write_script",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "memory_summarize",
+      "enabled": true,
+      "status": "done",
+      "attempts": 1
+     },
+     {
+      "name": "split_clips",
+      "enabled": true,
+      "status": "waiting_input",
+      "attempts": 1
+     },
+     {
+      "name": "image_prompts",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "motion_prompts",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "dialogue",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "generate_images",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "auto_select",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "generate_audio",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "subtitles",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "render_animatic",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "gate:animatic",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "gate:pilot",
+      "enabled": false,
+      "status": "skipped",
+      "attempts": 1
+     },
+     {
+      "name": "generate_videos",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "render",
+      "enabled": true,
+      "status": "pending",
+      "attempts": 0
+     },
+     {
+      "name": "gate:final",
+      "enabled": false,
+      "status": "skipped",
+      "attempts": 1
+     },
+     {
+      "name": "export",
+      "enabled": false,
+      "status": "skipped",
+      "attempts": 1
+     }
+    ],
+    "waiting": {
+     "step": "split_clips",
+     "since": "2026-11-20T00:40:00+00:00"
+    },
+    "updated_at": "2026-11-20T00:40:00+00:00"
+   }
+  }
+ },
+ "pipelineStatusItems": [
+  {
+   "sequence_id": 1,
+   "number": 1,
+   "title": "Về quê",
+   "workflow": "full_auto",
+   "status": "waiting_review",
+   "job_id": null,
+   "current": "gate:animatic",
+   "waiting": {
+    "gate": "animatic",
+    "since": "2026-11-20T00:40:00+00:00"
+   },
+   "error": null,
+   "gates": {},
+   "progress": 85.0,
+   "release": null,
+   "updated_at": "2026-11-20T00:40:00+00:00",
+   "project_id": 1,
+   "preview": {
+    "render_id": 1,
+    "variant": "animatic",
+    "media_id": 19,
+    "url": "/media/19"
+   },
+   "steps": [
+    {
+     "name": "write_bible",
+     "label": "Viết Story Bible",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "outline",
+     "label": "Lập dàn ý",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "gate:outline",
+     "label": "Duyệt outline",
+     "enabled": false,
+     "status": "skipped"
+    },
+    {
+     "name": "write_script",
+     "label": "Viết kịch bản",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "memory_summarize",
+     "label": "Ghi bộ nhớ truyện",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "split_clips",
+     "label": "Chia clip",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "image_prompts",
+     "label": "Prompt ảnh",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "motion_prompts",
+     "label": "Prompt chuyển động",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "dialogue",
+     "label": "Lời thoại",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "generate_images",
+     "label": "Tạo ảnh",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "auto_select",
+     "label": "Tự chọn take",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "generate_audio",
+     "label": "Tạo âm thanh",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "subtitles",
+     "label": "Phụ đề",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "render_animatic",
+     "label": "Dựng animatic",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "gate:animatic",
+     "label": "Duyệt animatic",
+     "enabled": true,
+     "status": "waiting_review"
+    },
+    {
+     "name": "gate:pilot",
+     "label": "Duyệt pilot",
+     "enabled": false,
+     "status": "skipped"
+    },
+    {
+     "name": "generate_videos",
+     "label": "Tạo video",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "render",
+     "label": "Dựng bản cuối",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "gate:final",
+     "label": "Duyệt final",
+     "enabled": false,
+     "status": "skipped"
+    },
+    {
+     "name": "export",
+     "label": "Xuất",
+     "enabled": false,
+     "status": "skipped"
+    }
+   ]
+  },
+  {
+   "sequence_id": 2,
+   "number": 2,
+   "title": "Đêm mưa giông",
+   "workflow": "full_auto",
+   "status": "running",
+   "job_id": null,
+   "current": "generate_images",
+   "waiting": null,
+   "error": null,
+   "gates": {},
+   "progress": 60.0,
+   "release": null,
+   "updated_at": "2026-11-20T00:40:00+00:00",
+   "project_id": 1,
+   "steps": [
+    {
+     "name": "write_bible",
+     "label": "Viết Story Bible",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "outline",
+     "label": "Lập dàn ý",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "gate:outline",
+     "label": "Duyệt outline",
+     "enabled": false,
+     "status": "skipped"
+    },
+    {
+     "name": "write_script",
+     "label": "Viết kịch bản",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "memory_summarize",
+     "label": "Ghi bộ nhớ truyện",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "split_clips",
+     "label": "Chia clip",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "image_prompts",
+     "label": "Prompt ảnh",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "motion_prompts",
+     "label": "Prompt chuyển động",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "dialogue",
+     "label": "Lời thoại",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "generate_images",
+     "label": "Tạo ảnh",
+     "enabled": true,
+     "status": "running"
+    },
+    {
+     "name": "auto_select",
+     "label": "Tự chọn take",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "generate_audio",
+     "label": "Tạo âm thanh",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "subtitles",
+     "label": "Phụ đề",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "render_animatic",
+     "label": "Dựng animatic",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "gate:animatic",
+     "label": "Duyệt animatic",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "gate:pilot",
+     "label": "Duyệt pilot",
+     "enabled": false,
+     "status": "skipped"
+    },
+    {
+     "name": "generate_videos",
+     "label": "Tạo video",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "render",
+     "label": "Dựng bản cuối",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "gate:final",
+     "label": "Duyệt final",
+     "enabled": false,
+     "status": "skipped"
+    },
+    {
+     "name": "export",
+     "label": "Xuất",
+     "enabled": false,
+     "status": "skipped"
+    }
+   ]
+  },
+  {
+   "sequence_id": 3,
+   "number": 3,
+   "title": "Chợ phiên",
+   "workflow": "storyboard_first",
+   "status": "waiting_input",
+   "job_id": null,
+   "current": "split_clips",
+   "waiting": {
+    "step": "split_clips",
+    "since": "2026-11-20T00:40:00+00:00"
+   },
+   "error": null,
+   "gates": {},
+   "progress": 40.0,
+   "release": null,
+   "updated_at": "2026-11-20T00:40:00+00:00",
+   "project_id": 1,
+   "steps": [
+    {
+     "name": "write_bible",
+     "label": "Viết Story Bible",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "outline",
+     "label": "Lập dàn ý",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "gate:outline",
+     "label": "Duyệt outline",
+     "enabled": false,
+     "status": "skipped"
+    },
+    {
+     "name": "write_script",
+     "label": "Viết kịch bản",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "memory_summarize",
+     "label": "Ghi bộ nhớ truyện",
+     "enabled": true,
+     "status": "done"
+    },
+    {
+     "name": "split_clips",
+     "label": "Chia clip",
+     "enabled": true,
+     "status": "waiting_input"
+    },
+    {
+     "name": "image_prompts",
+     "label": "Prompt ảnh",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "motion_prompts",
+     "label": "Prompt chuyển động",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "dialogue",
+     "label": "Lời thoại",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "generate_images",
+     "label": "Tạo ảnh",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "auto_select",
+     "label": "Tự chọn take",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "generate_audio",
+     "label": "Tạo âm thanh",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "subtitles",
+     "label": "Phụ đề",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "render_animatic",
+     "label": "Dựng animatic",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "gate:animatic",
+     "label": "Duyệt animatic",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "gate:pilot",
+     "label": "Duyệt pilot",
+     "enabled": false,
+     "status": "skipped"
+    },
+    {
+     "name": "generate_videos",
+     "label": "Tạo video",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "render",
+     "label": "Dựng bản cuối",
+     "enabled": true,
+     "status": "pending"
+    },
+    {
+     "name": "gate:final",
+     "label": "Duyệt final",
+     "enabled": false,
+     "status": "skipped"
+    },
+    {
+     "name": "export",
+     "label": "Xuất",
+     "enabled": false,
+     "status": "skipped"
+    }
+   ]
+  },
+  {
+   "sequence_id": 4,
+   "number": 4,
+   "title": "Lời hứa",
+   "workflow": null,
+   "status": "idle",
+   "job_id": null,
+   "current": null,
+   "waiting": null,
+   "error": null,
+   "gates": {},
+   "progress": 0,
+   "release": null,
+   "updated_at": null,
+   "project_id": 1,
+   "steps": []
+  }
+ ],
+ "presetFullAuto": {
+  "kind": "workflow",
+  "key": "full_auto",
+  "data": {
+   "label": "Tự động — duyệt animatic trước khi tạo video",
+   "description": "Viết bible → dàn ý → kịch bản → chia clip → prompt → ảnh → âm thanh → animatic (dừng duyệt) → video → dựng.",
+   "batch": {
+    "mode": "parallel",
+    "release_after": "outline"
+   },
+   "steps": [
+    {
+     "step": "write_bible"
+    },
+    {
+     "step": "outline"
+    },
+    {
+     "step": "gate:outline",
+     "enabled": false,
+     "rerun": [
+      "outline"
+     ]
+    },
+    {
+     "step": "write_script"
+    },
+    {
+     "step": "memory_summarize"
+    },
+    {
+     "step": "split_clips"
+    },
+    {
+     "step": "image_prompts"
+    },
+    {
+     "step": "motion_prompts"
+    },
+    {
+     "step": "dialogue"
+    },
+    {
+     "step": "generate_images"
+    },
+    {
+     "step": "auto_select"
+    },
+    {
+     "step": "generate_audio"
+    },
+    {
+     "step": "subtitles"
+    },
+    {
+     "step": "render_animatic"
+    },
+    {
+     "step": "gate:animatic",
+     "rerun": [
+      "image_prompts",
+      "generate_images",
+      "render_animatic"
+     ]
+    },
+    {
+     "step": "gate:pilot",
+     "enabled": false
+    },
+    {
+     "step": "generate_videos"
+    },
+    {
+     "step": "render"
+    },
+    {
+     "step": "gate:final",
+     "enabled": false,
+     "rerun": [
+      "render"
+     ]
+    },
+    {
+     "step": "export",
+     "enabled": false
+    }
+   ]
+  }
+ }
+}

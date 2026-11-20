@@ -5,30 +5,25 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { callOp } from '../../api/ops';
-import { callOpLoose } from '../../api/opsLoose';
-import type {
-  BudgetStatus,
-  ChangeSet,
-  ClipPage,
-  HistoryPage,
-  Job,
-  JobPage,
-  ProjectInfo,
-  SequenceInfo,
-  SequencePage,
-} from '../../api/types';
+import type { BudgetStatus, ChangeSet, HistoryPage, Job, JobPage, ProjectInfo, SequenceInfo, SequencePage } from '../../api/types';
+import { buildNeeds, type PipelineSummary, type SequenceStatus } from '../../lib/activity';
 import { useServerEvent } from '../../lib/eventHub';
-import { countClipFlags, openGates, type ClipCounts } from '../../lib/pipeline';
+import type { ClipCounts } from '../../lib/pipeline';
 import { parseServerTime } from '../../lib/time';
 
 const numId = (v: string | null | undefined): number | null => (v && /^\d+$/.test(v) ? Number(v) : null);
+
+/** Workflow mặc định của backend (`services/pipeline/workflow.py::DEFAULT_WORKFLOW`). */
+export const DEFAULT_WORKFLOW_KEY = 'full_auto';
 
 export const shellKeys = {
   all: ['shell'] as const,
   project: (id: number) => ['shell', 'project', id] as const,
   sequence: (id: number) => ['shell', 'sequence', id] as const,
+  seqStatus: (id: number) => ['shell', 'seq-status', id] as const,
   sequences: (projectId: number) => ['shell', 'sequences', projectId] as const,
-  clips: (seqId: number) => ['shell', 'clips', seqId] as const,
+  pipelines: (projectId: number) => ['shell', 'pipelines', projectId] as const,
+  workflows: ['shell', 'workflows'] as const,
   history: (projectId: number) => ['shell', 'history', projectId] as const,
   jobs: (projectId: number) => ['shell', 'jobs', projectId] as const,
   budget: ['shell', 'budget'] as const,
@@ -47,6 +42,25 @@ export function useShellLiveRefresh(): void {
   };
   useServerEvent('entity.changed', kick);
   useServerEvent('resync', kick);
+  // Quy trình đổi bước / dừng ở gate: chỉ làm mới trạng thái quy trình + tập (không đụng dự án, lịch sử).
+  const pipeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pipeSeqs = useRef(new Set<number>());
+  useServerEvent('pipeline.updated', (e) => {
+    const sid = (e.data as { sequence_id?: number } | null)?.sequence_id;
+    if (typeof sid === 'number') pipeSeqs.current.add(sid);
+    if (pipeTimer.current) return;
+    pipeTimer.current = setTimeout(() => {
+      pipeTimer.current = null;
+      const ids = [...pipeSeqs.current];
+      pipeSeqs.current.clear();
+      void qc.invalidateQueries({ queryKey: ['shell', 'pipelines'] });
+      void qc.invalidateQueries({ queryKey: ['shell', 'sequences'] });
+      for (const id of ids) {
+        void qc.invalidateQueries({ queryKey: shellKeys.seqStatus(id) });
+        void qc.invalidateQueries({ queryKey: shellKeys.sequence(id) });
+      }
+    }, 300);
+  });
   // Việc đổi trạng thái liên tục (tiến độ): chỉ làm mới danh sách việc của khung, tối đa mỗi 3 giây.
   const jobTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useServerEvent('job.updated', () => {
@@ -62,7 +76,7 @@ export function useProject(projectId: string | null) {
   const id = numId(projectId);
   return useQuery({
     queryKey: shellKeys.project(id ?? -1),
-    queryFn: () => callOpLoose<ProjectInfo>('project.get', { id }),
+    queryFn: async () => (await callOp('project.get', { id: id! })) as unknown as ProjectInfo,
     enabled: id != null,
     staleTime: 60_000,
     retry: false,
@@ -73,7 +87,7 @@ export function useSequence(seqId: string | null) {
   const id = numId(seqId);
   return useQuery({
     queryKey: shellKeys.sequence(id ?? -1),
-    queryFn: () => callOpLoose<SequenceInfo>('sequence.get', { id }),
+    queryFn: async () => (await callOp('sequence.get', { id: id! })) as unknown as SequenceInfo,
     enabled: id != null,
     retry: false,
   });
@@ -84,24 +98,78 @@ export function useSequenceList(projectId: string | null) {
   const id = numId(projectId);
   return useQuery({
     queryKey: shellKeys.sequences(id ?? -1),
-    queryFn: () => callOpLoose<SequencePage>('sequence.list', { project_id: id, limit: 500 }),
+    queryFn: async () => (await callOp('sequence.list', { project_id: id!, limit: 500 })) as unknown as SequencePage,
     enabled: id != null,
     retry: false,
   });
 }
 
-/**
- * Đếm cờ clip của tập (fallback khi chưa có `sequence.status` của Task J): một trang `clip.list` 500 clip.
- * Tập dài hơn 500 clip thì đếm trên 500 clip đầu — đủ cho thanh chặng; Task J thay bằng số tổng phía server.
- */
-export function useClipCounts(seq: SequenceInfo | undefined) {
+/** `sequence.status`: bản tóm tắt quy trình (bước của lần chạy, đang chờ gì) + số clip có ảnh/video — một lần gọi. */
+export function useSequenceStatus(seqId: string | null) {
+  const id = numId(seqId);
   return useQuery({
-    queryKey: shellKeys.clips(seq?.id ?? -1),
-    queryFn: async (): Promise<ClipCounts> => {
-      const page = await callOpLoose<ClipPage>('clip.list', { sequence_id: seq!.id, limit: 500 });
-      return countClipFlags(page.items, !!seq?.script?.trim());
+    queryKey: shellKeys.seqStatus(id ?? -1),
+    queryFn: async () => (await callOp('sequence.status', { sequence_id: id! })) as unknown as SequenceStatus,
+    enabled: id != null,
+    retry: false,
+  });
+}
+
+/** Mọi preset quy trình (`preset.list kind=workflow` → `{items}`), theo key. Đổi hiếm → cache 5 phút. */
+export function useWorkflowPresets(enabled: boolean) {
+  return useQuery({
+    queryKey: shellKeys.workflows,
+    queryFn: async () => {
+      const r = (await callOp('preset.list', { kind: 'workflow' })) as unknown as { items: { key: string; data: unknown }[] };
+      return new Map((r.items ?? []).map((p) => [p.key, p.data]));
     },
-    enabled: !!seq,
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+/** Preset quy trình của tập: `workflow_key` của tập → workflow của lần chạy gần nhất → mặc định `full_auto`. */
+export function workflowKeyOf(seq: Pick<SequenceInfo, 'workflow_key' | 'pipeline'> | undefined): string {
+  const run = seq?.pipeline?.run as { workflow?: unknown } | undefined;
+  return seq?.workflow_key || (typeof run?.workflow === 'string' ? run.workflow : '') || DEFAULT_WORKFLOW_KEY;
+}
+
+/** Đếm clip cho thanh chặng từ số phía server (`sequence.status` + `sequence.list counts.flags`) — không quét clip. */
+export function stageCounts(status: SequenceStatus | undefined, seq: SequenceInfo | undefined): ClipCounts | null {
+  if (!status?.clips) return null;
+  const c = status.clips;
+  const flags = (seq?.counts as { flags?: { stale?: number; failed?: number } } | undefined)?.flags ?? {};
+  // `counts.flags` chưa tách theo phần (ảnh/video): gán cho chặng xa nhất đã có kết quả.
+  const onVideo = c.with_video > 0;
+  return {
+    clips: c.total,
+    hasScript: status.has_script || !!seq?.script?.trim(),
+    withImage: c.with_image,
+    withVideo: c.with_video,
+    staleImage: onVideo ? 0 : flags.stale ?? 0,
+    staleVideo: onVideo ? flags.stale ?? 0 : 0,
+    failedImage: onVideo ? 0 : flags.failed ?? 0,
+    failedVideo: onVideo ? flags.failed ?? 0 : 0,
+  };
+}
+
+/**
+ * Quy trình cho chip "Cần bạn": trong dự án = `pipeline.status(project_id)`; ngoài dự án = toàn app, chỉ tập còn
+ * chạy (`active_only`).
+ */
+export function useShellPipelines(projectId: string | null, enabled: boolean) {
+  const id = numId(projectId);
+  return useQuery({
+    queryKey: shellKeys.pipelines(id ?? 0),
+    queryFn: async () => {
+      const r = (await callOp(
+        'pipeline.status',
+        id != null ? { project_id: id, active_only: false, limit: 500 } : { active_only: true, limit: 500 },
+      )) as unknown as { items: PipelineSummary[] };
+      return r.items ?? [];
+    },
+    enabled,
     retry: false,
   });
 }
@@ -180,8 +248,6 @@ export function activeAgents(items: ChangeSet[] | undefined, now: number = Date.
   return out;
 }
 
-const ATTENTION = new Set(['needs_attention', 'failed', 'interrupted']);
-
 export interface NeedCounts {
   gates: number;
   jobs: number;
@@ -190,16 +256,17 @@ export interface NeedCounts {
 }
 
 /**
- * "Cần bạn" = gate đang mở + việc `needs_attention`/`failed`/`interrupted` + lệch chưa xử lý.
- * Lệch: dùng `counts.drift` của tập nếu server có (Task J/M); chưa có thì 0.
+ * "Cần bạn" = đúng danh sách của trang Hoạt động/Cần bạn (`buildNeeds`: gate đang mở, bước chờ nhập, quy trình lỗi,
+ * việc cần xử lý/lỗi, việc chờ ngân sách) + clip lệch nhân vật (`project.get counts.drift`). Chip và trang luôn khớp số.
  */
-export function countNeeds(sequences: SequenceInfo[] | undefined, jobs: Pick<Job, 'status'>[] | undefined): NeedCounts {
-  let gates = 0;
-  let drift = 0;
-  for (const s of sequences ?? []) {
-    gates += openGates(s.gates, s.pipeline);
-    drift += Number(s.counts?.drift ?? 0) || 0;
-  }
-  const jobN = (jobs ?? []).filter((j) => ATTENTION.has(String(j.status))).length;
+export function countNeeds(
+  pipelines: PipelineSummary[] | undefined,
+  jobs: Job[] | undefined,
+  drift = 0,
+  projectId: number | null = null,
+): NeedCounts {
+  const list = buildNeeds(pipelines ?? [], jobs ?? [], { projectId });
+  const gates = list.filter((n) => n.kind === 'gate' || n.kind === 'input').length;
+  const jobN = list.length - gates;
   return { gates, jobs: jobN, drift, total: gates + jobN + drift };
 }

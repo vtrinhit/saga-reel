@@ -1,13 +1,15 @@
 /**
- * Dây chuyền của tập → 8 chặng hiển thị cố định (ux-architecture §2.2). Hàm thuần: nguồn dữ liệu (`sequence.get` +
- * `clip.list` hôm nay, `sequence.status` của Task J sau này) đổi được mà UI không đổi.
+ * Dây chuyền của tập → 8 chặng hiển thị cố định (ux-architecture §2.2). Hàm thuần.
  *
- * Hình dạng đầu vào được đọc khoan dung vì Task J chưa chốt:
- * - workflow preset: `{ steps: (string | { key, enabled?, bucket? })[] }` hoặc mảng trực tiếp; gate là bước có key
- *   `gate:<tên>`; bước tắt = `enabled: false` (hoặc gate có `enabled: false`).
- * - `sequence.pipeline`: `{ steps: { <key>: StepState } }` hoặc `{ <key>: StepState }`, với StepState là chuỗi trạng
- *   thái hoặc `{ status, progress?, done?, total?, failed?, stale? }`.
- * - `sequence.gates`: `{ 'gate:<tên>' | '<tên>': 'waiting' | 'approved' | … | { status, enabled? } }`.
+ * Nguồn sự thật (backend `services/pipeline`):
+ * - workflow preset (`preset.get kind=workflow`): `{ data: { steps: [{ step, enabled?, rerun? }] } }` — đọc cả `data`,
+ *   mảng trực tiếp, chuỗi, hoặc `{ key | step | name, enabled?, bucket? }`; gate là bước có tên `gate:<tên>`.
+ * - trạng thái chạy: `sequence.pipeline = { run: { workflow, status, waiting, steps: [{ name, enabled, status }] },
+ *   memory }` hoặc bản tóm tắt `pipeline.status` / `sequence.status.pipeline` (`{ status, waiting, steps: [...] }`).
+ *   Gate đang chờ = `status === 'waiting_review'` + `waiting.gate`; bước chờ nhập = `waiting_input` + `waiting.step`.
+ *   Vẫn đọc dạng map `{ steps: { <key>: StepState } }` (StepState = chuỗi hoặc `{ status, progress?, done?, total?,
+ *   failed?, stale? }`).
+ * - `sequence.gates`: quyết định duyệt `{ <tên>: { status: pending | approved | rejected, by, at } }`.
  */
 
 export type StageKey = 'script' | 'breakdown' | 'frames' | 'animatic' | 'video' | 'audio' | 'edit' | 'export';
@@ -102,40 +104,106 @@ type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
+function presetSteps(preset: unknown): unknown[] | null {
+  if (Array.isArray(preset)) return preset;
+  if (!isObj(preset)) return null;
+  if (Array.isArray(preset.steps)) return preset.steps;
+  if (isObj(preset.data)) return presetSteps(preset.data);
+  return null;
+}
+
+function stepName(item: Obj): string | null {
+  for (const k of ['key', 'step', 'name'] as const) if (typeof item[k] === 'string') return item[k] as string;
+  return null;
+}
+
 function normalizeWorkflow(preset: unknown): NormStep[] {
-  const raw = Array.isArray(preset) ? preset : isObj(preset) && Array.isArray(preset.steps) ? preset.steps : null;
+  const raw = presetSteps(preset);
   const list: unknown[] = raw && raw.length > 0 ? raw : DEFAULT_WORKFLOW;
   const out: NormStep[] = [];
   for (const item of list) {
     if (typeof item === 'string') {
       // spec viết `auto_select|gate:storyboard` = một trong hai: tách thành hai bước.
       for (const k of item.split('|')) if (k.trim()) out.push({ key: k.trim(), enabled: true, bucket: null });
-    } else if (isObj(item) && typeof item.key === 'string') {
+    } else if (isObj(item) && stepName(item)) {
       const bucket = typeof item.bucket === 'string' && STAGE_KEYS.has(item.bucket) ? (item.bucket as StageKey) : null;
-      out.push({ key: item.key, enabled: item.enabled !== false, bucket });
+      out.push({ key: stepName(item)!, enabled: item.enabled !== false, bucket });
     }
   }
   return out.filter((s) => !PROJECT_LEVEL.has(s.key));
 }
 
-function stepState(pipeline: unknown, key: string): Obj | null {
-  if (!isObj(pipeline)) return null;
-  const src = isObj(pipeline.steps) ? pipeline.steps : pipeline;
-  const v = src[key];
-  if (typeof v === 'string') return { status: v };
-  return isObj(v) ? v : null;
+/** Trạng thái chạy đã chuẩn hoá. */
+export interface RunView {
+  /** idle · queued · running · waiting_review · waiting_input · pending_release · failed · cancelled · done */
+  status: string;
+  /** Gate đang chờ duyệt (`gate:<tên>`), null nếu không. */
+  waitingGate: string | null;
+  /** Bước đang chờ nhập, null nếu không. */
+  waitingStep: string | null;
+  /** Bước của lần chạy theo thứ tự (đã gồm bật/tắt ghi đè); null nếu là dạng map. */
+  list: { name: string; enabled: boolean; status: string }[] | null;
+  /** Trạng thái theo tên bước. */
+  steps: Record<string, Obj>;
+}
+
+/**
+ * Chuẩn hoá trạng thái chạy từ `sequence.pipeline` (`{run, memory}`), bản tóm tắt `pipeline.status`, hoặc dạng map.
+ * Trả null khi chưa có lần chạy nào.
+ */
+export function normalizeRun(src: unknown): RunView | null {
+  if (!isObj(src)) return null;
+  const hasRun = isObj(src.run);
+  const run: Obj = hasRun ? (src.run as Obj) : src;
+  const status = typeof run.status === 'string' ? run.status : '';
+  const waiting = isObj(run.waiting) ? run.waiting : null;
+  const gateRaw = waiting && typeof waiting.gate === 'string' ? waiting.gate : null;
+  const out: RunView = {
+    status,
+    waitingGate: status === 'waiting_review' && gateRaw ? (gateRaw.startsWith('gate:') ? gateRaw : `gate:${gateRaw}`) : null,
+    waitingStep: status === 'waiting_input' && waiting && typeof waiting.step === 'string' ? waiting.step : null,
+    list: null,
+    steps: {},
+  };
+  if (Array.isArray(run.steps)) {
+    out.list = [];
+    for (const x of run.steps) {
+      if (!isObj(x) || typeof x.name !== 'string') continue;
+      out.list.push({ name: x.name, enabled: x.enabled !== false, status: String(x.status ?? '') });
+      out.steps[x.name] = x;
+    }
+    if (out.list.length === 0) out.list = null;
+  } else if (!hasRun && !('memory' in src)) {
+    // Dạng map: `{steps: {k: v}}` hoặc `{k: v}` (`{memory}` không có run = chưa chạy).
+    const map = isObj(run.steps) ? run.steps : run;
+    for (const [k, v] of Object.entries(map)) {
+      if (k === 'status' || k === 'waiting') continue;
+      if (typeof v === 'string') out.steps[k] = { status: v };
+      else if (isObj(v)) out.steps[k] = v;
+    }
+  }
+  if (Object.keys(out.steps).length === 0 && !out.waitingGate && !out.waitingStep) return null;
+  return out;
+}
+
+function stepState(run: RunView | null, key: string): Obj | null {
+  return run?.steps[key] ?? null;
 }
 
 const RUNNING = new Set(['running', 'queued', 'in_progress', 'started']);
 const DONE = new Set(['done', 'succeeded', 'success', 'complete', 'completed', 'ok']);
 const FAILED = new Set(['failed', 'error', 'needs_attention', 'interrupted']);
-const WAITING = new Set(['waiting', 'waiting_review', 'open', 'pending_review', 'awaiting']);
+const WAITING = new Set(['waiting', 'waiting_review', 'waiting_input', 'open', 'pending_review', 'awaiting']);
 const SKIPPED = new Set(['skipped', 'disabled', 'off']);
 
-function gateState(gates: unknown, pipeline: unknown, key: string): { status: GateStatus; enabled: boolean } | null {
+function gateState(gates: unknown, run: RunView | null, key: string): { status: GateStatus; enabled: boolean } | null {
   const short = key.replace(/^gate:/, '');
+  // Lần chạy đang dừng ở gate này: thắng mọi quyết định cũ trong `sequence.gates`.
+  if (run?.waitingGate === key) return { status: 'waiting', enabled: true };
+  const step = stepState(run, key);
   let v: unknown = isObj(gates) ? (gates[key] ?? gates[short]) : undefined;
-  if (v === undefined) v = stepState(pipeline, key) ?? undefined;
+  // Bước gate của lần chạy mới hơn quyết định đã lưu — trừ khi bước còn "pending" (chưa tới).
+  if (step && (v === undefined || !['', 'pending'].includes(String(step.status ?? '')))) v = step;
   if (v === undefined) return null;
   const o: Obj = typeof v === 'string' ? { status: v } : typeof v === 'boolean' ? { enabled: v } : isObj(v) ? v : {};
   const enabled = o.enabled !== false && !SKIPPED.has(String(o.status ?? ''));
@@ -187,7 +255,9 @@ export function toStages(
   gates: unknown,
   counts: ClipCounts | null,
 ): Stage[] {
-  const steps = normalizeWorkflow(workflowPreset);
+  const run = normalizeRun(pipeline);
+  // Lần chạy có danh sách bước (đã gồm bật/tắt ghi đè) thắng preset; không có cả hai → workflow mặc định.
+  const steps = normalizeWorkflow(run?.list ?? workflowPreset ?? null);
   const byStage = new Map<StageKey, NormStep[]>(STAGE_DEFS.map((d) => [d.key, []]));
   let prev: StageKey = 'script';
   for (const s of steps) {
@@ -195,7 +265,7 @@ export function toStages(
     byStage.get(stage)!.push(s);
     prev = stage;
   }
-  const hasPipeline = isObj(pipeline) && Object.keys(isObj(pipeline.steps) ? pipeline.steps : pipeline).length > 0;
+  const hasPipeline = run != null && Object.keys(run.steps).length > 0;
 
   return STAGE_DEFS.map((def, i) => {
     const mine = byStage.get(def.key)!;
@@ -205,7 +275,7 @@ export function toStages(
     // Gate: gate cuối cùng còn bật của chặng; gate đang chờ thắng.
     let gate: StageGate | null = null;
     for (const g of gateSteps) {
-      const st = gateState(gates, pipeline, g.key);
+      const st = gateState(gates, run, g.key);
       const enabled = g.enabled && (st ? st.enabled : true);
       if (!enabled) continue;
       const cand: StageGate = { key: g.key, status: st?.status ?? 'pending' };
@@ -227,7 +297,7 @@ export function toStages(
     let countLabel: string | null = null;
 
     if (hasPipeline) {
-      const states = enabledWork.map((s) => stepState(pipeline, s.key));
+      const states = enabledWork.map((s) => stepState(run, s.key));
       const st = states.map((o) => String(o?.status ?? ''));
       const failedN = states.reduce((n, o) => n + (num(o?.failed) ?? 0), 0);
       const staleN = states.reduce((n, o) => n + (num(o?.stale) ?? 0), 0);
@@ -261,6 +331,7 @@ export function toStages(
     }
 
     if (gate?.status === 'waiting') status = 'wait';
+    else if (run?.waitingStep && mine.some((s) => s.key === run.waitingStep)) status = 'wait';
     return { ...base, status, progress, count, countLabel };
   });
 }
@@ -349,15 +420,14 @@ export function countClipFlags(
 
 /** Số gate đang chờ trong `sequence.gates` (+ `sequence.pipeline`) của một tập. */
 export function openGates(gates: unknown, pipeline: unknown): number {
+  const run = normalizeRun(pipeline);
   const keys = new Set<string>();
   if (isObj(gates)) for (const k of Object.keys(gates)) keys.add(k.startsWith('gate:') ? k : `gate:${k}`);
-  if (isObj(pipeline)) {
-    const src = isObj(pipeline.steps) ? pipeline.steps : pipeline;
-    for (const k of Object.keys(src)) if (k.startsWith('gate:')) keys.add(k);
-  }
+  if (run) for (const k of Object.keys(run.steps)) if (k.startsWith('gate:')) keys.add(k);
+  if (run?.waitingGate) keys.add(run.waitingGate);
   let n = 0;
   for (const k of keys) {
-    const st = gateState(gates, pipeline, k);
+    const st = gateState(gates, run, k);
     if (st?.enabled && st.status === 'waiting') n += 1;
   }
   return n;

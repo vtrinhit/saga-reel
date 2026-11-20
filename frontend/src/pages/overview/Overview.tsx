@@ -15,6 +15,7 @@ import { ErrorState } from '../../components/ui/ErrorState';
 import { Menu } from '../../components/ui/Menu';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { SkeletonRows } from '../../components/ui/Skeleton';
+import { useWorkflowPresets, workflowKeyOf } from '../../components/shell/useShellData';
 import { useServerEvent } from '../../lib/eventHub';
 import { buildMatrixRows, inGroup, type GroupNode, type PipelineSummary } from '../../lib/overviewMatrix';
 import { toast } from '../../stores/toast';
@@ -109,6 +110,7 @@ export function Overview() {
     }, 800);
   };
   useServerEvent('entity.changed', kick);
+  useServerEvent('pipeline.updated', kick);
   useServerEvent('resync', kick);
   useServerEvent('job.updated', (e) => {
     const j = e.data as { type?: string; project_id?: number; status?: string } | null;
@@ -122,8 +124,13 @@ export function Overview() {
   const [collapsed, setCollapsed] = useState<Set<number | null>>(() => new Set());
   const all = seqs.data ?? [];
   const visible = useMemo(() => (arc == null ? all : all.filter((s) => inGroup(s, arc, groups))), [all, arc, groups]);
-  const rows = useMemo(() => buildMatrixRows(visible, status.data ?? new Map(), groups, collapsed), [visible, status.data, groups, collapsed]);
-  const allRows = useMemo(() => buildMatrixRows(all, status.data ?? new Map(), groups), [all, status.data, groups]);
+  const workflows = useWorkflowPresets(true);
+  const workflowOf = useCallback((s: SequenceInfo) => workflows.data?.get(workflowKeyOf(s)) ?? null, [workflows.data]);
+  const rows = useMemo(
+    () => buildMatrixRows(visible, status.data ?? new Map(), groups, collapsed, workflowOf),
+    [visible, status.data, groups, collapsed, workflowOf],
+  );
+  const allRows = useMemo(() => buildMatrixRows(all, status.data ?? new Map(), groups, new Set(), workflowOf), [all, status.data, groups, workflowOf]);
 
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const [anchor, setAnchor] = useState<number | null>(null);

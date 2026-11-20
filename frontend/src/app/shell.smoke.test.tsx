@@ -183,17 +183,27 @@ const recent = (minAgo: number) => new Date(Date.now() - minAgo * 60_000).toISOS
 
 /** Backend giả cho khung v2: dự án 3 "Kiếp Hồ Ly", tập 12 + 13, lịch sử có 2 agent, 1 việc cần xử lý. */
 function shellBackend() {
-  const SEQ = (id: number, number: number, gates: Record<string, unknown> = {}) => ({
+  // Hình dạng thật (backend W2+BF): tập 12 dừng ở gate animatic (`pipeline.run.waiting.gate`), tập 13 chưa chạy.
+  const RUN12 = { workflow: 'full_auto', status: 'waiting_review', waiting: { gate: 'animatic' }, steps: [] };
+  const SEQ = (id: number, number: number) => ({
     id, project_id: 3, group_id: null, key: `ep${number}`, number, title: number === 12 ? 'Đêm trăng máu' : 'Người đưa đò',
-    synopsis: '', script: 'x', status: 'draft', workflow_key: '', gates, pipeline: {},
-    counts: { clips: 3, scenes: 1, duration_ms: 18000 },
+    synopsis: '', script: 'x', status: 'draft', workflow_key: '', gates: {},
+    pipeline: number === 12 ? { run: RUN12, memory: {} } : { memory: {} },
+    counts: { clips: 3, scenes: 1, duration_ms: 18000, takes_pending: 3, flags: { stale: number === 12 ? 1 : 0, drift: 0, failed: 0 } },
   });
+  const SUMMARY12 = { sequence_id: 12, number: 12, title: 'Đêm trăng máu', ...RUN12, current: 'gate:animatic', job_id: null, error: null, gates: {}, progress: 70, updated_at: null };
   const routes: Record<string, unknown> = {
     '/api/auth/status': AUTH_OK,
     '/api/ops/project.get': { id: 3, key: 'khl', name: 'Kiếp Hồ Ly', description: '', genre_key: 'serial', aspect: '9:16', language: 'vi', target_platforms: [], settings: {}, budget: {} },
     '/api/ops/project.list': { items: [], next_cursor: null },
-    '/api/ops/sequence.list': { items: [SEQ(12, 12, { animatic: 'waiting' }), SEQ(13, 13)], next_cursor: null },
-    '/api/ops/sequence.get': SEQ(12, 12, { animatic: 'waiting' }),
+    '/api/ops/sequence.list': { items: [SEQ(12, 12), SEQ(13, 13)], next_cursor: null },
+    '/api/ops/sequence.get': SEQ(12, 12),
+    '/api/ops/sequence.status': {
+      sequence_id: 12, number: 12, title: 'Đêm trăng máu', has_script: true, gates: {}, pipeline: SUMMARY12,
+      clips: { total: 3, with_image: 3, with_video: 0, image_prompt: 3, motion_prompt: 0, approved: 0, flagged: 1, seconds: 18 },
+      active_jobs: 0,
+    },
+    '/api/ops/pipeline.status': { items: [SUMMARY12, { ...SUMMARY12, sequence_id: 13, number: 13, status: 'idle', waiting: null }], next_cursor: null },
     '/api/ops/clip.list': {
       items: [
         { id: 1, sequence_id: 12, key: 'c1', image_take_id: 1, video_take_id: null, flags: { stale_image: true }, review: 'pending' },

@@ -41,6 +41,10 @@ export interface PipelineSummary {
   gates: Record<string, { status?: string; by?: string; at?: string; feedback?: string; count?: number } | undefined>;
   progress: number;
   updated_at: string | null;
+  /** Có khi gọi theo dự án / toàn app. */
+  project_id?: number;
+  /** Gate đang chờ: bản dựng xem trước gần nhất của tập (video để duyệt ngay trong thẻ). */
+  preview?: { render_id: number; variant: string; media_id: number; url: string } | null;
 }
 
 /** Một bước trong `pipeline.run` dry_run. */
@@ -71,6 +75,10 @@ export interface SequenceStatus {
   number: number;
   title: string;
   has_script: boolean;
+  has_synopsis?: boolean;
+  /** Bản tóm tắt quy trình của tập (cùng dạng một item `pipeline.status`). */
+  pipeline?: PipelineSummary;
+  gates?: Record<string, unknown>;
   clips: {
     total: number;
     with_image: number;

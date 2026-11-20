@@ -17,14 +17,18 @@ import { StageSpine } from '../components/shell/StageSpine';
 import {
   activeAgents,
   countNeeds,
+  stageCounts,
   useBudget,
-  useClipCounts,
   useHistory,
   useProject,
   useProjectJobs,
   useSequence,
   useSequenceList,
+  useSequenceStatus,
   useShellLiveRefresh,
+  useShellPipelines,
+  useWorkflowPresets,
+  workflowKeyOf,
   type NeedCounts,
 } from '../components/shell/useShellData';
 import { useShellKeys } from '../components/shell/useShellKeys';
@@ -450,18 +454,24 @@ export function AppShell() {
   const project = useProject(ready ? projectId : null);
   const sequenceList = useSequenceList(ready ? projectId : null);
   const sequence = useSequence(ready ? seqId : null);
-  const clipCounts = useClipCounts(sequence.data);
+  const seqStatus = useSequenceStatus(ready ? seqId : null);
+  const workflows = useWorkflowPresets(ready && !!seqId);
   const history = useHistory(ready ? projectId : null);
   const jobs = useProjectJobs(projectId, ready);
+  const pipelines = useShellPipelines(projectId, ready);
   const sequences = sequenceList.data?.items;
-  const needs = countNeeds(sequences, jobs.data?.items);
+  const projectNum = projectId && /^\d+$/.test(projectId) ? Number(projectId) : null;
+  const needs = countNeeds(pipelines.data, jobs.data?.items, Number(project.data?.counts?.drift ?? 0) || 0, projectNum);
   const agentList = activeAgents(history.data?.items);
   const agents = { count: agentList.length, live: agentList.some((a) => a.live) };
-  const stages = useMemo(
-    // Workflow preset theo `sequence.workflow_key` do Task J cấp; chưa có → workflow mặc định.
-    () => toStages(null, sequence.data?.pipeline, sequence.data?.gates, clipCounts.data ?? null),
-    [sequence.data, clipCounts.data],
-  );
+  const listed = sequences?.find((s) => String(s.id) === seqId);
+  const stages = useMemo(() => {
+    // Lần chạy (nếu có) mang danh sách bước thật; tập chưa chạy → preset của tập (`workflow_key`) → `full_auto`.
+    const seq = sequence.data;
+    const preset = workflows.data?.get(workflowKeyOf(seq)) ?? null;
+    const run = seqStatus.data?.pipeline ?? seq?.pipeline;
+    return toStages(preset, run, seqStatus.data?.gates ?? seq?.gates, stageCounts(seqStatus.data, listed ?? seq));
+  }, [sequence.data, seqStatus.data, workflows.data, listed]);
   const showSpine = !!seqId && !sequence.isError;
 
   useShellKeys({
