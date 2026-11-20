@@ -10797,6 +10797,67 @@
  },
  {
   "costly": false,
+  "destructive": false,
+  "group": "queue",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "queue.concurrency",
+  "params_schema": {
+   "properties": {},
+   "title": "EmptyParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Luồng: trần số việc chạy cùng lúc theo loại provider (ảnh/video/LLM/TTS/STT/dựng) kèm số đang chạy/chờ",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "queue",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "queue.set_concurrency",
+  "params_schema": {
+   "properties": {
+    "values": {
+     "additionalProperties": {
+      "maximum": 20,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "description": "Loại → trần số việc chạy cùng lúc (1–20), vd. {\"video\": 3, \"image\": 2}. Loại vắng giữ nguyên.",
+     "minProperties": 1,
+     "propertyNames": {
+      "enum": [
+       "image",
+       "video",
+       "llm",
+       "tts",
+       "stt",
+       "render"
+      ]
+     },
+     "title": "Values",
+     "type": "object"
+    }
+   },
+   "required": [
+    "values"
+   ],
+   "title": "QueueSetConcurrencyParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Đổi trần luồng theo loại provider (1–20; áp dụng ngay cho việc mới, không dừng việc đang chạy; hoàn tác được)",
+  "viewer": false
+ },
+ {
+  "costly": false,
   "destructive": true,
   "group": "render",
   "idempotent": false,

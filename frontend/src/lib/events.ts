@@ -60,6 +60,7 @@ export const EVENT_TYPES = [
   'llm.delta',
   'provider.health',
   'pipeline.updated',
+  'queue.updated',
 ] as const;
 
 export const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000] as const;
