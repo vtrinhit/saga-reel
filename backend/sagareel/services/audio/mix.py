@@ -223,6 +223,7 @@ def input_args(dialogue_stem: Path | str, music_items: Sequence[dict] = (), sfx:
     return args
 
 
+_DUCK_RE = re.compile(r"^sidechaincompress(=[a-z_]+=[0-9.]+(:[a-z_]+=[0-9.a-z]+)*)?$")
 _LABEL = re.compile(r"^\[?\d+:a(?::\d+)?\]?$")
 
 
@@ -339,7 +340,10 @@ def final_audio_filter(dialogue_stem: Path | str, music_items: Sequence[dict], s
         else:
             mus = music_labels[0]
         if duck:
-            g.append(f"{mus}[sc]{params.get('ducking', DUCKING)}[duck]")
+            ducking = str(params.get("ducking") or DUCKING)
+            if not _DUCK_RE.match(ducking):
+                raise ValueError("ducking phải là một bộ lọc sidechaincompress với tham số dạng số")
+            g.append(f"{mus}[sc]{ducking}[duck]")
             mix_inputs.append("[duck]")
         else:
             mix_inputs.append(mus)

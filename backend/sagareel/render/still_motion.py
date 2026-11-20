@@ -20,7 +20,7 @@ from PIL import Image, UnidentifiedImageError
 
 from sagareel.core.errors import AppError
 from sagareel.media import ffmpeg
-from sagareel.render import cache, presets
+from sagareel.render import cache, filters, presets
 from sagareel.render.filters import samples
 from sagareel.render.profile import Profile, coerce
 
@@ -65,6 +65,11 @@ def build_filter(
     table: dict[str, dict[str, Any]], common: dict[str, Any],
 ) -> str:
     vals = motion_params(data, frames, prof.fps, common)
+    try:  # dòng preset trong DB có thể có trước khi kiểm ở preset.create/entity.patch → kiểm lại tại chỗ dựng
+        for k in ("z", "x", "y"):
+            filters.check_motion_expr(data[k], k)
+    except ValueError as e:
+        raise AppError("render_bad_motion", f"Preset chuyển động không hợp lệ: {e}", status=422) from None
     z, x, y = (str(data[k]).format(**vals) for k in ("z", "x", "y"))
     uw, uh = prof.width * factor, prof.height * factor
     zp = str(common.get("zoompan", "zoompan=z='{z}':x='{x}':y='{y}':d={D}:s={W}x{H}:fps={fps}"))
@@ -77,7 +82,10 @@ def build_filter(
         layer = table.get(key)
         if not layer or layer.get("type") != "post" or not layer.get("filter"):
             raise AppError("render_bad_motion", f"Lớp hậu kỳ “{key}” không có.", status=422)
-        chain.append(str(layer["filter"]))
+        try:
+            chain.append(filters.check_post_filter(layer["filter"]))
+        except ValueError as e:
+            raise AppError("render_bad_motion", f"Lớp hậu kỳ “{key}” không hợp lệ: {e}", status=422) from None
     chain += ["format=yuv420p", f"trim=end_frame={frames}", "setpts=PTS-STARTPTS"]
     return ",".join(chain)
 

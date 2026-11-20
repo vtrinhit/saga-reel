@@ -270,7 +270,15 @@ def validate_refs(s: Session, spec: m.ProjectSpec, current: m.ProjectSpec | None
             err(loc, f"Không có hồ sơ giọng '{key}'.")
 
     if spec.presets is not None:
+        from sagareel.services import presets as preset_svc
+
         dup(["presets"], [f"{p.kind}/{p.key}" for p in spec.presets], "preset")
+        for i, p in enumerate(spec.presets):  # như preset.create: dữ liệu có thể đi vào filtergraph khi dựng
+            try:
+                preset_svc.validate_data(p.kind, p.data)
+            except ValidationFailed as e:
+                for x in e.extra.get("errors") or [{"loc": [], "msg": e.detail, "type": "value_error"}]:
+                    err(["presets", i, "data", *x.get("loc", [])], x.get("msg", ""), x.get("type", "value_error"))
     if spec.library is not None:
         L = spec.library
         dup(["library", "asset_kinds"], [k.key for k in L.asset_kinds], "loại tài sản")
@@ -351,6 +359,11 @@ def validate_refs(s: Session, spec: m.ProjectSpec, current: m.ProjectSpec | None
                     err(tl + ["end_anchor"], 'end_anchor là {"clip": key} hoặc {"sequence_end": true} hoặc null.',
                         "type_error")
             media_ok(tl + ["media"], t.media)
+            if t.track == "title":
+                from sagareel.render.filters import check_title_params
+
+                for msg in check_title_params(t.params):
+                    err(tl + ["params"], msg, "value_error")
             if t.sound is not None and t.sound not in sound_keys:
                 err(tl + ["sound"], f"Không có âm thanh '{t.sound}' trong library.sounds.")
     if spec.sequences is not None:

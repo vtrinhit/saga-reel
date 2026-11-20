@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, ValidationFailed
 from sagareel.db.models import Clip, Media, Sound, TimelineItem
+from sagareel.render.filters import check_title_params
 from sagareel.services import entities
 
 SOUND_KINDS = ("music", "sfx", "ambience")
@@ -103,12 +104,27 @@ def _check_item(s: Session, sequence_id: int, v: dict[str, Any]) -> None:
         errors.append({"loc": ["sound_id"], "msg": "Track nhạc/SFX cần sound_id hoặc media_id.", "type": "missing"})
     if v.get("track") == "title" and not str((v.get("params") or {}).get("text", "")).strip():
         errors.append({"loc": ["params", "text"], "msg": "Title cần params.text.", "type": "missing"})
+    for msg in check_title_params(v.get("params") or {}):  # màu/cỡ chữ đi vào filtergraph drawtext
+        errors.append({"loc": ["params"], "msg": msg, "type": "value_error"})
     if v.get("sound_id") is not None:
         snd = s.get(Sound, v["sound_id"])
         if snd is None or snd.deleted_at is not None:
             errors.append({"loc": ["sound_id"], "msg": f"Không có âm thanh #{v['sound_id']}.", "type": "reference"})
     if errors:
         raise ValidationFailed("Mục timeline không hợp lệ.", hint="Xem `extra.errors`.", extra={"errors": errors})
+
+
+def _patch_validator(s: Session, obj: TimelineItem, values: dict[str, Any]) -> dict[str, Any]:
+    """`entity.patch` trên mục timeline: tham số title (màu, tỉ lệ) phải an toàn cho filtergraph."""
+    if "params" in values:
+        errs = check_title_params(values["params"] or {})
+        if errs:
+            raise ValidationFailed("Mục timeline không hợp lệ.", extra={"errors": [
+                {"loc": ["values", "params"], "msg": m, "type": "value_error"} for m in errs]})
+    return values
+
+
+entities.PATCH_VALIDATORS["timeline_item"] = _patch_validator
 
 
 def timeline_add(ctx: OpContext, sequence_id: int, track: str, **values: Any) -> dict:
