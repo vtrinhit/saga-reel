@@ -11,11 +11,12 @@ Cập nhật sau mỗi mốc và sau mỗi lần gọi provider thật.
 | 2026-11-19 | M0 | Thử âm Grok: ảnh bà cụ (MaiVideo, chậm >10 phút; lần chạy đầu bị dừng nhưng vẫn bị trừ lượt) | 2 | — | lifetime 1236→1234 |
 | 2026-11-19 | M0 T18 | Kiểm chứng qua app: provider.try_image MaiVideo (thuyền sông Hương) | 1 | — | qua job queue thật |
 | 2026-11-20 | bank | Ảnh nhân vật áo dài + 7 clip GrokTele lưu `data/research/bank` | 1 | 7 | phòng GrokTele hết hạn 21/11 |
+| 2026-11-20 | demo | Series kể chuyện xưa: 'Mái Nhà Tranh Ngày Ấy' (người dẫn, đã dừng theo yêu cầu) + 'Nhà Mình Ngày Xưa' tập 1 (12 clip Grok có thoại từng nhân vật, sheet 3 góc 4 nhân vật + chó) → gói FB Reels/TikTok 72 s | ~57 | 41 | người dùng cho phép vượt 60 ảnh |
 | 2026-11-20 | M5/M6/M4 | Kiểm chứng thật LLM: bible+dàn ý 3 tập+kịch bản+tách 14 clip+prompt; drift vision 94–98 điểm; phân tích kênh 4 clip; dịch+lồng tiếng EN; gói xuất TikTok vi+en (bìa, SRT, metadata, manifest, −14 LUFS) | 0 | 0 | sửa: datetime trong kết quả job, enum shot, tên mẫu 'Linh' trong motion prompt, bìa dính phụ đề/đè mặt, ngắt 'từ từ', metadata EN |
 | 2026-11-20 | M4 | Tập "Bến sương" 5 ảnh clip + TTS 4 câu + animatic 27 s (−14,0 LUFS) | 5 | 0 | GrokTele tắt → 4 job video `provider_unavailable`, chờ người dùng mở GrokTele |
 | 2026-11-20 | M1 | Sheet 5 góc Út Sen: look 2 (đúng) + look 1 (chạy nhầm, huỷ không kịp) | 10 | — | `data/research/m1_sheets.jpg`; nhất quán tốt |
 
-**Đã dùng: 19/60 ảnh (cập nhật 2026-11-20); trước đó 3/60 ảnh (thử âm Grok) · clip video: không giới hạn (GrokTele).** Chỉ người điều phối được gọi provider thật; subagent chỉ dùng adapter giả.
+**Đã dùng: 74 ảnh (người dùng cho vượt 60 ngày 2026-11-20) (cập nhật 2026-11-20); trước đó 3/60 ảnh (thử âm Grok) · clip video: không giới hạn (GrokTele).** Chỉ người điều phối được gọi provider thật; subagent chỉ dùng adapter giả.
 
 ## Trạng thái provider (kiểm tra lần cuối 2026-11-19)
 
