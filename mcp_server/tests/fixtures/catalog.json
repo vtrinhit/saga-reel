@@ -4396,7 +4396,7 @@
   "read_only": true,
   "result_schema": null,
   "summary": "Kiểm tra một tập trước khi xuất: độ dài, dung lượng, loudness, phụ đề ngoài vùng an toàn, metadata vượt giới hạn, nhạc thiếu giấy phép → {errors[], warnings[]}",
-  "viewer": true
+  "viewer": false
  },
  {
   "costly": false,

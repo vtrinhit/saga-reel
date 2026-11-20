@@ -215,7 +215,7 @@ def latest_render(services: Any, sequence_id: int, platform: str | None, lang: s
         if best is None:
             return None
         m = media.get(s, best.media_id)
-        return {"render_id": best.id, "media_id": m.id, "path": media.file_path(services.settings, m),
+        return {"render_id": best.id, "media_id": m.id, "sha256": m.sha256, "path": media.file_path(services.settings, m),
                 "duration_ms": best.duration_ms or m.duration_ms, "size": m.size, "width": m.width, "height": m.height}
 
 
@@ -243,6 +243,36 @@ async def measure_loudness(path: Path) -> Any:
     except Exception as e:  # noqa: BLE001 — đo hỏng không được chặn xuất
         logger.warning("Đo loudness lỗi: %s", e)
         return None
+
+
+LOUD_PREFIX = "loudness:"
+
+
+async def cached_loudness(services: Any, render: Mapping[str, Any]) -> Any:
+    """Đo ebur128 một lần cho mỗi nội dung bản dựng (khoá sha256 media, lưu `system_state`): `export.check` gọi nhiều
+    lần (UI sửa metadata, agent) không chạy lại ffmpeg trên cả video."""
+    from sagareel.services import system_state as ss
+
+    sha = render.get("sha256")
+    key = LOUD_PREFIX + sha if sha else None
+    if key is not None:
+        def get() -> Any:
+            with services.db.session() as s:
+                return ss.get(s, key)
+
+        hit = await anyio.to_thread.run_sync(get)
+        if isinstance(hit, dict):
+            return hit
+    loud = await measure_loudness(render["path"])
+    plain = checks.normalize_loudness(loud) if loud is not None else None
+    if key is not None and plain is not None:
+        def put() -> None:
+            with services.db.session() as s:
+                ss.set(s, key, dict(plain))
+
+        await anyio.to_thread.run_sync(put)
+        return plain
+    return loud
 
 
 async def render_final(services: Any, run: Any, sequence_id: int, platform: str, lang: str) -> Any:
@@ -714,7 +744,7 @@ async def precheck(services: Any, sequence_id: int, platform: str, lang: str | N
     md.update({k: v for k, v in (metadata_override or {}).items() if v is not None})
     if render is not None:
         duration_ms, size, estimated = int(render["duration_ms"] or 0), int(render["size"]), False
-        loud = await measure_loudness(render["path"])
+        loud = await cached_loudness(services, render)
         frame = (render["width"], render["height"]) if render["width"] and render["height"] else None
     else:
         duration_ms = seq["clip_total_ms"]

@@ -158,7 +158,7 @@ class ExportIdParams(BaseModel):
 
 @op("export.check", summary="Kiểm tra một tập trước khi xuất: độ dài, dung lượng, loudness, phụ đề ngoài vùng an toàn, "
     "metadata vượt giới hạn, nhạc thiếu giấy phép → {errors[], warnings[]}", params=ExportCheckParams,
-    read_only=True, idempotent=True, mcp="tool")
+    read_only=True, idempotent=True, viewer=False, mcp="tool")
 async def export_check(ctx: OpContext, p: ExportCheckParams) -> dict:
     return await package.precheck(ctx.services, p.sequence_id, p.platform, p.lang, split_parts=p.split_parts,
                                   boxes=p.cue_boxes, metadata_override=p.metadata)
