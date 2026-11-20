@@ -154,7 +154,7 @@ export function ProductionMatrix({ rows, base, selected, onToggle, onToggleGroup
       tabIndex={0}
       className="relative max-h-[min(70dvh,calc(100dvh-var(--sr-top)-240px))] min-h-[200px] min-w-0 overflow-auto overscroll-contain focus-visible:outline focus-visible:outline-focus focus-visible:-outline-offset-2 focus-visible:outline-accent"
     >
-      <div role="table" aria-rowcount={seqRows.length + 1} className="relative min-w-[1340px]" style={{ height: v.getTotalSize() }}>
+      <div role="table" aria-rowcount={seqRows.length + 1} className="relative min-w-[1240px]" style={{ height: v.getTotalSize() }}>
         <div role="row" className="sticky top-0 z-sticky grid h-9 items-center whitespace-nowrap border-b border-line-2 bg-bg-1 text-xs text-fg-2" style={{ gridTemplateColumns: MATRIX_COLS }}>
           <span role="columnheader" className="sticky left-0 z-sticky h-full bg-bg-1 px-3 leading-9">Tập</span>
           {STAGE_DEFS.map((d) => (
