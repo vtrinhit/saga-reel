@@ -56,7 +56,7 @@ class IdeaParams(BaseModel):
     workflow_key: str = W.DEFAULT_WORKFLOW
     steps: dict[str, bool] = Field(default_factory=dict, description="Bật/tắt bước của quy trình")
     platforms: list[str] = Field(default_factory=list)
-    dry_run: bool = Field(default=False, description="Chỉ ước tính (số ảnh/video/LLM, giây phim, ngân sách)")
+    dry_run: bool = Field(default=False, description="Chỉ ước tính (số ảnh/video/LLM, giây phim)")
 
 
 @op("pipeline.run", summary="Chạy quy trình theo preset cho các tập (job dài pipeline.run, dừng ở gate/bước chờ nhập, "

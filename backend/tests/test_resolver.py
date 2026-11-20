@@ -28,9 +28,6 @@ M0_DEFAULTS = {
     "tts.connection": ("str", "edge-tts", None),
     "tts.voice": ("str", "vi-VN-HoaiMyNeural", None),
     "prompt.mode": ("enum", "synced", ["verbatim", "synced"]),
-    "budget.enabled": ("bool", True, None),
-    "budget.images_total": ("int", 60, None),
-    "budget.videos_total": ("int", 20, None),
     "jobs.ffmpeg_concurrency": ("int", 2, None),
     "remote.public_hosts": ("json", [], None),
     "remote.require_login_local": ("bool", True, None),
@@ -167,9 +164,9 @@ def test_json_default_is_not_shared():
     [
         ("video.duration", "6"),  # enum số: chuỗi không được
         ("video.duration", True),  # bool không phải số
-        ("budget.images_total", True),
-        ("budget.images_total", 1.5),
-        ("budget.enabled", 1),
+        ("jobs.ffmpeg_concurrency", True),
+        ("jobs.ffmpeg_concurrency", 1.5),
+        ("remote.allow_viewer", 1),
         ("image.model", 5),
         ("prompt.mode", "Synced"),
         ("remote.public_hosts", {1, 2}),  # không JSON được
@@ -185,7 +182,7 @@ def test_validate_rejects_wrong_types(key, value):
 
 def test_validate_accepts_valid_values():
     r = Resolver(load_schema(SCHEMA))
-    values = {"video.duration": 15, "budget.enabled": False, "remote.public_hosts": ["a.example"], "image.model": ""}
+    values = {"video.duration": 15, "remote.allow_viewer": False, "remote.public_hosts": ["a.example"], "image.model": ""}
     assert r.validate_values(values) == values
 
 
@@ -203,13 +200,13 @@ def test_set_global_merges_with_existing_values(ctx):
 
 
 def test_global_data_only_ever_holds_schema_keys(ctx):
-    settings.set_global(ctx, {"video.duration": 10, "budget.enabled": False})
+    settings.set_global(ctx, {"video.duration": 10, "remote.allow_viewer": False})
     for bad in ({"_app_secret": "x"}, {"seeded_env_at": "2026-11-19"}, {"video.duration": 15, "legacy.key": 1}):
         with pytest.raises(AppError) as e:
             settings.set_global(ctx, bad)
         assert e.value.code == "unknown_setting"
     assert set(global_row(ctx)) <= set(load_schema(SCHEMA))
-    assert global_row(ctx) == {"video.duration": 10, "budget.enabled": False}
+    assert global_row(ctx) == {"video.duration": 10, "remote.allow_viewer": False}
 
 
 def test_set_global_change_set_has_no_project(ctx):
@@ -248,7 +245,7 @@ def test_set_global_none_removes_override(ctx):
     [
         ({"_app_secret": "x"}, "unknown_setting"),
         ({"video.colour": "red"}, "unknown_setting"),
-        ({"video.duration": 10, "budget.enabled": "yes"}, "validation_failed"),
+        ({"video.duration": 10, "remote.allow_viewer": "yes"}, "validation_failed"),
     ],
 )
 def test_set_global_rejects_without_writing(ctx, values, code):

@@ -13,7 +13,6 @@ export const qk = {
   jobList: ['job', 'list'] as const,
   settings: ['settings', 'explain'] as const,
   settingsSchema: ['settings', 'schema'] as const,
-  budget: ['budget', 'status'] as const,
   tokens: ['token', 'list'] as const,
   sessions: ['session', 'list'] as const,
   media: (kind: string) => ['media', 'list', kind] as const,

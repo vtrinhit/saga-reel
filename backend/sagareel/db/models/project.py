@@ -32,7 +32,6 @@ class Project(Tracked, Base):
     style_block: Mapped[str] = mapped_column(Text, default="")
     negative_block: Mapped[str] = mapped_column(Text, default="")
     settings: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)
-    budget: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)
     cover_media_id: Mapped[int | None]
 
 

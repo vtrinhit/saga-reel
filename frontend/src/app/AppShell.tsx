@@ -7,7 +7,6 @@ import { api, loginUrl, setAppReady } from '../api/client';
 import type { SequenceInfo } from '../api/types';
 import { ActivityPanel, togglePanel } from '../components/shell/ActivityPanel';
 import { AgentChip } from '../components/shell/AgentChip';
-import { CostMeter } from '../components/shell/CostMeter';
 import { EpisodeSwitcher, neighbours, swapSeqInLocation } from '../components/shell/EpisodeSwitcher';
 import { CountRing, Mark } from '../components/shell/Mark';
 import { NeedChip } from '../components/shell/NeedChip';
@@ -18,7 +17,6 @@ import {
   activeAgents,
   countNeeds,
   stageCounts,
-  useBudget,
   useHistory,
   useProject,
   useProjectJobs,
@@ -138,17 +136,14 @@ interface TopbarProps {
   needs: NeedCounts;
   agents: { count: number; live: boolean };
   onSearch: () => void;
-  /** Đã biết vào được: mới gọi op (tránh 401 trước khi biết trạng thái đăng nhập). */
-  ready: boolean;
 }
 
-function Topbar({ projectId, base, status, projectName, seqId, sequence, sequences, needs, agents, onSearch, ready }: TopbarProps) {
+function Topbar({ projectId, base, status, projectName, seqId, sequence, sequences, needs, agents, onSearch }: TopbarProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const local = isLocal(status);
   const host = window.location.host;
   const menuItems = globalMenuItems(navigate, pathname, status);
-  const budget = useBudget(ready);
   const sep = <span className="flex-none text-fg-4" aria-hidden>/</span>;
 
   return (
@@ -194,13 +189,6 @@ function Topbar({ projectId, base, status, projectName, seqId, sequence, sequenc
       >
         <Search className="sr-ico" aria-hidden />
       </button>
-
-      {budget.data ? (
-        <>
-          <CostMeter budget={budget.data} className="hidden 2xl:inline-flex" />
-          <CostMeter budget={budget.data} compact className="hidden md:inline-flex 2xl:hidden" />
-        </>
-      ) : null}
 
       {projectId ? (
         <>
@@ -573,7 +561,6 @@ export function AppShell() {
         needs={needs}
         agents={agents}
         onSearch={() => setPaletteOpen(true)}
-        ready={ready}
       />
       {projectId ? <ProjectTabs base={base} counts={navCounts} /> : null}
       <div className="flex min-h-0 min-w-0 flex-1">

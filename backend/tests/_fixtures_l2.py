@@ -66,7 +66,6 @@ def build_demo(ctx, tmp_path: Path, make_clip_tiny=None) -> int:
         proj.target_platforms = ["tiktok", "youtube_shorts"]
         proj.settings = {"image.connection": "maivideo", "video.connection": "groktele", "image.model": "x1",
                          "subtitle.style": "bold"}
-        proj.budget = {"images": 60}
         proj.cover_media_id = imgs[3]
 
         s.add(AssetKind(project_id=pid, key="creature", label="Sinh vật", icon="paw", ref_priority=3))

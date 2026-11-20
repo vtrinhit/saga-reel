@@ -30,7 +30,6 @@ export interface Project {
   style_block: string;
   negative_block: string;
   settings: Record<string, unknown>;
-  budget: Record<string, unknown>;
   cover_media_id: number | null;
   created_at: string;
   updated_at: string;
@@ -144,7 +143,6 @@ export interface ImageEstimate {
   connection?: string;
   enabled?: boolean;
   looks?: number;
-  budget?: { enabled: boolean; total: number | null; spent: number; remaining: number | null };
 }
 
 export interface MatrixItem {
@@ -326,10 +324,9 @@ export function lookSelected(look: Look): Record<string, number | null> {
 
 // --- Ước tính -----------------------------------------------------------------------------------------------------
 
-/** Ước tính ảnh của server → hàng EstimateDialog + ngân sách còn + cảnh báo. */
+/** Ước tính ảnh của server → hàng EstimateDialog + cảnh báo. */
 export function estimateToDialog(est: ImageEstimate | undefined): {
   rows: EstimateRow[];
-  budgetRemaining: number | null;
   warnings: string[];
   jobCount: number;
 } {
@@ -342,7 +339,6 @@ export function estimateToDialog(est: ImageEstimate | undefined): {
   }
   return {
     rows: images > 0 ? [{ kind: 'Ảnh sheet', quantity: images, unitCredits: Math.round(unit * 100) / 100 }] : [],
-    budgetRemaining: est?.budget?.remaining ?? null,
     warnings,
     jobCount: images,
   };
@@ -458,16 +454,9 @@ export interface ProjectForm {
   target_platforms: string[];
   style_block: string;
   negative_block: string;
-  budget_images: string;
-  budget_videos: string;
 }
 
-const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-
 export function projectToForm(p: Project): ProjectForm {
-  const b = p.budget ?? {};
-  const imgs = numOrNull(b.images_total);
-  const vids = numOrNull(b.videos_total);
   return {
     name: p.name,
     description: p.description ?? '',
@@ -478,8 +467,6 @@ export function projectToForm(p: Project): ProjectForm {
     target_platforms: [...(p.target_platforms ?? [])].map(String),
     style_block: p.style_block ?? '',
     negative_block: p.negative_block ?? '',
-    budget_images: imgs == null ? '' : String(imgs),
-    budget_videos: vids == null ? '' : String(vids),
   };
 }
 
@@ -490,18 +477,12 @@ export function normalizeLanguages(primary: string, langs: string[]): string[] {
 
 export interface FormIssues {
   name?: string;
-  budget_images?: string;
-  budget_videos?: string;
   languages?: string;
 }
 
 export function validateProjectForm(f: ProjectForm): FormIssues {
   const issues: FormIssues = {};
   if (!f.name.trim()) issues.name = 'Nhập tên dự án.';
-  for (const k of ['budget_images', 'budget_videos'] as const) {
-    const v = f[k].trim();
-    if (v && !(/^\d+$/.test(v))) issues[k] = 'Nhập số nguyên không âm, hoặc để trống để dùng ngân sách chung.';
-  }
   if (!f.languages.length) issues.languages = 'Chọn ít nhất một ngôn ngữ.';
   return issues;
 }
@@ -518,16 +499,6 @@ export function diffProject(p: Project, f: ProjectForm): Record<string, unknown>
   const langs = normalizeLanguages(f.language, f.languages);
   if (JSON.stringify(langs) !== JSON.stringify(base.languages) || 'language' in out) out.languages = langs;
   if (JSON.stringify(f.target_platforms) !== JSON.stringify(base.target_platforms)) out.target_platforms = f.target_platforms;
-  if (f.budget_images !== base.budget_images || f.budget_videos !== base.budget_videos) {
-    const budget: Record<string, unknown> = { ...(p.budget ?? {}) };
-    const set = (key: string, v: string) => {
-      if (v.trim() === '') delete budget[key];
-      else budget[key] = Number(v.trim());
-    };
-    set('images_total', f.budget_images);
-    set('videos_total', f.budget_videos);
-    out.budget = budget;
-  }
   return out;
 }
 

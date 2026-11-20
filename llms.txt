@@ -3,7 +3,7 @@
 > Studio dựng video AI chạy cục bộ (FastAPI + React). Mọi thao tác là một op trong sổ đăng ký; REST, CLI và MCP sinh từ cùng catalog.
 
 ## Dành cho agent
-- [AGENTS.md](AGENTS.md): cách dùng REST/CLI/MCP, xác thực, quy tắc an toàn (dry_run, xoá hai bước, gate, ngân sách, hoàn tác)
+- [AGENTS.md](AGENTS.md): cách dùng REST/CLI/MCP, xác thực, quy tắc an toàn (ước tính trước khi chạy, xoá hai bước, gate, hoàn tác)
 - [mcp_server/README.md](mcp_server/README.md): chạy MCP server (`sagareel mcp`), cấu hình Claude Code/Desktop, danh sách tool
 - [Skill vận hành](.claude/skills/sagareel-operator/SKILL.md): quy tắc + playbook (video ghép, phim bộ, dài tập, clone, lồng tiếng, lỗi provider); sửa qua op `skill.update`
 - [Schema file khai báo project](docs/schema/project-spec.schema.json): `project.export_spec` → sửa → `project.plan` → `project.apply(plan_fingerprint)`

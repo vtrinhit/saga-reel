@@ -65,11 +65,11 @@ describe('jobActions — nút thử lại/xử lý theo đúng luật backend', 
 });
 
 describe('errorLines — câu tiếng Việt + chi tiết số liệu + gợi ý của server', () => {
-  it('giữ chi tiết (số ngân sách) và gợi ý dưới câu đã dịch', () => {
-    expect(jobErrorLines({ error_code: 'budget_exceeded', error_message: 'Vượt ngân sách ảnh (60/60).', hint: 'Tăng ngân sách ở Cài đặt.' })).toEqual({
-      text: 'Vượt ngân sách.',
-      detail: 'Vượt ngân sách ảnh (60/60).',
-      hint: 'Tăng ngân sách ở Cài đặt.',
+  it('giữ chi tiết (số liệu) và gợi ý dưới câu đã dịch', () => {
+    expect(jobErrorLines({ error_code: 'provider_rejected', error_message: 'MaiVideo từ chối ảnh (502).', hint: 'Thử lại sau.' })).toEqual({
+      text: 'Provider từ chối yêu cầu.',
+      detail: 'MaiVideo từ chối ảnh (502).',
+      hint: 'Thử lại sau.',
     });
   });
 
@@ -119,7 +119,6 @@ describe('jobText', () => {
     expect(jobErrorText({ error_code: 'internal_error', error_message: "Lỗi nội bộ không lường trước: KeyError: 'x'" })).toBe(
       'Lỗi nội bộ không lường trước.',
     );
-    expect(jobErrorText({ error_code: 'budget_exceeded', error_message: 'Vượt ngân sách ảnh (60/60).' })).toBe('Vượt ngân sách.');
     expect(jobErrorText({ error_code: 'provider_unavailable', error_message: 'Kết nối đang tắt: X.' })).toContain('Provider không dùng được');
     // mã chưa có trong bảng → câu của server
     expect(jobErrorText({ error_code: 'maivideo_bad_size', error_message: 'Kích thước ảnh không hợp lệ.' })).toBe('Kích thước ảnh không hợp lệ.');
@@ -129,7 +128,7 @@ describe('jobText', () => {
 
   it('có câu tiếng Việt cho các mã lỗi thường gặp', () => {
     for (const code of [
-      'provider_unavailable', 'provider_rejected', 'budget_exceeded', 'capability_mismatch', 'job_unknown',
+      'provider_unavailable', 'provider_rejected', 'capability_mismatch', 'job_unknown',
       'maivideo_job_unknown', 'remote_cancelled', 'retries_exhausted', 'interrupted', 'already_succeeded',
       'params_patch_requires_new_job', 'params_patch_invalid',
     ]) {

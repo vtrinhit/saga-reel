@@ -364,7 +364,7 @@ async def test_idea_to_video_dry_run_and_create(services, owner_ctx):
                                                   "clips_per_episode": 14, "dry_run": True}, owner_ctx)
     assert est["dry_run"] and est["clips"] == 42 and est["images"] == 42 and est["videos"] == 42
     assert est["llm_calls"] == 1 + 1 + 3 * (1 + 1 + 1 + 1 + 1)
-    assert [w["code"] for w in est["warnings"]] == ["budget"]  # 42 video > ngân sách mặc định 20
+    assert est["warnings"] == [] and "budget" not in est
     assert "gate:animatic" in est["gates"]
     with services.db.session() as s:
         assert s.scalar(select(Project.id)) is None  # dry_run không tạo gì

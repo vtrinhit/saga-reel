@@ -16,8 +16,8 @@ Mở app bằng `run.bat` rồi vào `http://127.0.0.1:8990`. Cài đặt lần 
 **Gate (điểm dừng chờ bạn).** Quy trình tự chạy nhưng dừng ở những chỗ bạn nên xem trước khi tốn tiền, ví dụ sau dàn ý,
 sau ảnh, sau animatic, trước bản cuối. Gate đang chờ hiện ở ô viền vàng đứt "chờ bạn" và trong hộp **Cần bạn**.
 
-**Chi phí luôn hiện trước.** Nút nào tốn lượt ảnh/video đều ghi số lượt, và có hộp ước tính trước khi chạy. Đồng hồ
-"Ảnh 0/60 lượt" ở góc trên là ngân sách còn lại.
+**Chi phí luôn hiện trước.** Nút nào tốn lượt ảnh/video đều ghi số lượt, và luôn có hộp ước tính (một lần xác nhận)
+trước khi chạy.
 
 ![Tổng quan: ma trận tập theo chặng](screenshots/m8/overview-1280.png)
 
@@ -42,7 +42,7 @@ chuyển cảnh, mức nhạc nền; xem và sửa ở mục **Mẫu** (phần 1
 
 Nút **Ước tính chi phí** (nếu có) cho biết trước số lượt LLM, ảnh sheet, ảnh khung hình. Video luôn để ngỏ vì nằm sau gate.
 
-Cài đặt dự án (style, ngôn ngữ, nền tảng, ngân sách, quy trình) ở **Cài đặt** trong rail dự án.
+Cài đặt dự án (style, ngôn ngữ, nền tảng, quy trình) ở **Cài đặt** trong rail dự án.
 
 ## 2. Thư viện: nhân vật, bối cảnh, đạo cụ
 
@@ -220,15 +220,14 @@ bạn tự tải lên.
 ## 10. Cần bạn, gate và agent
 
 **Cần bạn** (menu toàn cục và trên điện thoại là màn mở đầu) là hộp thư mọi việc đang chờ quyết định: gate, lỗi cần xử
-lý, nhân vật lệch, việc bị giữ vì vượt ngân sách, bước "chờ bạn tự viết" và yêu cầu từ agent.
+lý, nhân vật lệch, bước "chờ bạn tự viết" và yêu cầu từ agent.
 
-- **Thẻ gate** ghi rõ **giá của bước kế** và ngân sách còn lại, vì duyệt gate nghĩa là cho phép tiêu tiền. Có hai nút:
+- **Thẻ gate** ghi rõ **giá của bước kế** (số ảnh/video), vì duyệt gate nghĩa là cho phép tiêu tiền. Có hai nút:
   **Duyệt và chạy tiếp** hoặc **Trả lại** (kèm góp ý; bước tương ứng làm lại theo góp ý).
 - Quy trình (gate nào bật) là một preset **quy trình** ở Mẫu. Có sẵn: *Tự động* (chỉ dừng duyệt animatic), *Bảng phân cảnh
   trước* (dừng sau dàn ý, sau ảnh, sau animatic, trước bản cuối), *Phim bộ theo lô* (viết tuần tự, thử tập đầu rồi chạy lô).
   Tắt hết gate là tự động hoàn toàn.
-- **Chạy tới gate kế tiếp**: ở Tổng quan chọn nhiều tập (Shift-click), chạy chung; hộp ước tính gom theo chặng và cảnh báo
-  nếu vượt ngân sách.
+- **Chạy tới gate kế tiếp**: ở Tổng quan chọn nhiều tập (Shift-click), chạy chung; hộp ước tính gom theo chặng.
 - **Agent**: chip "Agent" ở thanh trên cho biết có agent đang làm. Panel **Hoạt động** (phím `.`) hiện mỗi agent đang làm gì,
   thay đổi gần nhất, chi phí đã tiêu, nút **tạm dừng agent**. Agent không bao giờ tự duyệt gate thay bạn. Cách kết nối:
   [agent và MCP](agents-va-mcp.md).
@@ -246,12 +245,10 @@ Mọi thay đổi, của bạn, của LLM hay của agent, được ghi thành m
   phục từng cái; không bao giờ ghi đè ngầm.
 - Nhập hàng loạt, áp file khai báo, xoá đều hoàn tác được bằng một thao tác. Riêng "xoá hẳn thùng rác" thì không.
 
-## 12. Ngân sách, lưu trữ và thùng rác
+## 12. Chạy song song, lưu trữ và thùng rác
 
-**Ngân sách** (Cài đặt > Ngân sách): trần số ảnh và số video được tạo (0 = không giới hạn). Mặc định 60 ảnh và 20 video;
-khi nạp từ `.env.local`, video GrokTele được đặt không giới hạn. Kết nối giả (dùng để thử) không tính. Việc vượt ngân sách
-dừng ở trạng thái "chờ, vượt ngân sách" và hiện trong Cần bạn; bạn nâng trần hoặc huỷ việc, không có đường lách. Cài đặt
-"không hỏi lại dưới N lượt" (mặc định 5) quyết định khi nào app hỏi xác nhận.
+**Chạy song song** (Cài đặt > Chạy song song): số việc ffmpeg (dựng, ghép âm thanh, xuất gói) chạy cùng lúc. Số việc trên
+từng kết nối nhà cung cấp đặt trong Sửa kết nối.
 
 **Lưu trữ** (Cài đặt > Lưu trữ): theo dõi dung lượng ổ đĩa.
 - *Dọn take cũ*: chuyển file gốc của take không được chọn vào **thùng rác** (`data/trash`), không xoá hẳn. Có xem trước.
@@ -300,7 +297,7 @@ việc video đang đợi sẽ hiện trong Cần bạn; sau khi mở lại bạ
 animatic) vẫn làm được bình thường.
 
 **MaiVideo báo hạn mức còn 0 nhưng vẫn tạo được.** Với gói của bạn con số hạn mức tháng trả về bằng 0 là vô hại: ảnh vẫn
-tạo bình thường. Đừng dừng việc vì cảnh báo này; hãy theo dõi đồng hồ ngân sách của chính SagaReel (mặc định 60 ảnh).
+tạo bình thường. Đừng dừng việc vì cảnh báo này.
 
 **Ảnh MaiVideo mất rất lâu (có khi hơn 10 phút).** Bình thường với model ảnh chất lượng cao; app chờ tới 30 phút mỗi
 job. Đừng huỷ giữa chừng: huỷ không chắc hoàn lại lượt. Nếu job báo "không chắc MaiVideo đã nhận" thì xem ở Cần bạn trước khi gửi lại (gửi lại tốn thêm lượt).
@@ -311,8 +308,6 @@ bạn không cần làm gì; nếu vẫn lỗi sau vài lần, chờ vài phút 
 **Lỗi 401/403 từ nhà cung cấp.** Khoá API sai hoặc hết hạn. Cập nhật ở Cài đặt > Kết nối.
 
 **Nội dung bị từ chối (moderation).** Sửa prompt của clip cho nhẹ đi rồi tạo lại; đừng thử lại y nguyên.
-
-**Việc bị "vượt ngân sách".** Vào Cài đặt > Ngân sách nâng trần, hoặc huỷ các việc đang giữ.
 
 **Việc "bị ngắt" sau khi tắt/mở lại app.** App nối tiếp việc theo mã bên nhà cung cấp, không tạo trùng; mở Việc hoặc Cần bạn để xem.
 

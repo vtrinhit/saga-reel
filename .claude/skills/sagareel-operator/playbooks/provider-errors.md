@@ -1,4 +1,4 @@
-# Playbook: lỗi provider, hạn mức, ngân sách
+# Playbook: lỗi provider, hạn mức của provider
 
 ## Chẩn đoán
 
@@ -11,7 +11,6 @@
 
 | Tình huống | Làm gì |
 |---|---|
-| `budget_exceeded` | Dừng. Báo đã dùng/trần từ `sr_budget_status`. Chỉ người dùng được nâng trần (Cài đặt). Không đổi sang kết nối khác để lách. |
 | Hết hạn mức / 429 của provider | Job tự thử lại khi lỗi tạm thời. Không spam `job.retry`; chờ, hoặc hỏi người dùng có đổi kết nối không. |
 | 401/403 (khoá sai/hết hạn) | Báo người dùng cập nhật kết nối trong Cài đặt. Agent không đọc/in khoá API. |
 | Nội dung bị từ chối (moderation) | Đề xuất sửa prompt (`sr_clip_update`) cho người dùng duyệt; không thử lại y nguyên. |

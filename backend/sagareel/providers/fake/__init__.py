@@ -1,7 +1,7 @@
 """Adapter giả `fake_*`: chạy cục bộ, không mạng, không tốn tiền — cho test tự động, e2e dài và chạy thử.
 
 Mọi adapter giả nhận `options.health` ∈ {alive, dead, not_configured, unknown} để giả lập kết quả kiểm tra sức khoẻ.
-Ngân sách không tính adapter có id bắt đầu bằng `fake_` (`services.budget`).
+Media tạo bởi adapter có id bắt đầu bằng `fake_` mang nguồn gốc `fake`.
 """
 
 from __future__ import annotations

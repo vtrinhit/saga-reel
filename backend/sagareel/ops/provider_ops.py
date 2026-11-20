@@ -33,7 +33,7 @@ from sagareel.providers.base import (
     TTSRequest,
     VideoRequest,
 )
-from sagareel.services import budget, confirm, jobs, media, seed
+from sagareel.services import confirm, jobs, media, seed
 from sagareel.services import provider_jobs as pj
 from sagareel.services.providers import ProviderService, get_row
 from sagareel.services.settings import global_layer
@@ -406,20 +406,12 @@ def _require_capability(adapter: Adapter, key: str, value: Any, label: str) -> N
 
 async def _dispatch(
     ctx: OpContext, job_type: str, conn: Connection, enabled: bool, adapter: Adapter, req: Any, params: dict,
-    *, dry_run: bool, budget_kind: str | None,
+    *, dry_run: bool,
 ) -> dict:
     estimate = {**await adapter.estimate(req), "kind": adapter.kind, "connection": conn.name,
                 "connection_id": conn.id, "adapter": adapter.adapter_id, "enabled": enabled}
 
     def run() -> dict:
-        if budget_kind is not None:
-            with ctx.services.db.session() as s:
-                if dry_run:
-                    estimate["budget"] = budget.status(s, budget_kind, resolver=ctx.services.resolver,
-                                                       project_id=ctx.project_id)
-                else:  # chặn sớm khi đã biết vượt ngân sách (job kiểm tra lại trước khi gọi provider)
-                    budget.check(s, budget_kind, estimate.get("units", 1), conn.id, resolver=ctx.services.resolver,
-                                 project_id=ctx.project_id)
         if dry_run:
             return {"estimate": estimate}
         attempts = {"max_attempts": pj.MAX_ATTEMPTS[job_type]} if job_type in pj.MAX_ATTEMPTS else {}
@@ -461,8 +453,7 @@ async def provider_try_image(ctx: OpContext, p: TryImageParams) -> dict:
     req = ImageRequest(prompt=p.prompt, refs=[], aspect=aspect, resolution=resolution, model=model, quality=None,
                        out_dir=_DRY_DIR)
     params = {"prompt": p.prompt, "aspect": aspect, "resolution": resolution, "model": model}
-    return await _dispatch(ctx, pj.TRY_IMAGE, conn, enabled, adapter, req, params, dry_run=p.dry_run,
-                           budget_kind="image")
+    return await _dispatch(ctx, pj.TRY_IMAGE, conn, enabled, adapter, req, params, dry_run=p.dry_run)
 
 
 def _nearest_aspect(ctx: OpContext, width: int | None, height: int | None) -> str:
@@ -513,8 +504,7 @@ async def provider_try_video(ctx: OpContext, p: TryVideoParams) -> dict:
                        aspect=aspect, out_path=_DRY_DIR / "video.mp4")
     params = {"image_media_id": p.image_media_id, "prompt": p.prompt, "duration": duration,
               "resolution": resolution, "aspect": aspect}
-    return await _dispatch(ctx, pj.TRY_VIDEO, conn, enabled, adapter, req, params, dry_run=p.dry_run,
-                           budget_kind="video")
+    return await _dispatch(ctx, pj.TRY_VIDEO, conn, enabled, adapter, req, params, dry_run=p.dry_run)
 
 
 class TryTTSParams(BaseModel):
@@ -534,7 +524,7 @@ async def provider_try_tts(ctx: OpContext, p: TryTTSParams) -> dict:
     conn, enabled, adapter, voice = await anyio.to_thread.run_sync(prepare)
     req = TTSRequest(text=p.text, voice=voice, out_path=_DRY_DIR / "tts.mp3")
     return await _dispatch(ctx, pj.TRY_TTS, conn, enabled, adapter, req, {"text": p.text, "voice": voice},
-                           dry_run=p.dry_run, budget_kind=None)
+                           dry_run=p.dry_run)
 
 
 class TrySTTParams(BaseModel):
@@ -554,7 +544,7 @@ async def provider_try_stt(ctx: OpContext, p: TrySTTParams) -> dict:
     conn, enabled, adapter = await anyio.to_thread.run_sync(prepare)
     req = STTRequest(audio=_DRY_DIR / "audio", lang=p.lang, word_timestamps=True)
     return await _dispatch(ctx, pj.TRY_STT, conn, enabled, adapter, req,
-                           {"audio_media_id": p.audio_media_id, "lang": p.lang}, dry_run=False, budget_kind=None)
+                           {"audio_media_id": p.audio_media_id, "lang": p.lang}, dry_run=False)
 
 
 class TryLLMParams(BaseModel):
@@ -587,5 +577,5 @@ async def provider_try_llm(ctx: OpContext, p: TryLLMParams) -> dict:
                      images=[_DRY_DIR / "image"] if p.image_media_id is not None else [])
     return await _dispatch(ctx, pj.TRY_LLM, conn, enabled, adapter, req,
                            {"prompt": p.prompt, "model": model, "image_media_id": p.image_media_id},
-                           dry_run=False, budget_kind=None)
+                           dry_run=False)
 

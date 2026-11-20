@@ -30,7 +30,7 @@ sai) rồi sửa params; đừng thử lại y nguyên lỗi 4xx.
 `docs/schema/project-spec.schema.json`. Mọi tham chiếu là **khoá ổn định** (project/asset/look/sequence/scene/clip key;
 thoại `clip#n`, mục timeline `track@clip#n` theo vị trí; media theo sha256 + đường dẫn; provider theo tên kết nối).
 `project.plan(spec_text | upload_id)` → `creates`, `updates` (diff từng trường), `delete_candidates` (**chỉ liệt kê**,
-không bao giờ tự xoá), `estimate` (ảnh/video/giọng/render + ngân sách), `warnings`, `plan_fingerprint` → cho người dùng
+không bao giờ tự xoá), `estimate` (ảnh/video/giọng/render), `warnings`, `plan_fingerprint` → cho người dùng
 xem → `project.apply(spec_text, plan_fingerprint)`: một change set (hoàn tác được), áp lại = không đổi gì, dữ liệu đổi
 sau plan → `plan_stale` (409, plan lại).
 
@@ -45,9 +45,8 @@ provider). Đọc/sửa qua op `skill.list` / `skill.get` / `skill.update` (bả
 1. **Xoá hai bước.** Op destructive (`*.delete`…) luôn đi kèm `*.delete_preview`: gọi preview → nhận
    `{impact, confirm_token}` → **báo người dùng ảnh hưởng** → chỉ khi được đồng ý mới gọi `*.delete(confirm_token)`.
    Không tự xoá hàng loạt.
-2. **Tiền và hạn mức.** Op `costly` (tạo ảnh/video/giọng/LLM) có `dry_run`: chạy `dry_run: true` trước để xem ước
-   tính (số ảnh, video, giây, tiền nếu biết), xin đồng ý khi lớn. Ngân sách vượt → job bị chặn `budget_exceeded`
-   (xem `budget.status`); **không** tìm cách lách, báo người dùng.
+2. **Tiền.** Op `costly` (tạo ảnh/video/giọng/LLM) có `dry_run`: luôn ước tính trước khi chạy (`dry_run: true`) để
+   xem số ảnh, video, giây, tiền nếu biết; báo người dùng và xin đồng ý khi lớn.
 3. **Gate.** Quy trình có điểm dừng chờ người duyệt (job `needs_attention`, `waiting_*`, `interrupted`). Dừng lại,
    tóm tắt cho người dùng, chờ quyết định — không tự duyệt thay.
 4. **Job chạy lâu.** Op `long_running` trả `job_id`: `sr_job_wait(ids, timeout)` / `sagareel job wait`; hết giờ không

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleAlert, Play } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { callOp } from '../../api/ops';
 import { errorMessage, gateLabel, untilFirstGate, type PipelinePlan } from '../../lib/activity';
@@ -33,7 +33,7 @@ interface WorkflowPreset {
 }
 
 /**
- * "Chạy tới gate kế tiếp": chọn quy trình → `pipeline.run` dry_run (ước tính ảnh/video/LLM của phần còn lại, ngân sách)
+ * "Chạy tới gate kế tiếp": chọn quy trình → `pipeline.run` dry_run (ước tính ảnh/video/LLM của phần còn lại)
  * → chạy thật. Quy trình tự dừng ở gate bật đầu tiên — giá sau gate được báo lại ở GateCard.
  */
 export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workflowKey, onStarted }: RunToGateDialogProps) {
@@ -76,18 +76,14 @@ export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workfl
   });
 
   const est = plan.data?.estimate;
-  const b = est?.budget;
-  const credits = (b?.image?.enabled ? (est?.images ?? 0) : 0) + (b?.video?.enabled ? (est?.videos ?? 0) : 0);
-  const over =
-    (b?.image?.enabled && b.image.remaining != null && (est?.images ?? 0) > b.image.remaining) ||
-    (b?.video?.enabled && b.video.remaining != null && (est?.videos ?? 0) > b.video.remaining);
+  const credits = (est?.images ?? 0) + (est?.videos ?? 0);
   // `steps` = [{key, units, llm_calls, cost}] theo thứ tự: phần tới gate đầu là phần chạy ngay; cột sau là cả quy trình.
   const seg = untilFirstGate(plan.data?.steps);
   const firstGate = seg.gate ?? plan.data?.step_keys?.find((s) => s.startsWith('gate:')) ?? null;
   const rows = est
     ? [
-        { kind: 'Ảnh', now: seg.images, n: est.images, unit: b?.image?.enabled ? 'lượt' : 'không giới hạn' },
-        { kind: 'Video', now: seg.videos, n: est.videos, unit: b?.video?.enabled ? 'lượt' : 'không giới hạn' },
+        { kind: 'Ảnh', now: seg.images, n: est.images, unit: 'lượt' },
+        { kind: 'Video', now: seg.videos, n: est.videos, unit: 'lượt' },
         { kind: 'Câu thoại TTS', now: seg.tts, n: est.tts ?? seg.tts, unit: 'câu' },
         { kind: 'Lần gọi LLM', now: seg.llm, n: est.llm_calls, unit: 'token' },
       ]
@@ -161,15 +157,7 @@ export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workfl
             <p className="text-xs text-fg-2">
               {firstGate ? `Dừng ở gate ${gateLabel(firstGate)} để bạn duyệt. ` : 'Quy trình không có gate — chạy tới hết. '}
               Cột “Cả quy trình” là toàn bộ phần chưa làm; tập chưa chia clip được ước theo thể loại.
-              {b?.image?.enabled && b.image.remaining != null ? ` Ngân sách ảnh còn ${nf.format(b.image.remaining)} lượt.` : ''}
-              {b?.video?.enabled && b.video.remaining != null ? ` Ngân sách video còn ${nf.format(b.video.remaining)} lượt.` : ''}
             </p>
-            {over ? (
-              <div role="alert" className="sr-warnbox flex items-start gap-2 rounded-sm px-2.5 py-2 text-sm">
-                <CircleAlert className="sr-ico mt-0.5 text-warn" aria-hidden />
-                <span>Vượt ngân sách tháng: việc tốn lượt sẽ đứng chờ ở trạng thái “vượt ngân sách” cho tới khi bạn nâng ngân sách.</span>
-              </div>
-            ) : null}
             {offline ? <p className="text-xs text-state-failed">Đang mất kết nối với máy nhà — chưa chạy được.</p> : null}
           </>
         ) : null}

@@ -507,8 +507,7 @@ def retry_job(
     Dùng lại chính dòng job (id giữ nguyên cho UI); kết quả cũ bị xoá. Provider đã nhận job (`external_id`): mặc định
     **giữ** `external_id`/`external_state` để lần chạy tới nối lại (poll) đúng job đó — không trả tiền lần hai;
     `force_new=True` xoá chúng → tạo job trả phí mới. Chưa có `external_id`: trạng thái provider cũ bị xoá như trước.
-    Nối lại kèm `params_patch` → 422 `params_patch_requires_new_job`. Lần gửi mới sau lần đã trả tiền (`force_new`, job
-    đã xong) tách dòng `spend` cũ khỏi job (`budget.detach`) để chúng vẫn được tính.
+    Nối lại kèm `params_patch` → 422 `params_patch_requires_new_job`.
     """
     job = get_job(session, job_id)
     if job.status not in RETRYABLE:
@@ -553,10 +552,6 @@ def retry_job(
             status=422,
             extra={"job_id": job_id, "external_id": job.external_id},
         )
-    # Lần gửi mới (không nối lại) sau một lần đã/có thể đã trả tiền: tách dòng chi tiêu cũ khỏi job để giữ chỗ/trả chỗ
-    # của lần mới không bao giờ xoá được chúng (vẫn được tính vào ngân sách).
-    if new_paid or (job.status == "succeeded" and not resume):
-        _budget().detach(session, job.id)
     gen = generation(job.external_state)
     was_cancelled = job.status == "cancelled"
     _reset_for_run(job)
@@ -612,12 +607,7 @@ def clear_attention(
         )
     if action == "resubmit":
         _check_patch(job, params_patch)
-    # Dòng chi tiêu có thể đã trả tiền thì giữ trong sổ (tách khỏi job): provider đã nhận (external_id), hoặc người
-    # dùng cho thất bại (giữ chỗ mập mờ — thận trọng). Chỉ `resubmit` một job chỉ mang dấu `submitting` (người dùng xác
-    # nhận provider chưa tạo) mới để lần gửi mới thay chỗ giữ đó.
     marker_only = has_submit_marker(job.external_id, job.external_state)
-    if not (marker_only and action == "resubmit"):
-        _budget().detach(session, job.id)
     gen = generation(job.external_state)
     # resubmit job provider đang giữ (vd. bị huỷ phía provider) = lần gửi mới → thế hệ mới (clientRef mới, provider không
     # gộp về job cũ). Job chỉ mang dấu `submitting`: giữ thế hệ → cùng clientRef, nếu provider thật ra đã tạo job thì nó
@@ -675,16 +665,7 @@ def cancel_idle(session: Session, job_id: int) -> Job | None:
     add_log(session, job_id, "info", "Đã huỷ.")
     job = session.get(Job, job_id)
     session.refresh(job)
-    if not job.external_id and not (job.external_state or {}).get(SUBMIT_MARKER_KEY):
-        # Người dùng huỷ job provider chưa từng nhận: trả chỗ ngân sách còn sót (vd. từ lần tắt app trước khi gửi).
-        _budget().release(session, job_id)
     return job
-
-
-def _budget() -> Any:
-    from sagareel.services import budget  # import muộn: budget → settings không được kéo vào lúc nạp module jobs
-
-    return budget
 
 
 # --- Tạm dừng toàn bộ (bền qua khởi động lại) ---------------------------------------------------------------------

@@ -1,6 +1,5 @@
 import { Check, Diamond, Eye, Flag, MessageSquare, TriangleAlert } from 'lucide-react';
 import { Link } from 'react-router';
-import type { BudgetStatus } from '../../api/types';
 import {
   gateLabel,
   gateTitle,
@@ -26,7 +25,6 @@ export interface GateCardProps {
   /** Dòng của tập trong `pipeline.run` dry_run. */
   plan?: PipelinePlan['sequences'][number] | null;
   planLoading?: boolean;
-  budget?: BudgetStatus | null;
   /** Tên dự án (hộp Cần bạn toàn app). */
   projectName?: string | null;
   viewer?: boolean;
@@ -79,8 +77,8 @@ export function gateChecklist(gate: string, st: SequenceStatus | undefined, summ
 }
 
 /**
- * Thẻ gate (DESIGN §6.3): vòng đứt + tiêu đề + khi nào; checklist; NextCost (giá bước kế + ngân sách còn); chân hai
- * nút. Người xem: không có chân. Vượt ngân sách: nút chính vẫn là "Duyệt và chạy tiếp" nhưng NextCost báo trước.
+ * Thẻ gate (DESIGN §6.3): vòng đứt + tiêu đề + khi nào; checklist; NextCost (giá bước kế); chân hai nút. Người xem:
+ * không có chân.
  */
 const PREVIEW_VARIANT: Record<string, string> = { animatic: 'animatic', draft: 'nháp', preview: 'xem trước', final: 'cuối' };
 
@@ -91,7 +89,6 @@ export function GateCard({
   status,
   plan,
   planLoading,
-  budget,
   projectName,
   viewer,
   approving,
@@ -100,7 +97,7 @@ export function GateCard({
   now = Date.now(),
 }: GateCardProps) {
   const seg = nextSegment(summary.steps ?? [], gate);
-  const cost = nextCost(seg, plan ?? null, budget ?? null);
+  const cost = nextCost(seg, plan ?? null);
   const checks = gateChecklist(gate, status, summary);
   const at = parseServerTime(summary.waiting?.since) ?? parseServerTime(summary.updated_at);
   const stage = stageOfStep(`gate:${gate.replace(/^gate:/, '')}`);

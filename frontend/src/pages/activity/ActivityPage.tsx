@@ -35,7 +35,6 @@ import { toast } from '../../stores/toast';
 import {
   useActivityLiveRefresh,
   useAgentControl,
-  useBudgetStatus,
   useGateActions,
   useGateDetails,
   useJobs,
@@ -87,7 +86,6 @@ export function ActivityView({ projectId }: { projectId: number | null }) {
   const drift = Number(projectInfo.data?.counts?.drift ?? 0) || 0;
   const jobs = useJobs(projectId);
   const history = useRecentHistory(projectId);
-  const budget = useBudgetStatus();
   const tokens = useTokens(!viewer);
   const actions = useGateActions();
   const undo = useUndoChangeSet(projectId);
@@ -209,7 +207,6 @@ export function ActivityView({ projectId }: { projectId: number | null }) {
                   status={details[i]?.status}
                   plan={details[i]?.plan}
                   planLoading={details[i]?.planLoading}
-                  budget={details[i]?.budget ?? budget.data ?? null}
                   viewer={viewer}
                   approving={actions.approve.isPending && actions.approve.variables?.sequenceId === g.sequenceId}
                   onApprove={() => actions.approve.mutate({ sequenceId: g.sequenceId!, gate: g.gate! })}
@@ -505,7 +502,7 @@ function JobList({ jobs, now, viewer }: { jobs: Job[]; now: number; viewer: bool
               <span className="flex min-w-0 items-center gap-2 py-px text-xs text-fg-2">
                 <StatusPill status={v.pill} label={v.label} />
                 <span className="truncate">
-                  {j.error_code === 'budget_exceeded' ? 'vượt ngân sách' : j.status === 'running' ? (j.stage ?? '') : (j.error_message ?? '')}
+                  {j.status === 'running' ? (j.stage ?? '') : (j.error_message ?? '')}
                   {at != null ? ` · ${formatRelative(at, now)}` : ''}
                 </span>
               </span>

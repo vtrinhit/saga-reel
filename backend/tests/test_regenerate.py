@@ -282,7 +282,7 @@ def test_dry_run_creates_nothing(client, conns, owner_ctx, seq):
                          "overrides": {"connection": "fake-img", "video_connection": "fake-vid", "takes": 2}})
     assert out["job_ids"] == [] and out["take_ids"] == []
     assert out["estimate"]["parts"]["image"]["jobs"] == 6 and out["estimate"]["parts"]["video"]["jobs"] == 6
-    assert "budget" in out["estimate"]["parts"]["image"]
+    assert "budget" not in out["estimate"]["parts"]["image"]
     with _db(client).session() as s:
         assert s.query(Take).count() == 0 and s.query(Job).count() == 0
 

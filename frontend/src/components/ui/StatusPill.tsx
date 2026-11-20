@@ -2,7 +2,7 @@ import { Check, CircleCheck, CircleAlert, CircleDot, Clock, Diamond, History, Lo
 import { cn } from '../../lib/cn';
 
 /**
- * Bảy trạng thái clip (DESIGN §3.2) + hai tông hệ thống (warn, ok) cho provider/ngân sách + `wait` (v2 §5.6: viền đứt
+ * Bảy trạng thái clip (DESIGN §3.2) + hai tông hệ thống (warn, ok) cho provider + `wait` (v2 §5.6: viền đứt
  * accent, nền trong suốt — "chờ bạn").
  */
 export type ClipStatus = 'queued' | 'running' | 'done' | 'failed' | 'stale' | 'drifted' | 'approved';

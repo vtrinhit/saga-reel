@@ -32,7 +32,7 @@ export interface DubResult {
   tts?: { job_ids?: number[] };
 }
 
-/** Hàng ước tính: LLM tính theo token (0 lượt ngân sách), TTS không tính lượt. */
+/** Hàng ước tính: LLM tính theo token (0 lượt), TTS không tính lượt. */
 export function dubRows(e: DubEstimate | null | undefined): EstimateRow[] {
   if (!e) return [];
   const rows: EstimateRow[] = [{ kind: `Lần gọi LLM (dịch ${e.to_translate} câu)`, quantity: e.llm_calls, unitCredits: 0 }];

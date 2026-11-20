@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, NotFound, ValidationFailed
 from sagareel.db.models import Clip, DialogueLine, Media, Project, Sequence, Take
-from sagareel.services import budget, clips, entities, jobs, staleness
+from sagareel.services import clips, entities, jobs, staleness
 
 GEN_IMAGE = "generate.image"
 GEN_VIDEO = "generate.video"
@@ -461,7 +461,6 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
 
     estimate: dict[str, Any] = {"jobs": len(steps), "takes": len(steps), "parts": {}}
     units: dict[str, float] = {}
-    paid_units: dict[str, float] = {}  # không tính kết nối giả (fake_*)
     durations: dict[int, tuple[int, str | None]] = {}
     for kind, typ in (("image", GEN_IMAGE), ("video", GEN_VIDEO)):
         if typ not in kinds:
@@ -488,8 +487,6 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
             g["jobs"] += 1
             g["units"] += float(est.get("units", 1))
             g["cost"] += float(est.get("cost") or 0)
-            if not adapter.adapter_id.startswith(budget.FAKE_PREFIX):
-                paid_units[kind] = paid_units.get(kind, 0.0) + float(est.get("units", 1))
         gl = list(groups.values())
         units[kind] = sum(g["units"] for g in gl)
         estimate["parts"][kind] = {**gl[0], "jobs": sum(g["jobs"] for g in gl), "units": units[kind],
@@ -501,20 +498,6 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
         estimate["parts"]["still_motion"] = {"jobs": sum(1 for st in steps if st["type"] == GEN_STILL), "units": 0,
                                              "cost": 0}
 
-    project_ids = {ci["project_id"] for ci in info.values()}
-    project_id = project_ids.pop() if len(project_ids) == 1 else None
-
-    def check_budget(dry: bool) -> None:
-        with ctx.services.db.session() as s:
-            for kind in units:
-                if dry:
-                    estimate["parts"][kind]["budget"] = budget.status(s, kind, resolver=ctx.services.resolver,
-                                                                      project_id=project_id)
-                else:
-                    budget.check(s, kind, paid_units.get(kind, 0.0), None, resolver=ctx.services.resolver,
-                                 project_id=project_id)
-
-    await anyio.to_thread.run_sync(check_budget, dry_run)
     warnings = sorted({w for _, w in durations.values() if w})
     audio_job_ids: list[int] = []
     if part in ("audio", "subtitle", "all"):

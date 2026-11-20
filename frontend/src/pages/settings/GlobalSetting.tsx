@@ -37,7 +37,6 @@ export function useSetGlobal() {
       (await callOp('settings.set_global', { values: { [v.key]: v.value } })) as Resolved[],
     onSuccess: (data, v) => {
       qc.setQueryData(qk.settings, data);
-      void qc.invalidateQueries({ queryKey: qk.budget });
       if (v.silent) return;
       toast({
         tone: 'success',
@@ -45,7 +44,6 @@ export function useSetGlobal() {
         undo: async () => {
           const back = (await callOp('settings.set_global', { values: { [v.key]: v.previous } })) as Resolved[];
           qc.setQueryData(qk.settings, back);
-          void qc.invalidateQueries({ queryKey: qk.budget });
         },
       });
     },

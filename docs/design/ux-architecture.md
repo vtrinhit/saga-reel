@@ -81,7 +81,7 @@ Route giữ tương thích cơ chế `featureRoutes` (khoá theo đoạn đầu 
 /login
 /projects                         Dự án (lưới thẻ)                                  G
 /presets                          Mẫu: thể loại, quy trình, nền tảng, phụ đề, giọng…  M
-/settings/{providers,llm,access,budget,storage}                                       M0 + M
+/settings/{providers,llm,access,concurrency,storage}                                  M0 + M
 /jobs                             Việc toàn app                                       M0
 /inbox                            **Cần bạn toàn app** (mọi dự án)                     G0
 /p/:pid                           → redirect **overview** (thay vì library)            G0
@@ -99,7 +99,7 @@ Route giữ tương thích cơ chế `featureRoutes` (khoá theo đoạn đầu 
 /p/:pid/export                    Xuất (?seq=) ma trận tập × nền tảng × ngôn ngữ       I
 /p/:pid/activity                  **Hoạt động**: gate, agent, việc, lịch sử theo dự án G0 khung · M
 /p/:pid/history                   Lịch sử phiên bản (undo/redo/restore)               M
-/p/:pid/settings                  Cài đặt dự án (style, ngôn ngữ, nền tảng, ngân sách, quy trình) G
+/p/:pid/settings                  Cài đặt dự án (style, ngôn ngữ, nền tảng, quy trình) G
 /p/:pid/jobs                      Việc của dự án (giữ từ M0)                           M0
 /p/:pid/watch                     Xem thành phẩm (điện thoại)                          I
 ```
@@ -107,7 +107,7 @@ Route giữ tương thích cơ chế `featureRoutes` (khoá theo đoạn đầu 
 ### 3.1 Điều hướng
 
 - **Topbar (mọi màn, 48px):** dấu SagaReel · Dự án ▾ (tên thật qua `project.get`) · Tập ▾ (khi đang ở trong tập) ·
-  khoảng trống · ô `Ctrl K` · **đồng hồ chi phí** · **chip agent** · **chip Cần bạn** · chip Việc · chip Máy nhà/Từ xa.
+  khoảng trống · ô `Ctrl K` · **chip agent** · **chip Cần bạn** · chip Việc · chip Máy nhà/Từ xa.
 - **Rail dự án (≥1280, sắp theo thứ tự làm phim — rail tự nó là dây chuyền cấp dự án):**
   Tổng quan · Câu chuyện · Thư viện · Duyệt · Xuất │ Hoạt động · Lịch sử · Cài đặt dự án.
   Không có mục "Tập" riêng: danh sách tập **là** ma trận ở Tổng quan (một chỗ duy nhất để quản lý, sắp, nhân bản, xoá tập).
@@ -146,7 +146,6 @@ gộp vào main lúc viết.
 | `preset.*` | Mẫu | Cài đặt dự án (chọn preset) |
 | `export.check/create/list/get/open_folder` | Xuất | Thanh chặng › Xuất, điện thoại Xem |
 | `job.*` (`list/get/logs/wait/cancel/retry/prioritize/pause_all/resume_all/clear_attention`) | Việc | chip Việc, Hoạt động, thanh lô nổi |
-| `budget.status` | Đồng hồ chi phí (topbar), Cài đặt › Ngân sách | EstimateDialog, GateCard |
 | `history.list/undo/redo/restore` | Lịch sử | `Ctrl Z`, toast Hoàn tác, Hoạt động |
 | `settings.schema/explain/set_global` | Cài đặt, SourceBadge | mọi trường có giá trị kế thừa |
 | `provider.*`, `llm.*` | Cài đặt › Kết nối, Định tuyến LLM | chip sức khoẻ trong EstimateDialog |
@@ -175,8 +174,8 @@ gộp vào main lúc viết.
 
 ### 5.2 Sản xuất tập N của phim dài tập, chạy lô
 1. Tổng quan, lọc "Arc 3", chọn tập 41–50 (Shift-click) → thanh lô: **Chạy tới gate kế tiếp · 10 tập**.
-2. EstimateDialog gom theo chặng: "Kịch bản 10 × LLM · Phân cảnh 10 × LLM · Khung hình 480 ảnh = 480 lượt MaiVideo — vượt
-   ngân sách tháng còn 312 lượt" → băng warn + lựa chọn "Chạy tới hết Phân cảnh (không tốn lượt ảnh)". Người dùng chọn.
+2. EstimateDialog gom theo chặng: "Kịch bản 10 × LLM · Phân cảnh 10 × LLM · Khung hình 480 ảnh = 480 lượt MaiVideo" + lựa
+   chọn "Chạy tới hết Phân cảnh (không tốn lượt ảnh)". Người dùng chọn (một lần xác nhận).
 3. Ma trận cập nhật sống qua SSE; mỗi tập dừng ở gate `chờ bạn` (ô viền vàng đứt). Chip Cần bạn tăng số.
 
 ### 5.3 Duyệt / tạo lại 200 take
@@ -205,7 +204,7 @@ gộp vào main lúc viết.
 ### 5.6 Duyệt gate từ điện thoại
 1. Thông báo ngoài app (không thuộc phạm vi) hoặc mở web → Cần bạn (thẻ gate đứng đầu).
 2. GateCard điện thoại: xem animatic (player toàn bề ngang), checklist, **giá của bước kế** ("48 video GrokTele · không tính
-   lượt · ~35 phút"), ngân sách còn. Hai nút 48px ở đáy: **Trả lại** · **Duyệt và chạy tiếp**.
+   lượt · ~35 phút"). Hai nút 48px ở đáy: **Trả lại** · **Duyệt và chạy tiếp**.
 3. Trả lại → sheet đáy nhập góp ý (16px) → gửi `gate.reject(feedback)`; agent đang phụ trách thấy góp ý trong Hoạt động.
 4. Vai trò `viewer` (mật khẩu người xem): thấy thẻ, không thấy hai nút; dòng "Chỉ chủ dự án duyệt được gate".
 
@@ -228,7 +227,6 @@ gộp vào main lúc viết.
 | Mất kết nối | OfflineBanner (có sẵn); khoá nút trả phí, vẫn sửa chữ; thay đổi xếp hàng cục bộ | [Thử ngay] |
 | Server khởi động lại (`boot_id` đổi) | banner ok 3 s "Máy nhà vừa khởi động lại — đã tải lại dữ liệu"; việc `interrupted` hiện ở Cần bạn | [Xem việc bị ngắt] |
 | Phiên hết hạn | SessionExpiredModal (có sẵn) | đăng nhập lại tại chỗ |
-| `budget_exceeded` | việc đứng `Chờ · vượt ngân sách` (pill warn); đồng hồ chi phí đỏ; thẻ Cần bạn "18 việc chờ vì vượt ngân sách tháng" | [Nâng ngân sách] [Huỷ việc] |
 | `stale_write` (409) | trường quay về giá trị server, viền failed nháy 1 lần, toast "agent:biên-tập vừa sửa Clip 18. Đã tải bản mới — chữ bạn gõ ở trong khay nháp." | [Xem khác biệt] [Dùng bản của tôi] |
 | `undo_conflict` | modal liệt kê thực thể bị sửa tiếp; mỗi dòng "Khôi phục về phiên bản lúc 14:05" | không ghi đè ngầm |
 | `needs_attention` (`maivideo_job_unknown`) | Cần bạn, thẻ failed: "Không chắc MaiVideo đã nhận ảnh Clip 7" | [Xoá đánh dấu và gửi lại] (trả phí, ước tính) |
@@ -273,10 +271,10 @@ Phím đơn chữ không chạy khi focus ở ô nhập. Mọi phím có trong b
 ## 9. Chi phí và agent — hiện ở đâu
 
 **Chi phí** (người dùng đau nhất ở chi phí lặp — market-tools §1):
-- **Đồng hồ chi phí** ở topbar: "MaiVideo 412/1.236 lượt" + vạch; hover/bấm → popover theo provider (MaiVideo lượt,
-  GrokTele "không giới hạn", LLM token tháng), ngân sách tháng dự án; > 80% → warn; chặn → failed + số việc bị giữ.
+- Không có trần/ngân sách (đã bỏ): mọi việc trả phí luôn hiện **hộp ước tính** (số ảnh/video/giọng/dựng, thời gian)
+  và chỉ một lần xác nhận trước khi chạy.
 - **Nút trả phí ghi giá**: "Tạo lại · 1 lượt", "Chạy tới gate · 480 lượt".
-- **GateCard** luôn hiện giá bước kế tiếp + ngân sách còn — vì duyệt gate *là* cho phép tiêu tiền.
+- **GateCard** luôn hiện giá bước kế tiếp — vì duyệt gate *là* cho phép tiêu tiền.
 - **Tổng quan** có cột Chi phí thật mỗi tập (gồm mọi lần tạo lại, `sequence.cost_summary`); Take hiện chi phí cộng dồn.
 
 **Agent:**
@@ -292,9 +290,9 @@ Phím đơn chữ không chạy khi focus ở ô nhập. Mọi phím có trong b
 
 1. **Dây chuyền hai tầng thay cho tab công cụ.** Ma trận tập × chặng ở cấp dự án, thanh chặng ở cấp tập; công cụ vẫn gọi
    thẳng được. Trả lời "tập nào ở đâu" mà không phải nhớ.
-2. **"Cần bạn" là hộp thư quyết định chung**, và là màn chính trên điện thoại. Gate, lỗi cần người, lệch, việc vượt ngân
-   sách, yêu cầu từ agent — một chỗ.
-3. **Duyệt gate = cho phép tiêu tiền, nên GateCard luôn ghi giá bước kế tiếp** và ngân sách còn, trên cả điện thoại.
+2. **"Cần bạn" là hộp thư quyết định chung**, và là màn chính trên điện thoại. Gate, lỗi cần người, lệch, yêu cầu từ
+   agent — một chỗ.
+3. **Duyệt gate = cho phép tiêu tiền, nên GateCard luôn ghi giá bước kế tiếp**, trên cả điện thoại.
 4. **Vàng sáp chỉ cho quyết định của người.** Vòng khoanh đặc = bạn đã quyết; vòng khoanh đứt = đang chờ bạn quyết; agent
    chỉ có dấu xám. Người dùng liếc là biết cái gì do mình chốt.
 5. **Agent là đồng nghiệp hiện hình**: chip, panel Hoạt động, dấu actor trên thực thể, hoàn tác theo actor, tạm dừng agent
