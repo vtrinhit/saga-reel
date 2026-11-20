@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 MAX_NODES = 500_000
+_Loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)  # libyaml nhanh hơn nhiều khi có
 
 
 def _expanded_size(root: yaml.Node, limit: int) -> int:
@@ -47,8 +48,12 @@ def _expanded_size(root: yaml.Node, limit: int) -> int:
 def load(text: str, *, max_nodes: int = MAX_NODES) -> Any:
     """Như `yaml.safe_load` (một tài liệu) nhưng tài liệu nở alias quá `max_nodes` nút hoặc alias đệ quy →
     `ValueError` (tiếng Việt). Lỗi cú pháp vẫn là `yaml.YAMLError`."""
-    node = yaml.compose(text, Loader=yaml.SafeLoader)
-    if node is None:
-        return None
-    _expanded_size(node, max_nodes)
-    return yaml.safe_load(text)
+    loader = _Loader(text)
+    try:
+        node = loader.get_single_node()
+        if node is None:
+            return None
+        _expanded_size(node, max_nodes)
+        return loader.construct_document(node)
+    finally:
+        loader.dispose()
