@@ -11,6 +11,7 @@ Cập nhật sau mỗi mốc và sau mỗi lần gọi provider thật.
 | 2026-11-19 | M0 | Thử âm Grok: ảnh bà cụ (MaiVideo, chậm >10 phút; lần chạy đầu bị dừng nhưng vẫn bị trừ lượt) | 2 | — | lifetime 1236→1234 |
 | 2026-11-19 | M0 T18 | Kiểm chứng qua app: provider.try_image MaiVideo (thuyền sông Hương) | 1 | — | qua job queue thật |
 | 2026-11-20 | bank | Ảnh nhân vật áo dài + 7 clip GrokTele lưu `data/research/bank` | 1 | 7 | phòng GrokTele hết hạn 21/11 |
+| 2026-11-20 | M5/M6/M4 | Kiểm chứng thật LLM: bible+dàn ý 3 tập+kịch bản+tách 14 clip+prompt; drift vision 94–98 điểm; phân tích kênh 4 clip; dịch+lồng tiếng EN; gói xuất TikTok vi+en (bìa, SRT, metadata, manifest, −14 LUFS) | 0 | 0 | sửa: datetime trong kết quả job, enum shot, tên mẫu 'Linh' trong motion prompt, bìa dính phụ đề/đè mặt, ngắt 'từ từ', metadata EN |
 | 2026-11-20 | M4 | Tập "Bến sương" 5 ảnh clip + TTS 4 câu + animatic 27 s (−14,0 LUFS) | 5 | 0 | GrokTele tắt → 4 job video `provider_unavailable`, chờ người dùng mở GrokTele |
 | 2026-11-20 | M1 | Sheet 5 góc Út Sen: look 2 (đúng) + look 1 (chạy nhầm, huỷ không kịp) | 10 | — | `data/research/m1_sheets.jpg`; nhất quán tốt |
 
