@@ -740,7 +740,7 @@ class Worker:
         return data
 
     def _publish(self, data: dict) -> None:
-        self.services.bus.publish("job.updated", data, project_id=data.get("project_id"))
+        jobs.publish_updated(self.services, data)
 
 
 __all__ = ["JobRun", "Worker", "retry_delay"]

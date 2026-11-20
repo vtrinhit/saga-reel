@@ -198,8 +198,10 @@ def count_pending(s: Session, sequence_ids: list[int]) -> dict[int, int]:
 
 
 def count_flags(s: Session, sequence_ids: list[int]) -> dict[int, dict[str, int]]:
-    """Số clip có cờ `stale` (stale_image/stale_video/stale_*), `drift`, `failed` theo tập."""
-    out = {i: {"stale": 0, "drift": 0, "failed": 0} for i in sequence_ids}
+    """Số clip có cờ `stale` (stale_image/stale_video/stale_*), `drift`, `failed` theo tập.
+
+    `stale` = clip có bất kỳ cờ cũ nào; `stale_image` / `stale_video` tách riêng ảnh cũ và video cũ."""
+    out = {i: {"stale": 0, "stale_image": 0, "stale_video": 0, "drift": 0, "failed": 0} for i in sequence_ids}
     if not sequence_ids:
         return out
     rows = s.execute(select(Clip.sequence_id, Clip.flags).where(
@@ -209,6 +211,10 @@ def count_flags(s: Session, sequence_ids: list[int]) -> dict[int, dict[str, int]
         flags = flags or {}
         if any(k.startswith("stale") and v for k, v in flags.items()):
             out[sid]["stale"] += 1
+        if flags.get("stale_image"):
+            out[sid]["stale_image"] += 1
+        if flags.get("stale_video"):
+            out[sid]["stale_video"] += 1
         if flags.get("drift"):
             out[sid]["drift"] += 1
         if flags.get("failed"):

@@ -19,6 +19,8 @@ from sagareel.services.audio import dialogue
 
 LANG_RE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$")
 BATCH = 40  # câu mỗi lần gọi LLM
+JOB_TYPE = "audio.translate_dub"
+LANE = "story"  # cùng lane với các công việc LLM
 
 
 def _load(ctx: OpContext, sequence_id: int, lang: str, force: bool) -> dict[str, Any]:
@@ -30,8 +32,11 @@ def _load(ctx: OpContext, sequence_id: int, lang: str, force: bool) -> dict[str,
         primary = (project.language or "vi")
         todo = [{"id": str(ln.id), "text": ln.text} for ln in lines
                 if ln.text.strip() and (force or not str((ln.translations or {}).get(lang) or "").strip())]
+        # Câu chưa có bản dịch nhưng sẽ được đọc sau khi dịch: TTS dry-run (plan_tts) bỏ sót vì chưa có chữ để đọc.
+        fresh = [ln for ln in lines if ln.source == "tts" and ln.text.strip()
+                 and not str((ln.translations or {}).get(lang) or "").strip()]
         return {"project_id": project.id, "primary": primary, "lines": len(lines), "todo": todo,
-                "title": seq.title}
+                "title": seq.title, "untranslated_tts": {"lines": len(fresh), "chars": sum(len(x.text) for x in fresh)}}
 
 
 async def _translate(ctx: OpContext, lang: str, items: list[dict[str, str]]) -> dict[str, str]:
@@ -76,8 +81,7 @@ def _save(ctx: OpContext, lang: str, translated: dict[str, str], project_id: int
     return u.change_set_id
 
 
-async def translate_dub(ctx: OpContext, sequence_id: int, lang: str, *, dry_run: bool = False, force: bool = False,
-                        tts: bool = True) -> dict[str, Any]:
+async def _prepare(ctx: OpContext, sequence_id: int, lang: str, force: bool) -> tuple[dict[str, Any], dict[str, Any]]:
     if not LANG_RE.match(lang or ""):
         raise ValidationFailed("Mã ngôn ngữ không hợp lệ (vd. en, ja, zh-CN).")
     info = await anyio.to_thread.run_sync(_load, ctx, sequence_id, lang, force)
@@ -87,24 +91,59 @@ async def translate_dub(ctx: OpContext, sequence_id: int, lang: str, *, dry_run:
     todo = info["todo"]
     estimate = {"lines": info["lines"], "to_translate": len(todo), "chars": sum(len(x["text"]) for x in todo),
                 "llm_calls": -(-len(todo) // BATCH) if todo else 0}
+    return info, estimate
+
+
+async def translate_dub(ctx: OpContext, sequence_id: int, lang: str, *, dry_run: bool = False, force: bool = False,
+                        tts: bool = True) -> dict[str, Any]:
+    """Op: `dry_run` → ước tính (đếm cả câu chưa dịch); còn lại xếp job `audio.translate_dub` và trả `job_id`."""
+    from sagareel.services import jobs
+
+    info, estimate = await _prepare(ctx, sequence_id, lang, force)
     if dry_run:
         tts_est = None
         if tts:
             def est() -> dict:
                 return dialogue.generate(ctx, sequence_id=sequence_id, lang=lang, dry_run=True)
             try:
-                tts_est = (await anyio.to_thread.run_sync(est))["estimate"]
+                tts_est = dict((await anyio.to_thread.run_sync(est))["estimate"])
+                extra = info["untranslated_tts"]
+                tts_est["lines"] = int(tts_est.get("lines", 0)) + extra["lines"]
+                tts_est["chars"] = int(tts_est.get("chars", 0)) + extra["chars"]
+                tts_est["untranslated"] = extra["lines"]
             except AppError as e:
                 tts_est = {"error": e.code, "message": e.detail}
         return {"dry_run": True, "lang": lang, "estimate": {**estimate, "tts": tts_est}}
+
+    def submit() -> dict:
+        return jobs.submit(ctx.services, JOB_TYPE,
+                           {"sequence_id": sequence_id, "lang": lang, "force": force, "tts": tts,
+                            "project_id": info["project_id"], "actor": ctx.actor},
+                           lane=LANE, project_id=info["project_id"], sequence_id=sequence_id,
+                           client_ref=f"{JOB_TYPE}:{sequence_id}:{lang}", max_attempts=1,
+                           cost_estimate={"kind": "llm", "task": "translate", **estimate})
+
+    job = await anyio.to_thread.run_sync(submit)
+    return {"job_id": job["id"], "lang": lang, "estimate": estimate}
+
+
+async def run_dub(ctx: OpContext, sequence_id: int, lang: str, *, force: bool = False, tts: bool = True,
+                  progress: Any = None) -> dict[str, Any]:
+    """Thân job: dịch → lưu (một change set) → xếp job TTS. Kết quả job gồm `tts.job_ids`."""
+    info, estimate = await _prepare(ctx, sequence_id, lang, force)
+    todo = info["todo"]
+    if progress:
+        progress(None, stage=f"Đang dịch {len(todo)} câu sang {lang}")
     translated = await _translate(ctx, lang, todo) if todo else {}
     cs_id = await anyio.to_thread.run_sync(_save, ctx, lang, translated, info["project_id"]) if translated else None
     missing = [int(x["id"]) for x in todo if x["id"] not in translated]
     out: dict[str, Any] = {"lang": lang, "translated": len(translated), "missing": missing, "change_set_id": cs_id,
                            "estimate": estimate}
     if tts:
+        if progress:
+            progress(None, stage="Đang xếp lịch đọc TTS")
+
         def gen() -> dict:
             return dialogue.generate(ctx, sequence_id=sequence_id, lang=lang)
         out["tts"] = await anyio.to_thread.run_sync(gen)
     return out
-

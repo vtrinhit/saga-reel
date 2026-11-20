@@ -1109,7 +1109,7 @@
   },
   "read_only": false,
   "result_schema": null,
-  "summary": "Dịch lời thoại của tập sang ngôn ngữ khác (LLM translate → translations, hoàn tác được) rồi lồng tiếng TTS theo giọng từng ngôn ngữ; dry_run ước tính",
+  "summary": "Dịch lời thoại của tập sang ngôn ngữ khác (LLM translate → translations, hoàn tác được) rồi lồng tiếng TTS theo giọng từng ngôn ngữ; chạy dạng job (trả job_id, kết quả job có tts.job_ids); dry_run ước tính (đếm cả câu chưa dịch)",
   "viewer": false
  },
  {
@@ -2707,6 +2707,23 @@
        "title": "Has Take",
        "type": "boolean"
       },
+      "ids": {
+       "anyOf": [
+        {
+         "items": {
+          "type": "integer"
+         },
+         "maxItems": 500,
+         "type": "array"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Chỉ các clip có id này",
+       "title": "Ids"
+      },
       "no_scene": {
        "default": false,
        "title": "No Scene",
@@ -2965,6 +2982,23 @@
        "description": "Chỉ clip đã có take ảnh/video đang chọn (review=pending + has_take = đúng số `takes_pending`)",
        "title": "Has Take",
        "type": "boolean"
+      },
+      "ids": {
+       "anyOf": [
+        {
+         "items": {
+          "type": "integer"
+         },
+         "maxItems": 500,
+         "type": "array"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Chỉ các clip có id này",
+       "title": "Ids"
       },
       "no_scene": {
        "default": false,
@@ -5872,6 +5906,19 @@
      "default": null,
      "title": "Project Id"
     },
+    "sequence_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Chỉ job của tập này",
+     "title": "Sequence Id"
+    },
     "status": {
      "anyOf": [
       {
@@ -7708,6 +7755,12 @@
      "default": null,
      "description": "Toàn cục: `next_cursor` của trang trước",
      "title": "Cursor"
+    },
+    "include_failed": {
+     "default": false,
+     "description": "Kèm `active_only`: thêm cả quy trình đã lỗi (hộp thư)",
+     "title": "Include Failed",
+     "type": "boolean"
     },
     "limit": {
      "default": 200,
@@ -11291,6 +11344,23 @@
        "description": "Chỉ clip đã có take ảnh/video đang chọn (review=pending + has_take = đúng số `takes_pending`)",
        "title": "Has Take",
        "type": "boolean"
+      },
+      "ids": {
+       "anyOf": [
+        {
+         "items": {
+          "type": "integer"
+         },
+         "maxItems": 500,
+         "type": "array"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Chỉ các clip có id này",
+       "title": "Ids"
       },
       "no_scene": {
        "default": false,

@@ -37,6 +37,7 @@ class CommittedChange(NamedTuple):
     change_set_id: int
     project_id: int | None
     entities: tuple[tuple[str, int], ...]
+    kinds: tuple[tuple[str, int, str], ...] = ()  # (loại, id, created|updated|deleted|moved)
 
 
 # Change set đã commit trong op đang chạy: `execute` đặt một list mới, `UnitOfWork` append vào (cùng object list,
@@ -201,11 +202,18 @@ def _publish_entity_changed(ctx: OpContext, changes: list[CommittedChange]) -> N
     try:
         ids = [c.change_set_id for c in changes]
         entities = list(dict.fromkeys(e for c in changes for e in c.entities))
+        kinds: dict[str, str] = {}
+        for c in changes:
+            for et, eid, kind in c.kinds:
+                prev = kinds.get(f"{et}:{eid}")
+                # created rồi sửa vẫn là created; deleted là kết cuối cùng; còn lại lần ghi sau thắng.
+                kinds[f"{et}:{eid}"] = "created" if prev == "created" and kind in ("updated", "moved") else kind
         projects = {c.project_id for c in changes}
         project_id = projects.pop() if len(projects) == 1 else None
         ctx.services.bus.publish(
             "entity.changed",
-            {"change_set": ids[0] if len(ids) == 1 else ids, "entities": [list(e) for e in entities]},
+            {"change_set": ids[0] if len(ids) == 1 else ids, "entities": [list(e) for e in entities],
+             "kinds": kinds},
             project_id=project_id,
         )
     except Exception:

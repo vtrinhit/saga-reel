@@ -18,19 +18,22 @@ from __future__ import annotations
 
 import bisect
 import inspect
+import logging
 import math
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from sagareel.core.errors import AppError, Conflict, NotFound
 from sagareel.db.base import utcnow
 from sagareel.db.models import Job, JobLog
 from sagareel.services import system_state
+
+logger = logging.getLogger("sagareel.jobs")
 
 if TYPE_CHECKING:
     from sagareel.container import Services
@@ -246,6 +249,32 @@ def queue_positions(session: Session, rows: list[Job]) -> dict[int, int]:
     return {j.id: bisect.bisect_left(order.get(j.lane, []), (-j.priority, j.id)) + 1 for j in queued}
 
 
+def queue_position_of(session: Session, data: dict[str, Any]) -> int | None:
+    """Vị trí hàng đợi cho một job `queued` (đã ở dạng dict): MỘT câu SQL gộp theo lane, cùng thứ tự worker giành job."""
+    if data.get("status") != "queued":
+        return None
+    row = session.execute(
+        select(func.count()).where(
+            Job.status == "queued", Job.lane == data["lane"],
+            or_(Job.priority > data["priority"], and_(Job.priority == data["priority"], Job.id < data["id"])),
+        )
+    ).scalar_one()
+    return int(row) + 1
+
+
+def publish_updated(services: Services, data: dict) -> None:
+    """Phát `job.updated` kèm `queue_position` (None nếu không còn `queued`). Không bao giờ ném lỗi."""
+    try:
+        if data.get("status") == "queued" and "queue_position" not in data:
+            with services.db.session() as s:
+                data = {**data, "queue_position": queue_position_of(s, data)}
+        else:
+            data = {**data, "queue_position": data.get("queue_position")}
+    except Exception:
+        logger.exception("Không tính được queue_position cho job #%s", data.get("id"))
+    services.bus.publish("job.updated", data, project_id=data.get("project_id"))
+
+
 def with_queue_position(session: Session, rows: list[Job]) -> list[dict[str, Any]]:
     pos = queue_positions(session, rows)
     return [{**job_dict(j), "queue_position": pos.get(j.id)} for j in rows]
@@ -357,7 +386,7 @@ def enqueue(
 
 def notify(services: Services, data: dict) -> None:
     """Phát `job.updated` cho một job đã commit và đánh thức worker (gọi được từ thread bất kỳ)."""
-    services.bus.publish("job.updated", data, project_id=data.get("project_id"))
+    publish_updated(services, data)
     worker = getattr(services, "worker", None)
     if worker is not None:
         worker.wake()
@@ -392,6 +421,7 @@ def list_jobs(
     type: str | None = None,  # noqa: A002
     lane: str | None = None,
     project_id: int | None = None,
+    sequence_id: int | None = None,
     cursor: int | None = None,
     limit: int = 50,
 ) -> tuple[list[Job], int | None]:
@@ -405,6 +435,8 @@ def list_jobs(
         q = q.where(Job.lane == lane)
     if project_id is not None:
         q = q.where(Job.project_id == project_id)
+    if sequence_id is not None:
+        q = q.where(Job.sequence_id == sequence_id)
     if cursor is not None:
         q = q.where(Job.id < cursor)
     rows = list(session.scalars(q.order_by(Job.id.desc()).limit(limit + 1)))

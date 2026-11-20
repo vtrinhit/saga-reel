@@ -37,6 +37,7 @@ class PipelineStatusParams(BaseModel):
     sequence_ids: list[int] | None = Field(default=None, max_length=500)
     project_id: int | None = Field(default=None, description="Bỏ trống cả sequence_ids = mọi dự án (phân trang)")
     active_only: bool = Field(default=False, description="Toàn cục: chỉ tập có quy trình chưa xong")
+    include_failed: bool = Field(default=False, description="Kèm `active_only`: thêm cả quy trình đã lỗi (hộp thư)")
     cursor: int | None = Field(default=None, description="Toàn cục: `next_cursor` của trang trước")
     limit: int = Field(default=200, ge=1, le=500)
 
@@ -71,7 +72,7 @@ def pipeline_run(ctx: OpContext, p: PipelineRunParams) -> dict:
     params=PipelineStatusParams, read_only=True, idempotent=True, mcp="tool")
 def pipeline_status(ctx: OpContext, p: PipelineStatusParams) -> dict:
     return engine.status(ctx, sequence_ids=p.sequence_ids, project_id=p.project_id, cursor=p.cursor, limit=p.limit,
-                         active_only=p.active_only)
+                         active_only=p.active_only, include_failed=p.include_failed)
 
 
 @op("pipeline.cancel", summary="Huỷ quy trình của tập (job quy trình + job con đang chờ/chạy)", params=SequenceIdParams,

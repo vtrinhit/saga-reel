@@ -8,11 +8,16 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from sagareel.core.context import OpContext
-from sagareel.core.ops import op
+from sagareel.core.ops import last_change_set_id, op
 from sagareel.ops.voice_ops import DeleteParams, DeletePreviewOut, IdsParams
 from sagareel.services.audio import dialogue
 
 Source = Literal["tts", "upload", "grok", "none"]
+
+
+def _cs(out: dict) -> dict:
+    """Kèm `change_set_id` của lần ghi (None = không có gì đổi) để UI hoàn tác đúng thao tác."""
+    return {**out, "change_set_id": last_change_set_id()}
 
 
 class DialogueCreateParams(BaseModel):
@@ -65,18 +70,18 @@ class DialogueListParams(BaseModel):
 @op("dialogue.create", summary="Thêm một câu thoại vào clip", params=DialogueCreateParams, mcp="tool")
 def dialogue_create(ctx: OpContext, p: DialogueCreateParams) -> dict:
     vals = p.model_dump(exclude={"clip_id", "text", "after_id"})
-    return dialogue.create(ctx, p.clip_id, p.text, after_id=p.after_id, **vals)
+    return _cs(dialogue.create(ctx, p.clip_id, p.text, after_id=p.after_id, **vals))
 
 
 @op("dialogue.update", summary="Sửa câu thoại (hoàn tác được)", params=DialogueUpdateParams, idempotent=True,
     mcp="tool")
 def dialogue_update(ctx: OpContext, p: DialogueUpdateParams) -> dict:
-    return dialogue.update(ctx, p.id, p.values, p.expected_updated_at)
+    return _cs(dialogue.update(ctx, p.id, p.values, p.expected_updated_at))
 
 
 @op("dialogue.move", summary="Đổi thứ tự / chuyển câu thoại sang clip khác", params=DialogueMoveParams, mcp="tool")
 def dialogue_move(ctx: OpContext, p: DialogueMoveParams) -> dict:
-    return {"items": dialogue.move(ctx, p.ids, p.after_id, p.clip_id)}
+    return _cs({"items": dialogue.move(ctx, p.ids, p.after_id, p.clip_id)})
 
 
 @op("dialogue.list", summary="Lời thoại của một clip hoặc cả tập (theo thứ tự)", params=DialogueListParams,
@@ -89,7 +94,7 @@ def dialogue_list(ctx: OpContext, p: DialogueListParams) -> dict:
     params=DialogueBulkSetParams, mcp="tool")
 def dialogue_bulk_set(ctx: OpContext, p: DialogueBulkSetParams) -> dict:
     lines = [x.model_dump(exclude_none=True) for x in p.lines]
-    return {"items": dialogue.bulk_set(ctx, p.clip_id, lines)}
+    return _cs({"items": dialogue.bulk_set(ctx, p.clip_id, lines)})
 
 
 @op("dialogue.delete_preview", summary="Xem tác động khi xoá câu thoại + confirm_token", params=IdsParams,
@@ -100,4 +105,4 @@ def dialogue_delete_preview(ctx: OpContext, p: IdsParams) -> dict:
 
 @op("dialogue.delete", summary="Xoá (mềm) câu thoại — cần confirm_token", params=DeleteParams, destructive=True)
 def dialogue_delete(ctx: OpContext, p: DeleteParams) -> dict:
-    return dialogue.delete(ctx, p.confirm_token)
+    return _cs(dialogue.delete(ctx, p.confirm_token))

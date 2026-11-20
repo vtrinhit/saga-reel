@@ -249,7 +249,9 @@ def test_translate_dub_and_list_audio_duration(client, owner_ctx, project, seq, 
     l2 = dialogue.create(owner_ctx, clips[1], "Dạ.", translations={"en": "Yes."})
     dry = rest(client, "audio.translate_dub", {"sequence_id": seq_id, "lang": "en", "dry_run": True})
     assert dry["estimate"]["to_translate"] == 1 and dry["estimate"]["llm_calls"] == 1 and not fake.calls
-    out = rest(client, "audio.translate_dub", {"sequence_id": seq_id, "lang": "en"})
+    assert dry["estimate"]["tts"]["lines"] == 2  # cả câu chưa dịch (l1) lẫn câu đã dịch (l2)
+    started = rest(client, "audio.translate_dub", {"sequence_id": seq_id, "lang": "en"})
+    out = wait_jobs(client, [started["job_id"]])[0]["result"]
     assert out["translated"] == 1 and out["missing"] == [] and isinstance(out["change_set_id"], int)
     with owner_ctx.services.db.session() as s:
         assert s.get(DialogueLine, l1["id"]).translations["en"] == "EN Con ơi, về ăn cơm đi."

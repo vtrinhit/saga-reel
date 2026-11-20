@@ -8,7 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from sagareel.core.context import OpContext
-from sagareel.core.ops import op
+from sagareel.core.ops import last_change_set_id, op
 from sagareel.services.audio import timeline
 
 
@@ -60,6 +60,11 @@ class TimelineRemoveParams(BaseModel):
     confirm_token: str | None = Field(default=None, description="Lấy từ timeline.remove_preview")
 
 
+def _cs(out: dict) -> dict:
+    """Kèm `change_set_id` của lần ghi (None = không có gì đổi) để UI hoàn tác đúng thao tác."""
+    return {**out, "change_set_id": last_change_set_id()}
+
+
 class TimelineListParams(BaseModel):
     sequence_id: int
     track: Track | None = None
@@ -80,13 +85,13 @@ def sound_list(ctx: OpContext, p: SoundListParams) -> dict:
 @op("timeline.add", summary="Thêm nhạc/SFX/title vào tập, neo vào clip", params=TimelineAddParams, mcp="tool")
 def timeline_add(ctx: OpContext, p: TimelineAddParams) -> dict:
     vals = p.model_dump(exclude={"sequence_id", "track"})
-    return timeline.timeline_add(ctx, p.sequence_id, p.track, **vals)
+    return _cs(timeline.timeline_add(ctx, p.sequence_id, p.track, **vals))
 
 
 @op("timeline.update", summary="Sửa mục timeline (neo, offset, thời lượng, tham số)", params=TimelineUpdateParams,
     idempotent=True, mcp="tool")
 def timeline_update(ctx: OpContext, p: TimelineUpdateParams) -> dict:
-    return timeline.timeline_update(ctx, p.id, p.values, p.expected_updated_at)
+    return _cs(timeline.timeline_update(ctx, p.id, p.values, p.expected_updated_at))
 
 
 @op("timeline.remove_preview", summary="Xem các mục timeline sẽ gỡ + confirm_token", params=TimelineRemovePreviewParams,
@@ -98,7 +103,7 @@ def timeline_remove_preview(ctx: OpContext, p: TimelineRemovePreviewParams) -> d
 @op("timeline.remove", summary="Gỡ mục timeline (xoá mềm, hoàn tác được) — cần confirm_token",
     params=TimelineRemoveParams, destructive=True, mcp="tool")
 def timeline_remove(ctx: OpContext, p: TimelineRemoveParams) -> dict:
-    return timeline.timeline_remove(ctx, p.confirm_token)
+    return _cs(timeline.timeline_remove(ctx, p.confirm_token))
 
 
 @op("timeline.list", summary="Các mục nhạc/SFX/title của tập", params=TimelineListParams, read_only=True,

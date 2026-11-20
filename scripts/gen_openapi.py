@@ -1,5 +1,5 @@
 """Sinh frontend/openapi.tmp.json từ create_app() (không cần chạy server), rồi:
-    cd frontend && npx openapi-typescript openapi.tmp.json -o src/api/schema.d.ts && del openapi.tmp.json
+    cd frontend && npx openapi-typescript openapi.tmp.json --default-non-nullable false -o src/api/schema.d.ts && del openapi.tmp.json
 Chạy: .venv\Scripts\python scripts\gen_openapi.py
 """
 

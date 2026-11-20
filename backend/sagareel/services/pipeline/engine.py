@@ -140,7 +140,7 @@ def park(services: Any, sequence_id: int, st: dict[str, Any], job_id: int | None
             if res.rowcount == 1:
                 data = jobs.job_dict(s.get(Job, job_id))
     if data is not None:
-        services.bus.publish("job.updated", data, project_id=data.get("project_id"))
+        jobs.publish_updated(services, data)
     services.bus.publish(EVENT, {"sequence_id": sequence_id, "status": status, "step": current_step_name(st),
                                  "waiting": st.get("waiting")}, project_id=project_id)
     return True
@@ -1017,7 +1017,7 @@ async def cancel(ctx: OpContext, sequence_id: int) -> dict[str, Any]:
                     job = jobs.cancel_idle(s, jid)
                     data = jobs.job_dict(job) if job is not None else None
                 if data is not None:
-                    ctx.services.bus.publish("job.updated", data, project_id=data.get("project_id"))
+                    jobs.publish_updated(ctx.services, data)
                 return data is not None
 
             ok = await _thread(idle)
@@ -1046,9 +1046,10 @@ async def cancel(ctx: OpContext, sequence_id: int) -> dict[str, Any]:
 
 
 def status(ctx: OpContext, *, sequence_ids: list[int] | None = None, project_id: int | None = None,
-           cursor: int | None = None, limit: int = 200, active_only: bool = False) -> dict:
+           cursor: int | None = None, limit: int = 200, active_only: bool = False,
+           include_failed: bool = False) -> dict:
     """Trạng thái quy trình: theo `sequence_ids`, theo `project_id`, hoặc toàn cục (mọi dự án, phân trang theo id
-    tập; `active_only` = chỉ tập có quy trình chưa xong). Gate đang chờ kèm `preview` (media dựng gần nhất)."""
+    tập; `active_only` = chỉ tập có quy trình chưa xong, `include_failed` thêm cả quy trình lỗi). Gate đang chờ kèm `preview` (media dựng gần nhất)."""
     with ctx.services.db.session() as s:
         next_cursor = None
         if sequence_ids:
@@ -1065,8 +1066,9 @@ def status(ctx: OpContext, *, sequence_ids: list[int] | None = None, project_id:
             q = (select(Sequence).join(Project, Project.id == Sequence.project_id)
                  .where(Sequence.deleted_at.is_(None), Project.deleted_at.is_(None)))
             if active_only:
-                q = q.where(text("json_extract(sequence.pipeline, '$.run.status') IN "
-                                 "('queued','running','waiting_review','waiting_input','pending_release','failed')"))
+                live = ("queued", "running", "waiting_review", "waiting_input", "pending_release")
+                names = ", ".join(f"'{n}'" for n in (*live, "failed") if include_failed or n != "failed")
+                q = q.where(text(f"json_extract(sequence.pipeline, '$.run.status') IN ({names})"))
             if cursor is not None:
                 q = q.where(Sequence.id > cursor)
             rows = list(s.scalars(q.order_by(Sequence.id).limit(limit + 1)))

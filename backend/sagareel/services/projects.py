@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from sagareel.core.context import OpContext
-from sagareel.core.errors import Conflict, ValidationFailed
+from sagareel.core.errors import AppError, Conflict, ValidationFailed
 from sagareel.db.models import (
     Asset,
     AssetKind,
@@ -176,7 +176,7 @@ def create(
         values["language"] = language
         values["languages"] = [language]
     if target_platforms is not None:
-        values["target_platforms"] = list(target_platforms)
+        values["target_platforms"] = check_platforms(ctx, target_platforms)
     u = entities.uow(ctx, f"Tạo dự án {name}", "project.create")
     try:
         with u as s:
@@ -192,12 +192,30 @@ def create(
     return result
 
 
+def check_platforms(ctx: OpContext, keys: Any, project_id: int | None = None) -> list[str]:
+    """Khoá nền tảng phải là preset `platform` có sẵn (toàn cục hoặc của dự án) — sai → `unknown_platform` (422)."""
+    from sagareel.services import presets
+
+    if not isinstance(keys, (list, tuple)) or not all(isinstance(k, str) for k in keys):
+        raise ValidationFailed("target_platforms phải là danh sách khoá nền tảng (chuỗi).")
+    out = list(dict.fromkeys(keys))
+    presets.ensure_builtins(ctx.services)
+    with ctx.services.db.session() as s:
+        missing = [k for k in out if presets.find_row(s, "platform", k, project_id) is None]
+    if missing:
+        raise AppError("unknown_platform", f"Không có nền tảng: {', '.join(missing)}.",
+                       hint="Gọi preset.list kind=platform để xem các khoá hợp lệ (vd. tiktok, yt-shorts).", status=422)
+    return out
+
+
 def update(ctx: OpContext, project_id: int, values: dict[str, Any],
            expected_updated_at: datetime | None = None) -> dict[str, Any]:
     if "name" in values and isinstance(values["name"], str):
         _check_name(values["name"])
     if "key" in values and isinstance(values["key"], str):
         _check_key(values["key"])
+    if values.get("target_platforms") is not None:
+        values = {**values, "target_platforms": check_platforms(ctx, values["target_platforms"], project_id)}
     entities.patch(ctx, "project", project_id, values, expected_updated_at)
     return get(ctx, project_id)
 

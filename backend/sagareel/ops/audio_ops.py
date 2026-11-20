@@ -55,7 +55,8 @@ class TranslateDubParams(BaseModel):
 
 
 @op("audio.translate_dub", summary="Dịch lời thoại của tập sang ngôn ngữ khác (LLM translate → translations, hoàn tác "
-    "được) rồi lồng tiếng TTS theo giọng từng ngôn ngữ; dry_run ước tính", params=TranslateDubParams, costly=True,
+    "được) rồi lồng tiếng TTS theo giọng từng ngôn ngữ; chạy dạng job (trả job_id, kết quả job có tts.job_ids); "
+    "dry_run ước tính (đếm cả câu chưa dịch)", params=TranslateDubParams, costly=True,
     long_running=True, mcp="tool")
 async def audio_translate_dub(ctx: OpContext, p: TranslateDubParams) -> dict:
     from sagareel.services.audio import dub

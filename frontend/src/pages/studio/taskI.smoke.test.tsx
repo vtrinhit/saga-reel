@@ -53,7 +53,7 @@ const OPS: Record<string, unknown> = {
   'job.list': { items: [{ id: 99, type: 'audio.tts', status: 'running', params: { dialogue_id: 10, lang: 'vi' } }], next_cursor: null },
   'audio.generate': { estimate: { lines: 1, cached: 0 } },
   'audio.subtitle_preview': { cues: [{ start_ms: 0, end_ms: 1000, text: 'Đêm ấy,', warnings: [] }] },
-  'export.list': [],
+  'export.list': { items: [] },
   'export.check': { errors: [], warnings: [{ code: 'no_final_render', message: 'Tập chưa có bản dựng cuối' }], info: { duration_ms: 12000, size: 40_000_000, estimated: true }, metadata: { title: 'Đêm trăng máu', description: 'Lạc An gõ chuông', hashtags: ['Kiếp Hồ Ly', 'series'], source: 'template' } },
   'auth.status': { authenticated: true, role: 'owner', local: true },
 };

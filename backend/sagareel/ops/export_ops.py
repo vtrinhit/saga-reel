@@ -194,7 +194,7 @@ async def export_create(ctx: OpContext, p: ExportCreateParams) -> dict:
 
 @op("export.list", summary="Liệt kê gói xuất (mới nhất trước), lọc theo dự án/tập/trạng thái", params=ExportListParams,
     read_only=True, idempotent=True, mcp="tool")
-def export_list(ctx: OpContext, p: ExportListParams) -> list[dict]:
+def export_list(ctx: OpContext, p: ExportListParams) -> dict:
     with ctx.services.db.session() as s:
         stmt = select(ExportPackage).order_by(ExportPackage.id.desc())
         if p.project_id is not None:
@@ -206,7 +206,7 @@ def export_list(ctx: OpContext, p: ExportListParams) -> list[dict]:
         rows = s.scalars(stmt.limit(p.limit * (5 if p.sequence_id is not None else 1))).all()
         if p.sequence_id is not None:
             rows = [r for r in rows if p.sequence_id in (r.sequence_ids or [])]
-        return [package.row_dict(r) for r in rows[:p.limit]]
+        return {"items": [package.row_dict(r) for r in rows[:p.limit]]}
 
 
 def _row(ctx: OpContext, export_id: int) -> ExportPackage:

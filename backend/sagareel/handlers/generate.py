@@ -33,6 +33,7 @@ from sagareel.services import jobs, media, staleness, takes
 from sagareel.services import provider_jobs as pj
 from sagareel.services.jobs import JobFailed, TransientError, job_handler
 
+_PART_VI = {"image": "ảnh", "video": "video"}  # tóm tắt lịch sử bằng tiếng Việt
 ACTOR = "system:generate"
 
 
@@ -70,7 +71,7 @@ def _cancel_chain(services, specs: list[dict], reason: str) -> None:
 
 
 def _mark_failed_clip(services, clip_id: int, part: str, code: str) -> None:
-    with UnitOfWork(services.db, actor=ACTOR, op_name=f"generate.{part}", summary=f"Tạo {part} lỗi") as s:
+    with UnitOfWork(services.db, actor=ACTOR, op_name=f"generate.{part}", summary=f"Tạo {_PART_VI.get(part, part)} lỗi") as s:
         c = s.get(Clip, clip_id)
         if c is not None:
             c.flags = {**dict(c.flags or {}), "failed": {"part": part, "code": code}}
@@ -233,7 +234,7 @@ def _finish(services, run_job_id: int, p: dict, part: str, media_ids: list[int],
             elapsed_ms: int) -> dict[str, Any]:
     """Take thành công (+ take thêm cho media thừa) → chọn take mới nếu `select` → job con vào hàng đợi."""
     take_id = p["take_id"]
-    u = UnitOfWork(services.db, actor=ACTOR, op_name=f"generate.{part}", summary=f"Tạo {part} cho clip")
+    u = UnitOfWork(services.db, actor=ACTOR, op_name=f"generate.{part}", summary=f"Tạo {_PART_VI.get(part, part)} cho clip")
     with u as s:
         t = s.get(Take, take_id)
         t.status = "succeeded"

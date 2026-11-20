@@ -55,6 +55,10 @@ def test_pipeline_status_global_paginated_with_gate_preview(owner_ctx, project, 
     assert len(page["items"]) == 1 and page["next_cursor"] == page["items"][0]["sequence_id"]
     active = _inv("pipeline.status", {"active_only": True}, owner_ctx)
     assert [x["sequence_id"] for x in active["items"]] == [seq]
+    state.replace(db, s2, "run", {"status": "failed", "steps": []})
+    assert [x["sequence_id"] for x in _inv("pipeline.status", {"active_only": True}, owner_ctx)["items"]] == [seq]
+    both = _inv("pipeline.status", {"active_only": True, "include_failed": True}, owner_ctx)
+    assert {x["sequence_id"] for x in both["items"]} == {seq, s2}
 
 
 def test_counts_pending_flags_and_review_queue_match(owner_ctx, project, seq):
@@ -77,7 +81,7 @@ def test_counts_pending_flags_and_review_queue_match(owner_ctx, project, seq):
     lst = _inv("sequence.list", {"project_id": project}, owner_ctx)["items"]
     by = {x["id"]: x["counts"] for x in lst}
     assert by[seq]["takes_pending"] == 2 and by[s2]["takes_pending"] == 1
-    assert by[seq]["flags"] == {"stale": 1, "drift": 1, "failed": 1}
+    assert by[seq]["flags"] == {"stale": 1, "stale_image": 0, "stale_video": 1, "drift": 1, "failed": 1}
     pc = _inv("project.get", {"id": project}, owner_ctx)["counts"]
     assert pc["takes_pending"] == 3 and pc["drift"] == 1
     q = _inv("review.queue", {"sequence_ids": [s2, seq], "filter": {"has_take": True}, "limit": 2}, owner_ctx)
