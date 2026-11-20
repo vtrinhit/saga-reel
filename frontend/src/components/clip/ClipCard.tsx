@@ -40,7 +40,8 @@ export const ClipCard = memo(function ClipCard({
   const src = thumbUrl(view.take?.media?.id ?? view.take?.media_id);
   const [loaded, setLoaded] = useState(false);
   const ratio = aspect === '16:9' ? 'aspect-landscape' : aspect === '1:1' ? 'aspect-square' : 'aspect-portrait';
-  const title = `${sceneNo} · Clip ${index + 1}`;
+  // Clip chưa thuộc cảnh: chỉ "Clip n" (không để dấu gạch giữ chỗ đứng đầu).
+  const title = sceneNo && sceneNo !== '—' ? `${sceneNo} · Clip ${index + 1}` : `Clip ${index + 1}`;
   return (
     <div
       role="gridcell"
@@ -160,7 +161,7 @@ export const ClipCard = memo(function ClipCard({
             tabIndex={-1}
             aria-label={`Kéo để dời ${title}`}
             onPointerDown={(e) => onGrab(e, clip)}
-            className="-ml-1 grid h-5 w-4 flex-none cursor-grab touch-none select-none place-items-center text-fg-3 hover:text-fg-1 [-webkit-user-select:none]"
+            className="-my-0.5 -ml-1.5 grid h-6 w-6 flex-none cursor-grab touch-none select-none place-items-center text-fg-3 hover:text-fg-1 [-webkit-user-select:none]"
           >
             <GripVertical className="h-3.5 w-3.5" aria-hidden />
           </span>

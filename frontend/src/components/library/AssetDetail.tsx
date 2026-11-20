@@ -102,7 +102,11 @@ export function AssetDetail({
     <div className="grid gap-5">
       <header className={cn('grid gap-1', layout === 'inspector' && 'pr-8')}>
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <h2 className={cn('min-w-0 break-words font-semibold', layout === 'page' ? 'text-xl' : 'text-md')}>{asset.name}</h2>
+          {layout === 'page' ? (
+            <h1 className="min-w-0 break-words text-xl font-semibold">{asset.name}</h1>
+          ) : (
+            <h2 className="min-w-0 break-words text-md font-semibold">{asset.name}</h2>
+          )}
           <span className="font-mono text-xs text-fg-2">{asset.key}</span>
           <span className="text-xs text-fg-3">{kindLabel(kinds, asset.kind)}</span>
         </div>

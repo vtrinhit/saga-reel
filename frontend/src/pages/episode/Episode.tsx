@@ -460,6 +460,8 @@ export function Episode() {
 
   return (
     <div className="grid min-w-0 gap-3">
+      {/* Tên tập đã hiện trên thanh chặng; h1 cho trình đọc màn hình và mục lục trang. */}
+      <h1 className="sr-only">Bảng clip</h1>
       <p role="status" className="sr-only">{status}</p>
       {/* Toolbar */}
       <div className="flex min-w-0 flex-wrap items-center gap-2">

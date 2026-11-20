@@ -567,6 +567,7 @@ export function StudioPage() {
 
   return (
     <div className="grid min-w-0 gap-3">
+      <h1 className="sr-only">Studio{sequence.data ? ` · Tập ${sequence.data.number}` : ''}</h1>
       {/* Toolbar */}
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <SegmentedControl<View>

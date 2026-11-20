@@ -43,7 +43,7 @@ export function ScriptEditor({ value, readOnly, saving, onSave }: {
           setDirty(false);
         }}
         className={cn(
-          'min-h-[60vh] w-full resize-y rounded-sm border border-line-3 bg-bg-2 p-4 font-mono text-sm leading-relaxed text-fg-1 md:text-base',
+          'min-h-[40dvh] w-full md:min-h-[60vh] resize-y rounded-sm border border-line-3 bg-bg-2 p-4 font-mono text-sm leading-relaxed text-fg-1 md:text-base',
           'max-w-[72ch] placeholder:text-fg-3',
           focusRing,
         )}

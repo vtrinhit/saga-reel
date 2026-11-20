@@ -267,7 +267,7 @@ function TrashSection({ viewer }: { viewer: boolean }) {
           <SkeletonRows count={3} />
         </SkeletonZone>
       ) : items.length === 0 ? (
-        <EmptyState icon={Trash2} title="Thùng rác trống." description="Take không được chọn mà bạn dọn sẽ nằm ở đây trước khi bị xoá hẳn." className="max-w-2xl rounded-md border border-line-2 bg-bg-1" />
+        <EmptyState icon={Trash2} title="Thùng rác trống." description="Take không được chọn mà bạn dọn sẽ nằm ở đây trước khi bị xoá hẳn." className="max-w-2xl rounded-md border border-line-2 bg-bg-1 p-4" />
       ) : (
         <div className="grid max-w-2xl gap-3">
           <div className="flex flex-wrap items-center gap-2">

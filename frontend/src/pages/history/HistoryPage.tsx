@@ -305,9 +305,10 @@ function HistoryRow({
             aria-expanded={open}
             aria-controls={detailId}
             onClick={onToggle}
-            className={cn('mt-0.5 inline-flex items-center gap-1 rounded-sm text-xs text-fg-2 hover:text-fg-1', focusRing)}
+            title={`Thao tác: ${cs.op_name}`}
+            className={cn('mt-0.5 inline-flex min-h-6 items-center gap-1 rounded-sm text-xs text-fg-2 hover:text-fg-1', focusRing)}
           >
-            <span className="font-mono">{cs.op_name}</span>
+            <span>{open ? 'Ẩn chi tiết' : 'Chi tiết'}</span>
             {cs.entities.length ? <span>· {entitySummary(cs.entities)}</span> : null}
             {undone ? <span>· đã hoàn tác</span> : null}
             <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-fast', open && 'rotate-180')} strokeWidth={1.75} aria-hidden />

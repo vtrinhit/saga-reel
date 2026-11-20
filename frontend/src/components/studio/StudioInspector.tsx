@@ -496,7 +496,7 @@ export function SequencePanel({ totalMs, clipCount, warnings, sounds, readOnly, 
             <p className="text-sm text-fg-2">Kho chưa có âm thanh. Thêm nhạc kèm nguồn và giấy phép ở trang Âm thanh.</p>
           )}
           <div className={cn('grid gap-2 border-t border-line-1 pt-3')}>
-            <Input id="add-title" label="Title chữ" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Chữ hiện trên hình" />
+            <Input id="add-title" label="Chữ trên hình" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Chữ hiện trên hình" />
             <Button icon={Plus} disabled={!title.trim()} onClick={() => (onAdd('title', null, title.trim()), setTitle(''))}>
               Thêm title tại {shortTime(playheadMs)}
             </Button>

@@ -33,7 +33,6 @@ function useMedia(q: string): boolean {
   return m;
 }
 
-const PLATFORM: Record<string, string> = { tiktok: 'TikTok', reels: 'Reels', shorts: 'Shorts', youtube: 'YouTube', facebook: 'Facebook' };
 
 /** `/p/:pid/overview` — bàn sản xuất: số liệu thật, ma trận tập × chặng, Cần bạn. */
 export function Overview() {
@@ -83,6 +82,20 @@ export function Overview() {
         ),
       ),
     staleTime: 60_000,
+    retry: false,
+  });
+  // Tên hiển thị của thể loại / nền tảng (key → "Phim bộ", "TikTok") — preset đổi hiếm.
+  const names = useQuery({
+    queryKey: ['overview', 'preset-names'],
+    queryFn: async () => {
+      const out = new Map<string, string>();
+      for (const kind of ['genre', 'platform'] as const) {
+        const r = (await callOp('preset.list', { kind })) as unknown as { items: { key: string; name: string }[] };
+        for (const it of r.items ?? []) out.set(`${kind}:${it.key}`, it.name);
+      }
+      return out;
+    },
+    staleTime: 10 * 60_000,
     retry: false,
   });
   const budget = useQuery({
@@ -162,7 +175,8 @@ export function Overview() {
   const scripted = all.filter((s) => s.script?.trim()).length;
   const exported = new Set((exports.data ?? []).map((e) => e.sequence_id).filter((x) => x != null)).size;
   const img = budget.data?.image;
-  const platforms = (p?.target_platforms ?? []).map((x) => PLATFORM[String(x)] ?? String(x)).join(', ');
+  const platforms = (p?.target_platforms ?? []).map((x) => names.data?.get(`platform:${x}`) ?? String(x)).join(', ');
+  const genre = p?.genre_key ? (names.data?.get(`genre:${p.genre_key}`) ?? p.genre_key) : null;
 
   const duplicate = async () => {
     for (const id of selIds) {
@@ -223,7 +237,7 @@ export function Overview() {
         <div className="grid min-w-0 gap-1">
           <h1 className="truncate py-px text-2xl font-semibold">{p?.name ?? (project.isError ? `Dự án ${pid}` : '…')}</h1>
           <p className="text-sm text-fg-2">
-            {[p?.genre_key, p?.aspect, platforms || null, all.length ? `${scripted} / ${all.length} tập có kịch bản` : null].filter(Boolean).join(' · ')}
+            {[genre, p?.aspect, platforms || null, all.length ? `${scripted} / ${all.length} tập có kịch bản` : null].filter(Boolean).join(' · ')}
           </p>
         </div>
         <Link
