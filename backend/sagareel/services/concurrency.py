@@ -34,8 +34,8 @@ CONN_PREFIX = "conn:"
 INTERNAL_LANES: dict[str, str] = {"ffmpeg": "render", "story": "llm"}
 INTERNAL_LABELS = {"ffmpeg": "Dựng phim / ffmpeg", "story": "Viết truyện / dịch lồng tiếng"}
 EVENT = "queue.updated"
-# Khoá cài đặt mà đổi thì trần lane/loại đổi theo.
-WATCHED_KEYS = tuple(f"{SETTING_PREFIX}{k}" for k in KINDS) + ("jobs.ffmpeg_concurrency",)
+# Khoá cài đặt mà đổi thì trần lane/loại đổi theo (lane `ffmpeg`/`story` dùng luôn trần loại).
+WATCHED_KEYS = tuple(f"{SETTING_PREFIX}{k}" for k in KINDS)
 
 
 def setting_key(kind: str) -> str:

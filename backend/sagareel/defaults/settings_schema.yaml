@@ -75,7 +75,7 @@ budget.videos_total:
 jobs.ffmpeg_concurrency:
   type: int
   default: 2
-  description: Trần riêng của lane ffmpeg (dựng, ghép âm thanh, xuất gói); trần chung theo loại là concurrency.render, lấy số nhỏ hơn.
+  description: (Cũ, không còn dùng) Thay bằng concurrency.render — Cài đặt › Luồng › Dựng phim.
 
 remote.public_hosts:
   type: json

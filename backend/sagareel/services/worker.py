@@ -648,7 +648,7 @@ class Worker:
             return await self._write_final_busy_retry(job_id, values, logs)
         except OperationalError:
             raise
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             tb = "".join(traceback.format_exception(e))
             logger.error("Không ghi được kết quả của job #%s; đánh dấu thất bại:\n%s", job_id, tb)
             fail = {

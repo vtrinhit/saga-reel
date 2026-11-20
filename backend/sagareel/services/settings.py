@@ -20,13 +20,7 @@ from sqlalchemy.orm import Session
 from sagareel.core import secrets
 from sagareel.core.context import OpContext
 from sagareel.core.ops import current_op
-from sagareel.core.resolver import (
-    INTERNAL_PREFIX,
-    Layer,
-    Resolved,
-    SettingDef,
-    unknown_setting,
-)
+from sagareel.core.resolver import INTERNAL_PREFIX, Layer, Resolved, SettingDef, unknown_setting
 from sagareel.core.uow import UnitOfWork
 from sagareel.db.models import GlobalSettings
 
@@ -97,7 +91,7 @@ def set_global(ctx: OpContext, values: dict[str, Any]) -> None:
             g.data = data
     # Cấu hình truy cập (`remote.*`) của middleware bảo mật được cache 5 s: đổi là có hiệu lực ngay.
     ctx.services.auth_cache.invalidate()
-    # Trần luồng (`concurrency.*`, `jobs.ffmpeg_concurrency`): worker đọc mới mỗi nhịp; đánh thức ngay + phát
+    # Trần luồng (`concurrency.*`): worker đọc mới mỗi nhịp; đánh thức ngay + phát
     # `queue.updated` để việc đang chờ chạy liền và giao diện cập nhật.
     from sagareel.services import concurrency
 

@@ -157,7 +157,7 @@ class ProviderService:
 
     def lane_limit(self, lane: str) -> int:
         """`conn:<id>` → `concurrency` của kết nối (không có/đã xoá → 1, để job chạy và thất bại rõ ràng);
-        `ffmpeg` → cài đặt `jobs.ffmpeg_concurrency` (trừ khi `Services.lane_limits` ghi đè); còn lại →
+        `ffmpeg`/`story` → trần loại `concurrency.render`/`concurrency.llm` (trừ khi `Services.lane_limits` ghi đè); còn lại →
         `Services.lane_limit`. Lỗi bất kỳ → 1 (không chặn lane)."""
         try:
             if lane.startswith(LANE_PREFIX):
@@ -169,8 +169,13 @@ class ProviderService:
                     if row is None or row.deleted_at is not None:
                         return 1
                     return max(1, int(row.concurrency))
-            if lane == "ffmpeg" and lane not in self.services.lane_limits:
-                return max(1, int(self.setting("jobs.ffmpeg_concurrency")))
+            from sagareel.services import concurrency
+
+            kind = concurrency.INTERNAL_LANES.get(lane)
+            if kind is not None and lane not in self.services.lane_limits:
+                # Lane nội bộ (`ffmpeg` → render, `story` → llm): trần lane = trần loại (một nút duy nhất trong UI).
+                with self.services.db.session() as s:
+                    return concurrency.caps(self.services, s)[kind]
             return self.services.lane_limit(lane)
         except Exception:  # noqa: BLE001
             logger.exception("Không đọc được giới hạn song song của lane %r; dùng 1", lane)

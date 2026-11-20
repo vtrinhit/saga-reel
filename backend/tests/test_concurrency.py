@@ -7,13 +7,14 @@ from collections import Counter
 
 import anyio
 import pytest
+from sqlalchemy import select
+
 from sagareel import ops as ops_pkg
 from sagareel.core import ops
 from sagareel.core.context import OpContext
 from sagareel.db.models import GlobalSettings, Job, ProviderConnection
 from sagareel.services import concurrency, jobs, settings
 from sagareel.services.providers import ProviderService
-from sqlalchemy import select
 
 GATE = "test.cc_gate"
 
@@ -237,13 +238,37 @@ async def test_priority_beats_round_robin_within_kind(svc):
 
 
 async def test_render_cap_applies_to_ffmpeg_lane(svc):
-    put_global(svc, **{"concurrency.render": 1, "jobs.ffmpeg_concurrency": 4})
+    put_global(svc, **{"concurrency.render": 1})
     ids = [enqueue(svc, "ffmpeg", "render") for _ in range(3)]
     await svc.worker.start()
     try:
         await wait_until(lambda: "running" in statuses(svc, ids))
         await settle(svc)
         assert statuses(svc, ids).count("running") == 1
+        await release_all(svc, ids)
+    finally:
+        await svc.worker.stop()
+
+
+async def test_render_cap_raises_ffmpeg_lane_beyond_legacy_setting(svc):
+    put_global(svc, **{"concurrency.render": 3})  # jobs.ffmpeg_concurrency để mặc định (2): không còn chặn
+    ids = [enqueue(svc, "ffmpeg", "render") for _ in range(4)]
+    await svc.worker.start()
+    try:
+        await wait_until(lambda: statuses(svc, ids).count("running") == 3)
+        await settle(svc)
+        assert statuses(svc, ids).count("running") == 3
+        await release_all(svc, ids)
+    finally:
+        await svc.worker.stop()
+
+
+async def test_story_lane_follows_llm_cap(svc):
+    put_global(svc, **{"concurrency.llm": 4})
+    ids = [enqueue(svc, "story", "llm") for _ in range(5)]
+    await svc.worker.start()
+    try:
+        await wait_until(lambda: statuses(svc, ids).count("running") == 4)
         await release_all(svc, ids)
     finally:
         await svc.worker.stop()

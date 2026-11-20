@@ -261,13 +261,13 @@ dừng ở trạng thái "chờ, vượt ngân sách" và hiện trong Cần b�
 
 **Xoá** dự án, tập, tài sản, look, preset luôn hai bước: xem tác động trước, rồi xác nhận. Đối tượng bị xoá mềm.
 
-## Luồng (số việc chạy cùng lúc)
+## 12b. Luồng (số việc chạy cùng lúc)
 
 **Luồng** (Cài đặt > Luồng) đặt số việc được chạy cùng lúc cho **mỗi loại provider**, tính chung trên toàn app:
 Ảnh, Video, LLM, Giọng đọc, Nhận dạng giọng và Dựng phim (ffmpeg). Mặc định 2 · 2 · 3 · 2 · 1 · 1, chọn từ 1 đến 20.
 
 - Đây là **trần cứng** cộng mọi kết nối cùng loại: Video = 1 với hai kết nối video thì không bao giờ có hai video tạo
-  cùng lúc. Trần riêng của từng kết nối (Sửa kết nối > Số việc song song) vẫn áp dụng bên trong.
+  cùng lúc. Trần riêng của từng kết nối (Sửa kết nối > Số việc chạy song song) vẫn áp dụng bên trong.
 - Bấm +/− là **áp dụng ngay**: việc đang chờ được nhận liền nếu còn chỗ, không cần khởi động lại. Hạ trần **không dừng**
   việc đang chạy — chúng làm nốt, app chỉ ngừng nhận việc mới tới khi số đang chạy xuống dưới trần (trang hiện ô sọc
   cho phần vượt). Mỗi lần đổi có Hoàn tác.
