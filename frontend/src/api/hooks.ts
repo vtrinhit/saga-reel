@@ -1,5 +1,7 @@
 /** Hook react-query dùng chung cho Settings và trang Việc (khoá query + cập nhật từ sự kiện realtime). */
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+import type { ConcurrencyOverview } from '../lib/concurrency';
 import { onServerEvent, useServerEvent } from '../lib/eventHub';
 import { overlayKnown, pickJob } from '../lib/jobList';
 import { callOp } from './ops';
@@ -13,6 +15,7 @@ export const qk = {
   jobList: ['job', 'list'] as const,
   settings: ['settings', 'explain'] as const,
   settingsSchema: ['settings', 'schema'] as const,
+  concurrency: ['queue', 'concurrency'] as const,
   tokens: ['token', 'list'] as const,
   sessions: ['session', 'list'] as const,
   media: (kind: string) => ['media', 'list', kind] as const,
@@ -96,4 +99,40 @@ export async function fetchJobLogs(id: number, afterId?: number): Promise<JobLog
     if (res.items.length < LOG_PAGE) return all;
     after = res.items[res.items.length - 1].id;
   }
+}
+
+/** Khoảng tối thiểu giữa hai lần đọc lại số luồng khi sự kiện `job.*` dồn dập (tiến độ, log). */
+export const CONCURRENCY_REFRESH_MS = 600;
+
+/**
+ * Luồng theo loại provider (`queue.concurrency`), sống theo `queue.updated` (đổi trần/kết nối) và `job.updated`
+ * (việc bắt đầu/xong). Sự kiện dồn dập được gộp: tối đa một lần đọc lại mỗi `CONCURRENCY_REFRESH_MS`.
+ */
+export function useConcurrency() {
+  const qc = useQueryClient();
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refresh = () => {
+    if (timer.current) return;
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      void qc.invalidateQueries({ queryKey: qk.concurrency });
+    }, CONCURRENCY_REFRESH_MS);
+  };
+  useServerEvent('queue.updated', refresh);
+  useServerEvent('job.updated', refresh);
+  useServerEvent('resync', refresh);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+  return useQuery({
+    queryKey: qk.concurrency,
+    queryFn: async () => {
+      const data = (await callOp('queue.concurrency', {})) as unknown as ConcurrencyOverview;
+      if (!data || !Array.isArray(data.kinds)) throw new Error('Máy chủ trả số luồng không đúng dạng.');
+      return data;
+    },
+  });
 }

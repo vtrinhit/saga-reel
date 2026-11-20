@@ -25,6 +25,8 @@ from sagareel.core.uow import UnitOfWork
 from sagareel.db.models import GlobalSettings
 
 GLOBAL_ID = 1
+# Khoá cũ vẫn ghi được (agent/script cũ) → ghi vào khoá mới. Migration 0010 đã chuyển giá trị đã lưu.
+LEGACY_ALIASES = {"jobs.ffmpeg_concurrency": "concurrency.render"}
 OP_SET_GLOBAL = "settings.set_global"
 
 
@@ -60,6 +62,7 @@ def set_global(ctx: OpContext, values: dict[str, Any]) -> None:
     Kiểm tra toàn bộ trước khi mở UnitOfWork: khoá lạ/nội bộ → `unknown_setting`, sai kiểu/ngoài lựa chọn →
     `validation_failed`, khi đó không ghi gì.
     """
+    values = {LEGACY_ALIASES.get(k, k): v for k, v in values.items()}
     _check_keys(ctx, values)
     ctx.services.resolver.validate_values({k: v for k, v in values.items() if v is not None})
     if not values:
@@ -91,6 +94,12 @@ def set_global(ctx: OpContext, values: dict[str, Any]) -> None:
             g.data = data
     # Cấu hình truy cập (`remote.*`) của middleware bảo mật được cache 5 s: đổi là có hiệu lực ngay.
     ctx.services.auth_cache.invalidate()
+    # Trần luồng (`concurrency.*`): worker đọc mới mỗi nhịp; đánh thức ngay + phát
+    # `queue.updated` để việc đang chờ chạy liền và giao diện cập nhật.
+    from sagareel.services import concurrency
+
+    if any(k in concurrency.WATCHED_KEYS for k in values):
+        concurrency.notify(ctx.services)
 
 
 def explain(ctx: OpContext, run_overrides: dict[str, Any] | None = None) -> list[Resolved]:

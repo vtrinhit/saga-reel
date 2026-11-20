@@ -70,7 +70,7 @@ Thư mục `<kind>/` mới cần một `__init__.py` (có thể rỗng) để `d
   `external_id` (`services/jobs`), không phụ thuộc sổ chi tiêu.
 
 Mọi job gọi provider chạy trên lane `conn:<id>`; worker giới hạn song song theo `concurrency` của kết nối.
-Lane `ffmpeg` theo cài đặt `jobs.ffmpeg_concurrency`.
+Lane `ffmpeg` theo trần loại `concurrency.render` (Cài đặt › Luồng › Dựng phim); lane `story` theo `concurrency.llm`.
 
 ## Không có ngân sách
 

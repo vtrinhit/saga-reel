@@ -2452,6 +2452,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/queue.concurrency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Luồng: trần số việc chạy cùng lúc theo loại provider (ảnh/video/LLM/TTS/STT/dựng) kèm số đang chạy/chờ */
+        post: operations["queue.concurrency"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/queue.set_concurrency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Đổi trần luồng theo loại provider (1–20; áp dụng ngay cho việc mới, không dừng việc đang chạy; hoàn tác được) */
+        post: operations["queue.set_concurrency"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/render.cache_clear": {
         parameters: {
             query?: never;
@@ -6493,6 +6527,16 @@ export interface components {
             older_than_days?: number;
             /** Project Id */
             project_id?: number | null;
+        };
+        /** QueueSetConcurrencyParams */
+        QueueSetConcurrencyParams: {
+            /**
+             * Values
+             * @description Loại → trần số việc chạy cùng lúc (1–20), vd. {"video": 3, "image": 2}. Loại vắng giữ nguyên.
+             */
+            values: {
+                [key: string]: number;
+            };
         };
         /** RegenerateOverrides */
         RegenerateOverrides: {
@@ -14150,6 +14194,90 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ProviderUpdateParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "queue.concurrency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["EmptyParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "queue.set_concurrency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QueueSetConcurrencyParams"];
             };
         };
         responses: {

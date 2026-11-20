@@ -3,7 +3,10 @@
 Cấu trúc:
 - Vòng điều phối (`_main`) mỗi `tick` giây hoặc khi được `wake()`: chọn job `queued` đã tới hạn theo
   `priority desc, id asc` **riêng từng lane** (lane đầy không chặn lane khác), giới hạn `lane_limit(lane)`, và
-  "giành" job bằng UPDATE có điều kiện `status='queued'` (compare-and-set).
+  "giành" job bằng UPDATE có điều kiện `status='queued'` (compare-and-set). Thêm **trần theo loại provider**
+  (`services/concurrency.py`, khi đã có `services.providers`): lane cùng loại (`image`/`video`/`llm`/`tts`/`stt`/
+  `render`) cộng chung không vượt `concurrency.<kind>`; chỗ trống chia theo `priority desc`, rồi xoay vòng giữa các
+  lane, rồi `id asc`. Trần đọc mới mỗi nhịp; hạ trần không huỷ việc đang chạy.
 - Mỗi job đang chạy có hai task: task handler (bị huỷ khi `cancel`/`stop`) và task giám sát (không bao giờ bị huỷ)
   chờ handler xong rồi ghi trạng thái cuối. Huỷ hai lần hay tắt app giữa lúc huỷ không làm đứt lần ghi cuối.
 - Mọi truy cập DB chạy qua `anyio.to_thread.run_sync`, mỗi lần một transaction ngắn; không giữ transaction qua
@@ -35,7 +38,12 @@ from sagareel.core.errors import AppError
 from sagareel.db.base import utcnow
 from sagareel.db.models import Job
 from sagareel.services import jobs
-from sagareel.services.jobs import JobFailed, JobStateLost, NeedsAttention, TransientError
+from sagareel.services.jobs import (
+    JobFailed,
+    JobStateLost,
+    NeedsAttention,
+    TransientError,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -463,37 +471,73 @@ class Worker:
                 free[lane] = n
         if not free:
             return []
+        kind_of, kind_free = self._kind_room(set(free), counts)
         claimed: list[dict] = []
         unavailable: list[dict] = []
         with db.session() as s:
+            # Ứng viên: tối đa `free[lane]` job đầu mỗi lane. Lane không thuộc loại nào giữ nguyên thứ tự lane; lane
+            # thuộc loại xếp chung theo (ưu tiên giảm, hạng trong lane, id) → cùng ưu tiên thì xoay vòng giữa lane.
+            plain: list[tuple[str, int]] = []
+            ranked: list[tuple[int, int, int, str]] = []
             for lane, n in free.items():
-                ids = list(s.scalars(
-                    select(Job.id).where(due, Job.lane == lane).order_by(Job.priority.desc(), Job.id).limit(n)
-                ))
-                for job_id in ids:
-                    # Thư mục làm việc tạo trước khi giành. Lỗi chỉ ảnh hưởng job này (failed), không chặn job khác.
-                    workdir = self.services.settings.cache_dir / "jobs" / str(job_id)
-                    try:
-                        workdir.mkdir(parents=True, exist_ok=True)
-                    except OSError as e:
-                        job = self._fail_workdir(s, job_id, workdir, e, now)
-                        if job is not None:
-                            unavailable.append(jobs.job_dict(job))
-                        continue
-                    res = s.execute(
-                        update(Job)
-                        .where(Job.id == job_id, Job.status == "queued")
-                        .values(status="running", started_at=now, finished_at=None, next_attempt_at=None,
-                                updated_at=now)
-                        .execution_options(synchronize_session=False)
-                    )
-                    if res.rowcount == 1:
-                        job = s.get(Job, job_id)
-                        s.refresh(job)
-                        claimed.append(jobs.job_dict(job))
+                rows = s.execute(
+                    select(Job.id, Job.priority).where(due, Job.lane == lane)
+                    .order_by(Job.priority.desc(), Job.id).limit(n)
+                ).all()
+                if lane in kind_of:
+                    ranked.extend((-int(prio or 0), rank, job_id, lane) for rank, (job_id, prio) in enumerate(rows))
+                else:
+                    plain.extend((lane, job_id) for job_id, _ in rows)
+            ranked.sort()
+            order = plain + [(lane, job_id) for _, _, job_id, lane in ranked]
+            for lane, job_id in order:
+                kind = kind_of.get(lane)
+                if kind is not None and kind_free.get(kind, 1) <= 0:
+                    continue
+                # Thư mục làm việc tạo trước khi giành. Lỗi chỉ ảnh hưởng job này (failed), không chặn job khác.
+                workdir = self.services.settings.cache_dir / "jobs" / str(job_id)
+                try:
+                    workdir.mkdir(parents=True, exist_ok=True)
+                except OSError as e:
+                    job = self._fail_workdir(s, job_id, workdir, e, now)
+                    if job is not None:
+                        unavailable.append(jobs.job_dict(job))
+                    continue
+                res = s.execute(
+                    update(Job)
+                    .where(Job.id == job_id, Job.status == "queued")
+                    .values(status="running", started_at=now, finished_at=None, next_attempt_at=None,
+                            updated_at=now)
+                    .execution_options(synchronize_session=False)
+                )
+                if res.rowcount == 1:
+                    job = s.get(Job, job_id)
+                    s.refresh(job)
+                    claimed.append(jobs.job_dict(job))
+                    if kind is not None and kind in kind_free:
+                        kind_free[kind] -= 1
         for data in unavailable:
             self._publish(data)
         return claimed
+
+    def _kind_room(self, lanes: set[str], counts: dict[str, int]) -> tuple[dict[str, str], dict[str, int]]:
+        """(Thread) (lane → loại, loại → số chỗ còn trống) cho nhịp này. Chưa nối `services.providers` (worker test
+        dựng tay) → không áp trần loại. Lỗi đọc → không áp trần loại ở nhịp này (không chặn hàng đợi)."""
+        if getattr(self.services, "providers", None) is None:
+            return {}, {}
+        from sagareel.services import concurrency
+
+        try:
+            kind_of, caps = concurrency.plan(self.services, lanes | {lane for lane, n in counts.items() if n > 0})
+        except Exception:
+            logger.exception("Không đọc được trần luồng theo loại; bỏ qua ở nhịp này")
+            return {}, {}
+        room = dict(caps)
+        for lane, n in counts.items():
+            kind = kind_of.get(lane)
+            if kind in room:
+                room[kind] -= n
+        return {lane: kind_of[lane] for lane in lanes if lane in kind_of}, room
 
     @staticmethod
     def _fail_workdir(s, job_id: int, workdir, e: OSError, now) -> Job | None:
@@ -604,7 +648,7 @@ class Worker:
             return await self._write_final_busy_retry(job_id, values, logs)
         except OperationalError:
             raise
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             tb = "".join(traceback.format_exception(e))
             logger.error("Không ghi được kết quả của job #%s; đánh dấu thất bại:\n%s", job_id, tb)
             fail = {

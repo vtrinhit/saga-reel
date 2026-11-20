@@ -104,7 +104,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         bus=EventBus(),
     )
     services.worker = Worker(services, lane_limit=services.lane_limit)
-    # Kết nối provider: lane `conn:<id>` dùng concurrency của kết nối, `ffmpeg` dùng jobs.ffmpeg_concurrency.
+    # Kết nối provider: lane `conn:<id>` dùng concurrency của kết nối, `ffmpeg`/`story` dùng trần loại concurrency.render/llm.
     # Dựng chỉ import adapter (registry.discover), không gọi provider nào.
     services.providers = ProviderService(services)
     services.worker.lane_limit = services.providers.lane_limit

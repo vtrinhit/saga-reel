@@ -59,11 +59,6 @@ prompt.mode:
   choices: [verbatim, synced]
   description: Gửi prompt nguyên văn (verbatim) hay đồng bộ theo nhân vật/bối cảnh (synced).
 
-jobs.ffmpeg_concurrency:
-  type: int
-  default: 2
-  description: Số job ffmpeg chạy song song tối đa.
-
 remote.public_hosts:
   type: json
   default: []
@@ -203,3 +198,29 @@ render.cache_auto_prune:
   type: bool
   default: true
   description: Tự dọn cache dựng phim (LRU theo render.cache_max_gb / render.min_free_gb) sau mỗi lần dựng và khi gọi media.cleanup.
+
+# --- task cc (luồng theo loại provider) ---
+concurrency.image:
+  type: int
+  default: 2
+  description: Trần số việc tạo ảnh chạy cùng lúc trên toàn app (cộng mọi kết nối ảnh), 1–20. Đổi là áp dụng ngay cho việc mới.
+concurrency.video:
+  type: int
+  default: 2
+  description: Trần số việc tạo video chạy cùng lúc trên toàn app (cộng mọi kết nối video), 1–20. Đổi là áp dụng ngay cho việc mới.
+concurrency.llm:
+  type: int
+  default: 3
+  description: Trần số việc LLM chạy cùng lúc trên toàn app (kết nối LLM + việc viết truyện/dịch lồng tiếng), 1–20.
+concurrency.tts:
+  type: int
+  default: 2
+  description: Trần số việc đọc giọng (TTS) chạy cùng lúc trên toàn app, 1–20.
+concurrency.stt:
+  type: int
+  default: 1
+  description: Trần số việc nhận dạng giọng (STT) chạy cùng lúc trên toàn app, 1–20.
+concurrency.render:
+  type: int
+  default: 1
+  description: Trần số việc dựng phim/ffmpeg (lane ffmpeg) chạy cùng lúc trên toàn app, 1–20.

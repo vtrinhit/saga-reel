@@ -56,6 +56,13 @@ provider). Đọc/sửa qua op `skill.list` / `skill.get` / `skill.update` (bả
 6. **Không đụng dữ liệu ngoài phạm vi**: không sửa file trong `data/` trực tiếp, không sửa `.env*`, không đổi kết nối
    provider/token khi người dùng không yêu cầu.
 
+## Luồng (số việc chạy cùng lúc)
+
+`sr_queue_concurrency` → mỗi loại provider (`image`/`video`/`llm`/`tts`/`stt`/`render`): `cap`, `running`, `queued` và
+các kết nối/lane con với trần riêng. `sr_queue_set_concurrency({"values": {"video": 3}})` (chủ sở hữu, 1–20, hoàn tác
+được) áp dụng ngay cho việc mới; không huỷ việc đang chạy. Trần loại là trần cứng trên mọi kết nối cùng loại; muốn
+nhanh hơn thì hỏi người dùng trước khi nâng (provider có thể giới hạn tần suất).
+
 ## Tham khảo
 
 - Spec: `docs/superpowers/specs/2026-11-19-sagareel-studio-design.md` (§5.2 op registry, §17 agent, §23.5 MCP).

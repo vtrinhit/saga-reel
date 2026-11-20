@@ -99,6 +99,15 @@
   .sr-banner-ok { background: color-mix(in srgb, rgb(var(--c-ok)) 12%, rgb(var(--c-bg-1))); }
   .sr-warnbox { background: color-mix(in srgb, rgb(var(--c-warn)) 12%, rgb(var(--c-bg-4))); }
 
+  /* Luồng: ô vượt trần (việc làm nốt sau khi hạ trần) = sọc chéo cảnh báo, đọc được cả khi bỏ màu. */
+  .sr-slot-over {
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, rgb(var(--c-warn)) 55%, transparent) 0 2px, transparent 2px 4px);
+  }
+  /* Ô số có nút +/− riêng: bỏ spinner mặc định của trình duyệt. */
+  .sr-num { appearance: textfield; -moz-appearance: textfield; }
+  .sr-num::-webkit-inner-spin-button,
+  .sr-num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
   /* Vùng chạm ≥ 44px cho phần tử nhỏ khi cảm ứng: mở rộng vùng bắt, không phóng to hình. */
   @media (pointer: coarse) {
     .sr-hit {

@@ -37,6 +37,7 @@ import {
 } from '../lib/jobText';
 import { summarize, useJobs } from '../stores/jobs';
 import { toast } from '../stores/toast';
+import { ConcurrencySummary } from './jobs/ConcurrencySummary';
 import { progressTone } from './jobs/JobWatch';
 import { JobDrawer } from './jobs/JobDrawer';
 import { PageHeader } from './PageHeader';
@@ -303,6 +304,7 @@ export function Jobs() {
     <>
       <PageHeader
         title="Việc"
+        description={<ConcurrencySummary />}
         actions={
           viewer ? undefined : (
             <Button icon={paused ? Play : Pause} loading={pause.isPending} onClick={() => pause.mutate(!paused)}>

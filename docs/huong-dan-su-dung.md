@@ -245,10 +245,9 @@ Mọi thay đổi, của bạn, của LLM hay của agent, được ghi thành m
   phục từng cái; không bao giờ ghi đè ngầm.
 - Nhập hàng loạt, áp file khai báo, xoá đều hoàn tác được bằng một thao tác. Riêng "xoá hẳn thùng rác" thì không.
 
-## 12. Chạy song song, lưu trữ và thùng rác
+## 12. Lưu trữ và thùng rác
 
-**Chạy song song** (Cài đặt > Chạy song song): số việc ffmpeg (dựng, ghép âm thanh, xuất gói) chạy cùng lúc. Số việc trên
-từng kết nối nhà cung cấp đặt trong Sửa kết nối.
+Số việc chạy cùng lúc (kể cả dựng/ffmpeg) đặt ở **Luồng** — xem mục 12b.
 
 **Lưu trữ** (Cài đặt > Lưu trữ): theo dõi dung lượng ổ đĩa.
 - *Dọn take cũ*: chuyển file gốc của take không được chọn vào **thùng rác** (`data/trash`), không xoá hẳn. Có xem trước.
@@ -257,6 +256,21 @@ từng kết nối nhà cung cấp đặt trong Sửa kết nối.
   chỉ làm lần dựng sau lâu hơn, không mất dữ liệu.
 
 **Xoá** dự án, tập, tài sản, look, preset luôn hai bước: xem tác động trước, rồi xác nhận. Đối tượng bị xoá mềm.
+
+## 12b. Luồng (số việc chạy cùng lúc)
+
+**Luồng** (Cài đặt > Luồng) đặt số việc được chạy cùng lúc cho **mỗi loại provider**, tính chung trên toàn app:
+Ảnh, Video, LLM, Giọng đọc, Nhận dạng giọng và Dựng phim (ffmpeg). Mặc định 2 · 2 · 3 · 2 · 1 · 1, chọn từ 1 đến 20.
+
+- Đây là **trần cứng** cộng mọi kết nối cùng loại: Video = 1 với hai kết nối video thì không bao giờ có hai video tạo
+  cùng lúc. Trần riêng của từng kết nối (Sửa kết nối > Số việc chạy song song) vẫn áp dụng bên trong.
+- Bấm +/− là **áp dụng ngay**: việc đang chờ được nhận liền nếu còn chỗ, không cần khởi động lại. Hạ trần **không dừng**
+  việc đang chạy — chúng làm nốt, app chỉ ngừng nhận việc mới tới khi số đang chạy xuống dưới trần (trang hiện ô sọc
+  cho phần vượt). Mỗi lần đổi có Hoàn tác.
+- Viết truyện và dịch lồng tiếng tính vào luồng LLM; dựng tập, ghép âm thanh, xuất gói tính vào Dựng phim.
+- Trang Việc có dòng tóm tắt "Luồng: Video 2/2 +3 chờ…"; bấm vào để sang trang Luồng.
+- Agent: `queue.concurrency` (xem trần + số đang chạy/chờ từng loại và từng kết nối), `queue.set_concurrency`
+  (`{"values": {"video": 3}}`).
 
 ## 13. Mẫu (preset)
 

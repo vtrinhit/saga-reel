@@ -28,7 +28,7 @@ M0_DEFAULTS = {
     "tts.connection": ("str", "edge-tts", None),
     "tts.voice": ("str", "vi-VN-HoaiMyNeural", None),
     "prompt.mode": ("enum", "synced", ["verbatim", "synced"]),
-    "jobs.ffmpeg_concurrency": ("int", 2, None),
+    "concurrency.render": ("int", 1, None),
     "remote.public_hosts": ("json", [], None),
     "remote.require_login_local": ("bool", True, None),
     "remote.allow_viewer": ("bool", False, None),
@@ -164,8 +164,8 @@ def test_json_default_is_not_shared():
     [
         ("video.duration", "6"),  # enum số: chuỗi không được
         ("video.duration", True),  # bool không phải số
-        ("jobs.ffmpeg_concurrency", True),
-        ("jobs.ffmpeg_concurrency", 1.5),
+        ("concurrency.render", True),
+        ("concurrency.render", 1.5),
         ("remote.allow_viewer", 1),
         ("image.model", 5),
         ("prompt.mode", "Synced"),

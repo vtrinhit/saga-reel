@@ -500,12 +500,13 @@ def test_lane_limit_from_connection_concurrency(services):
         from sagareel.db.base import utcnow
 
         gone.deleted_at = utcnow()
-        set_global(s, **{"jobs.ffmpeg_concurrency": 4})
+        set_global(s, **{"concurrency.render": 4, "concurrency.llm": 6})
         cid, gid = conn.id, gone.id
     ps = ProviderService(services)
     assert ps.lane(ps.connection(cid)) == f"conn:{cid}"
     assert ps.lane_limit(f"conn:{cid}") == 5
     assert ps.lane_limit("ffmpeg") == 4
+    assert ps.lane_limit("story") == 6
     assert ps.lane_limit("other") == 2
     assert ps.lane_limit(f"conn:{gid}") >= 1 and ps.lane_limit("conn:999") >= 1 and ps.lane_limit("conn:x") >= 1
 

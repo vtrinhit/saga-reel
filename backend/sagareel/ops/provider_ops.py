@@ -33,7 +33,7 @@ from sagareel.providers.base import (
     TTSRequest,
     VideoRequest,
 )
-from sagareel.services import confirm, jobs, media, seed
+from sagareel.services import concurrency, confirm, jobs, media, seed
 from sagareel.services import provider_jobs as pj
 from sagareel.services.providers import ProviderService, get_row
 from sagareel.services.settings import global_layer
@@ -225,7 +225,9 @@ def provider_create(ctx: OpContext, p: ProviderCreateParams) -> dict:
         )
         s.add(row)
         s.flush()
-        return conn_dict(row)
+        out = conn_dict(row)
+    concurrency.notify(ctx.services)  # trần lane mới áp dụng ngay
+    return out
 
 
 class ProviderUpdateFields(BaseModel):
@@ -262,7 +264,10 @@ def provider_update(ctx: OpContext, p: ProviderUpdateParams) -> dict:
         for key, value in values.items():
             setattr(row, key, value)
         s.flush()
-        return conn_dict(row)
+        out = conn_dict(row)
+    if {"concurrency", "enabled"} & set(values):
+        concurrency.notify(ctx.services)  # worker đọc trần mới ở nhịp kế; đánh thức ngay để áp dụng liền
+    return out
 
 
 # --- Nhập từ .env.local -----------------------------------------------------------------------------------------------
@@ -327,6 +332,7 @@ def provider_delete(ctx: OpContext, p: ProviderDeleteParams) -> dict:
         confirm.verify(s, OP_DELETE, [row.id], _impact(ctx, s, row), p.confirm_token)
         row.deleted_at = utcnow()
         name = row.name
+    concurrency.notify(ctx.services)
     return {"deleted": p.id, "name": name}
 
 
