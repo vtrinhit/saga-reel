@@ -152,7 +152,6 @@ export interface EstimatePart {
   cost: number;
   connection?: string;
   enabled?: boolean;
-  budget?: { enabled: boolean; total: number | null; spent: number; remaining: number | null };
 }
 
 /** `clip.regenerate` / `take.regenerate_like`. */

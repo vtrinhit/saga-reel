@@ -85,8 +85,7 @@ def describe(entry: dict, names: set[str]) -> str:
             "báo người dùng, rồi mới gọi tool này với `confirm_token` đó."
         )
     if entry.get("costly"):
-        lines.append("TỐN TIỀN/HẠN MỨC: chạy với `dry_run: true` trước (nếu params có) để xem ước tính; tôn trọng "
-                     "ngân sách (`budget_exceeded`).")
+        lines.append("TỐN TIỀN: chạy với `dry_run: true` trước (nếu params có) để xem ước tính và báo người dùng.")
     if entry.get("long_running"):
         lines.append("Chạy lâu: trả `job_id` — dùng `sr_job_wait` để chờ, `sr_job_logs` để xem nhật ký.")
     if entry.get("read_only"):

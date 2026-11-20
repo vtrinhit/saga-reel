@@ -4,7 +4,6 @@ import { Jobs } from '../pages/Jobs';
 import { ComingSoon, InboxPlaceholder, NotFound, ProjectSection } from '../pages/Placeholders';
 import { Projects } from '../pages/Projects';
 import { SettingsAccess } from '../pages/settings/SettingsAccess';
-import { SettingsBudget } from '../pages/settings/SettingsBudget';
 import { SettingsConcurrency } from '../pages/settings/SettingsConcurrency';
 import { SettingsLayout } from '../pages/settings/SettingsLayout';
 import { SettingsLlm } from '../pages/settings/SettingsLlm';
@@ -36,7 +35,6 @@ export function buildRoutes(feature: FeatureRoutes): RouteObject[] {
         { path: 'llm', element: <SettingsLlm /> },
         { path: 'access', element: <SettingsAccess /> },
         { path: 'concurrency', element: <SettingsConcurrency /> },
-        { path: 'budget', element: <SettingsBudget /> },
         { path: 'storage', element: <SettingsStorage /> },
         { path: '*', element: <NotFound /> },
       ],

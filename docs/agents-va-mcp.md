@@ -1,8 +1,8 @@
 # Agent và MCP: để Claude làm việc cùng bạn trong SagaReel
 
 SagaReel có thể được điều khiển bởi agent (Claude Code, Claude Desktop hoặc bất kỳ client MCP nào). Agent làm được gần như
-mọi việc bạn làm trên giao diện: tạo dự án, viết Bible/kịch bản, nhập clip, tạo ảnh, kiểm tra ngân sách, xuất gói. Mọi thao
-tác của agent được ghi lịch sử dưới tên `agent:<tên token>` và hoàn tác được; agent bị chặn bởi gate, ngân sách và xác nhận
+mọi việc bạn làm trên giao diện: tạo dự án, viết Bible/kịch bản, nhập clip, tạo ảnh, ước tính chi phí, xuất gói. Mọi thao
+tác của agent được ghi lịch sử dưới tên `agent:<tên token>` và hoàn tác được; agent bị chặn bởi gate và xác nhận
 xoá hai bước giống như bạn.
 
 Bên dưới mọi cửa (giao diện, REST, CLI, MCP) đều gọi cùng một sổ đăng ký thao tác (op, tên dạng `nhom.hanh_dong`), nên không có
@@ -100,7 +100,7 @@ phiên, cách làm theo khối lớn bằng file khai báo, và các playbook:
 | Truyện dài tập chạy lô | `playbooks/long-serial.md` |
 | Clone từ video/kênh mẫu | `playbooks/clone.md` |
 | Lồng tiếng, phụ đề, nhiều ngôn ngữ | `playbooks/dubbing.md` |
-| Lỗi provider, hạn mức, ngân sách | `playbooks/provider-errors.md` |
+| Lỗi provider, hạn mức của provider | `playbooks/provider-errors.md` |
 
 Claude Code đọc skill này khi bạn mở repo SagaReel. Skill cũng sửa được trong app (op `skill.update`, có lịch sử), nên khi bạn
 dạy agent một quy trình mới, hãy bảo nó ghi vào playbook phù hợp.
@@ -108,23 +108,21 @@ dạy agent một quy trình mới, hãy bảo nó ghi vào playbook phù hợp.
 ## 5. Quy tắc chạy an toàn (agent bắt buộc tuân theo)
 
 1. **Ước tính trước khi tốn tiền.** Mọi op tốn tiền (tạo ảnh/video/giọng/LLM, tạo lại clip, chạy quy trình) có `dry_run: true`
-   để xem ước tính (số ảnh, video, giây, tiền nếu biết). Với dựng phim dùng `sr_estimate` (op `render.estimate`). Xem
-   `sr_budget_status`. Báo bạn con số và **xin đồng ý** khi lớn hơn vài ảnh hay video.
+   để xem ước tính (số ảnh, video, giây, tiền nếu biết). Với dựng phim dùng `sr_estimate` (op `render.estimate`).
+   Báo bạn con số và **xin đồng ý** khi lớn hơn vài ảnh hay video.
 2. **Tôn trọng gate.** Việc ở trạng thái `needs_attention`, `waiting_*`, `interrupted`, hoặc quy trình đang chờ gate: agent dừng
    lại, tóm tắt cho bạn, chờ quyết định. Chỉ duyệt hoặc trả gate khi bạn đã nói rõ. Gate agent yêu cầu vẫn vào hộp Cần bạn của bạn.
 3. **Xoá hai bước.** `…delete_preview` cho biết tác động và `confirm_token`; agent báo bạn; chỉ khi bạn đồng ý mới gọi `…delete`
    với token đó. Không bao giờ xoá hàng loạt tự động.
-4. **Ngân sách là trần cứng.** Job vượt ngân sách bị chặn (`budget_exceeded`). Agent dừng và báo bạn, không đổi kết nối hay
-   cách nào khác để lách.
-5. **Job chạy lâu.** Op `long_running` trả `job_id`; agent dùng `sr_job_wait`. Hết giờ chờ không phải lỗi; chờ tiếp. Lỗi thì
+4. **Job chạy lâu.** Op `long_running` trả `job_id`; agent dùng `sr_job_wait`. Hết giờ chờ không phải lỗi; chờ tiếp. Lỗi thì
    đọc `sr_job_logs`, hiểu nguyên nhân rồi mới `job.retry` (thử lại cũng tốn tiền).
-6. **Sửa có kiểm tranh chấp, hoàn tác được.** Agent gửi `expected_updated_at` khi sửa; gặp `stale_write` thì đọc lại và làm lại.
+5. **Sửa có kiểm tranh chấp, hoàn tác được.** Agent gửi `expected_updated_at` khi sửa; gặp `stale_write` thì đọc lại và làm lại.
    Sửa nhầm thì `sr_history_undo`. `undo_conflict` nghĩa là có người sửa tiếp: báo bạn, chỉ khôi phục khi bạn đồng ý.
-7. **Đúng phạm vi.** Không sửa file trong `data/`, không đụng `.env*`, không đổi kết nối provider hoặc token nếu bạn không yêu cầu.
-8. **Lỗi có hướng dẫn.** Lỗi trả dạng `{error_code, detail, hint, extra}` bằng tiếng Việt; agent đọc `hint` và `extra.errors`
+6. **Đúng phạm vi.** Không sửa file trong `data/`, không đụng `.env*`, không đổi kết nối provider hoặc token nếu bạn không yêu cầu.
+7. **Lỗi có hướng dẫn.** Lỗi trả dạng `{error_code, detail, hint, extra}` bằng tiếng Việt; agent đọc `hint` và `extra.errors`
    rồi sửa tham số, không thử lại y nguyên lỗi 4xx.
 
-Vài lời nhắc cho bạn khi giao việc: nói rõ ngân sách tối đa cho phiên này, yêu cầu agent "ước tính rồi hỏi tôi trước khi
+Vài lời nhắc cho bạn khi giao việc: nói rõ số ảnh/video tối đa cho phiên này, yêu cầu agent "ước tính rồi hỏi tôi trước khi
 chạy", và xem panel Hoạt động để theo dõi.
 
 ## 6. Sửa hàng loạt bằng file khai báo (export, plan, apply)
@@ -135,7 +133,7 @@ Thay vì gọi hàng trăm thao tác lẻ, agent (hoặc bạn) có thể sửa 
    `presets`, `library`, `groups`, `sequences`.
 2. **Sửa** YAML: thêm tập, clip, thoại, look... Bỏ hẳn một nhóm (`library`, `sequences`...) nghĩa là không đụng tới nhóm đó.
 3. **Plan**: `project.plan(spec_text)` chỉ **xem trước**, không ghi gì. Trả về: `creates`, `updates` (khác biệt từng trường),
-   `delete_candidates` (**chỉ liệt kê**, không bao giờ tự xoá), `estimate` (số ảnh, video, giọng, dựng và ngân sách),
+   `delete_candidates` (**chỉ liệt kê**, không bao giờ tự xoá), `estimate` (số ảnh, video, giọng, dựng),
    `warnings`, `plan_fingerprint`. Agent đưa bản tóm tắt cho bạn xem.
 4. **Apply**: `project.apply(spec_text, plan_fingerprint)` áp trong **một** change set, hoàn tác bằng một thao tác. Áp lại
    cùng file thì không đổi gì. Nếu dữ liệu đã đổi sau khi plan thì trả `plan_stale` (409): plan lại rồi xem lại. Apply bản thân
@@ -181,6 +179,6 @@ Gợi ý nói với agent: "Xuất spec dự án, thêm tập 2 với 6 clip the
 | Tình huống | Làm gì |
 |---|---|
 | Agent chạy sai hướng | Tạm dừng agent trong panel Hoạt động; xem Lịch sử và hoàn tác các thay đổi của nó |
-| Quá tay về chi phí | Hạ trần ngân sách ở Cài đặt > Ngân sách; job vượt trần tự dừng |
+| Quá tay về chi phí | Tạm dừng agent hoặc tạm dừng hàng đợi ở Việc; huỷ các việc chưa chạy |
 | Nghi lộ token | Thu hồi token ở Cài đặt > Truy cập; nếu nghi nặng, đặt lại mật khẩu ngoại tuyến ([truy cập từ xa](remote-access.md), mục 9) |
 | Agent hỏi lại mãi một lỗi provider | Xem mục xử lý lỗi trong [hướng dẫn sử dụng](huong-dan-su-dung.md) và `playbooks/provider-errors.md` |

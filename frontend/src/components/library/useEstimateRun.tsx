@@ -50,7 +50,6 @@ export function useEstimateRun() {
         title={pending.title}
         rows={view.rows}
         jobCount={view.jobCount}
-        budgetRemaining={view.budgetRemaining}
         warnings={[...view.warnings, ...pending.extraWarnings]}
         running={running}
         offline={offline}

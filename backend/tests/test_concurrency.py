@@ -251,7 +251,7 @@ async def test_render_cap_applies_to_ffmpeg_lane(svc):
 
 
 async def test_render_cap_raises_ffmpeg_lane_beyond_legacy_setting(svc):
-    put_global(svc, **{"concurrency.render": 3})  # jobs.ffmpeg_concurrency để mặc định (2): không còn chặn
+    put_global(svc, **{"concurrency.render": 3})
     ids = [enqueue(svc, "ffmpeg", "render") for _ in range(4)]
     await svc.worker.start()
     try:
@@ -365,3 +365,50 @@ def test_rest_routes(client):
     assert {k["kind"]: k["cap"] for k in r.json()["kinds"]}["render"] == 2
     r = client.post("/api/ops/queue.set_concurrency", json={"values": {"render": 99}})
     assert r.status_code == 422 and r.json()["error_code"] == "validation_failed"
+
+
+# --- Khoá cũ `jobs.ffmpeg_concurrency` → `concurrency.render` -----------------------------------------------------
+
+
+def test_legacy_ffmpeg_key_is_alias_for_render_cap(svc):
+    settings.set_global(owner(svc), {"jobs.ffmpeg_concurrency": 3})
+    with svc.db.session() as s:
+        data = s.get(GlobalSettings, 1).data
+        assert data == {"concurrency.render": 3}
+        assert concurrency.caps(svc, s)["render"] == 3
+
+
+def test_migration_0010_moves_ffmpeg_setting_to_render_cap(tmp_path):
+    import json
+
+    from alembic import command
+    from sqlalchemy import text
+
+    from sagareel.db.session import Database, alembic_config
+
+    def go(database, rev, down=False):
+        cfg = alembic_config(database.url)
+        with database.engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            (command.downgrade if down else command.upgrade)(cfg, rev)
+            conn.commit()
+
+    database = Database(tmp_path / "old.db")
+    try:
+        go(database, "0009")
+        with database.engine.begin() as conn:
+            cols = [r[1] for r in conn.execute(text("PRAGMA table_info(global_settings)")) if r[1].endswith("_at")]
+            now = "2026-11-20 00:00:00.000000"
+            conn.execute(text(f"INSERT INTO global_settings (id, data, {', '.join(cols)}) "
+                              f"VALUES (1, :d, {', '.join(':n' for _ in cols)})"),
+                         {"n": now, "d": json.dumps({"jobs.ffmpeg_concurrency": 40, "video.duration": 10})})
+        go(database, "head")
+        with database.engine.begin() as conn:
+            got = json.loads(conn.execute(text("SELECT data FROM global_settings")).scalar())
+        assert got == {"concurrency.render": 20, "video.duration": 10}
+        go(database, "0009", down=True)
+        with database.engine.begin() as conn:
+            got = json.loads(conn.execute(text("SELECT data FROM global_settings")).scalar())
+        assert got == {"jobs.ffmpeg_concurrency": 20, "video.duration": 10}
+    finally:
+        database.dispose()

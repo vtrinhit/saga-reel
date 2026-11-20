@@ -74,7 +74,6 @@ const project: Project = {
   style_block: '',
   negative_block: '',
   settings: {},
-  budget: {},
   cover_media_id: null,
   created_at: '',
   updated_at: '',
@@ -131,9 +130,8 @@ describe('library helpers', () => {
   });
 
   it('ước tính → hàng EstimateDialog', () => {
-    const r = estimateToDialog({ images: 5, units: 5, enabled: false, connection: 'maivideo', budget: { enabled: true, total: 60, spent: 50, remaining: 10 } });
+    const r = estimateToDialog({ images: 5, units: 5, enabled: false, connection: 'maivideo' });
     expect(r.rows).toEqual([{ kind: 'Ảnh sheet', quantity: 5, unitCredits: 1 }]);
-    expect(r.budgetRemaining).toBe(10);
     expect(r.warnings[0]).toMatch(/maivideo/);
     expect(estimateToDialog(undefined).rows).toEqual([]);
   });
@@ -177,20 +175,10 @@ describe('project form', () => {
     expect(d.languages).toEqual(['en', 'vi']);
   });
 
-  it('ngân sách dự án: số → budget JSON, trống → xoá khoá', () => {
-    const p = { ...project, budget: { images_total: 100, other: 1 } };
-    const f = projectToForm(p);
-    expect(f.budget_images).toBe('100');
-    f.budget_images = '';
-    f.budget_videos = '20';
-    expect(diffProject(p, f).budget).toEqual({ other: 1, videos_total: 20 });
-  });
-
   it('kiểm form', () => {
-    const f = { ...projectToForm(project), name: ' ', budget_images: '-3' };
+    const f = { ...projectToForm(project), name: ' ' };
     const issues = validateProjectForm(f);
     expect(issues.name).toBeTruthy();
-    expect(issues.budget_images).toBeTruthy();
   });
 });
 

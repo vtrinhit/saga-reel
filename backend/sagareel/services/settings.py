@@ -25,6 +25,8 @@ from sagareel.core.uow import UnitOfWork
 from sagareel.db.models import GlobalSettings
 
 GLOBAL_ID = 1
+# Khoá cũ vẫn ghi được (agent/script cũ) → ghi vào khoá mới. Migration 0010 đã chuyển giá trị đã lưu.
+LEGACY_ALIASES = {"jobs.ffmpeg_concurrency": "concurrency.render"}
 OP_SET_GLOBAL = "settings.set_global"
 
 
@@ -60,6 +62,7 @@ def set_global(ctx: OpContext, values: dict[str, Any]) -> None:
     Kiểm tra toàn bộ trước khi mở UnitOfWork: khoá lạ/nội bộ → `unknown_setting`, sai kiểu/ngoài lựa chọn →
     `validation_failed`, khi đó không ghi gì.
     """
+    values = {LEGACY_ALIASES.get(k, k): v for k, v in values.items()}
     _check_keys(ctx, values)
     ctx.services.resolver.validate_values({k: v for k, v in values.items() if v is not None})
     if not values:

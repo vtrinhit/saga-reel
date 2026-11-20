@@ -5,7 +5,7 @@ Mục tiêu: một video ngắn (15–90 s) ghép từ nhiều clip AI hoặc cl
 ## Từ ý tưởng (đường nhanh)
 
 1. `sr_pipeline_idea_to_video(idea, genre, episodes: 1, clips_per_episode, platforms, dry_run: true)` → đọc ước tính.
-2. Báo người dùng: số ảnh, số video, thời lượng, ngân sách còn (`sr_budget_status`). Đợi đồng ý.
+2. Báo người dùng: số ảnh, số video, thời lượng. Đợi đồng ý.
 3. Gọi lại với `dry_run: false` → `job_id` → `sr_job_wait([job_id], 600)` lặp tới khi xong hoặc dừng ở gate.
 4. Gate (vd. sau ảnh): `sr_pipeline_status(project_id)` + `sr_review_queue(sequence_id)` → tóm tắt ảnh cần duyệt cho
    người dùng → `sr_gate_approve` hoặc `sr_gate_reject(feedback)` theo lời họ.

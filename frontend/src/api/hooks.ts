@@ -15,7 +15,6 @@ export const qk = {
   jobList: ['job', 'list'] as const,
   settings: ['settings', 'explain'] as const,
   settingsSchema: ['settings', 'schema'] as const,
-  budget: ['budget', 'status'] as const,
   concurrency: ['queue', 'concurrency'] as const,
   tokens: ['token', 'list'] as const,
   sessions: ['session', 'list'] as const,

@@ -113,7 +113,7 @@ def test_round_trip_into_empty_db(owner_ctx, demo, ctx2):
     assert {("dialogue", f"ep1/c001#{ln['key']}") for ln in c001_lines} <= {(c["type"], c["key"]) for c in p["creates"]}
     est = p["estimate"]
     assert est["images"] == 6 and est["videos"] == 4 and est["tts_lines"] == 6 and est["renders"] == 2
-    assert est["budget"]["fits"] is True and "image" in est["budget"]
+    assert "budget" not in est
     assert {w["code"] for w in p["warnings"]} == {"connection_missing"}  # media có trên đĩa → không cảnh báo
 
     before = change_sets(ctx2)

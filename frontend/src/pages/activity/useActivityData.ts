@@ -1,12 +1,12 @@
 /**
  * Dữ liệu trang Cần bạn / Hoạt động: quy trình theo dự án (`pipeline.status`), việc (`job.list`), lịch sử
- * (`history.list`), ngân sách, ước tính bước kế cho từng gate đang mở (`pipeline.run` dry_run) và checklist
+ * (`history.list`), ước tính bước kế cho từng gate đang mở (`pipeline.run` dry_run) và checklist
  * (`sequence.status`). Mọi khoá dưới `['activity', …]`; làm mới theo `job.updated` / `entity.changed`.
  */
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { callOp } from '../../api/ops';
-import type { BudgetStatus, ChangeSet, HistoryPage, Job, JobPage } from '../../api/types';
+import type { ChangeSet, HistoryPage, Job, JobPage } from '../../api/types';
 import { shellKeys } from '../../components/shell/useShellData';
 import type { PipelinePlan, PipelineSummary, SequenceStatus } from '../../lib/activity';
 import { errorMessage, gateLabel } from '../../lib/activity';
@@ -21,7 +21,6 @@ export const activityKeys = {
   history: (pid: number) => ['activity', 'history', pid] as const,
   plan: (seqId: number, wf: string) => ['activity', 'plan', seqId, wf] as const,
   seqStatus: (seqId: number) => ['activity', 'seq-status', seqId] as const,
-  budget: ['activity', 'budget'] as const,
   tokens: ['activity', 'tokens'] as const,
 };
 
@@ -111,15 +110,6 @@ export function useRecentHistory(projectId: number | null) {
   });
 }
 
-export function useBudgetStatus() {
-  return useQuery({
-    queryKey: activityKeys.budget,
-    queryFn: async () => (await callOp('budget.status')) as unknown as BudgetStatus,
-    staleTime: 30_000,
-    retry: false,
-  });
-}
-
 export interface TokenBrief {
   id: number;
   name: string;
@@ -191,7 +181,6 @@ export function useGateDetails(gates: { sequence_id: number; workflow: string | 
     sequenceId: g.sequence_id,
     plan: plans[i]?.data?.sequences?.find((s) => s.sequence_id === g.sequence_id) ?? null,
     planLoading: !!plans[i]?.isLoading,
-    budget: plans[i]?.data?.estimate?.budget ?? null,
     status: statuses[i]?.data,
   }));
 }

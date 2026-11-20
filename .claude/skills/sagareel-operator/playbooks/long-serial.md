@@ -1,6 +1,6 @@
 # Playbook: truyện dài tập, chạy hàng loạt
 
-Mục tiêu: chuyển thể truyện dài thành hàng chục/hàng trăm tập, chạy theo lô mà không vượt ngân sách.
+Mục tiêu: chuyển thể truyện dài thành hàng chục/hàng trăm tập, chạy theo lô, luôn ước tính trước khi chạy.
 
 ## 1. Chuyển thể
 
@@ -12,8 +12,8 @@ Mục tiêu: chuyển thể truyện dài thành hàng chục/hàng trăm tập,
 
 ## 2. Chia lô
 
-- Lô 3–5 tập. Trước mỗi lô: `sr_budget_status` + `sr_pipeline_run(sequence_ids, dry_run: true)`.
-- Nếu ước tính vượt phần ngân sách còn: chạy ít tập hơn hoặc dùng engine `still_motion` cho clip phụ (sửa hàng loạt
+- Lô 3–5 tập. Trước mỗi lô: `sr_pipeline_run(sequence_ids, dry_run: true)` và báo người dùng số ảnh/video.
+- Nếu ước tính lớn hơn mức người dùng đồng ý: chạy ít tập hơn hoặc dùng engine `still_motion` cho clip phụ (sửa hàng loạt
   bằng `sr_clip_bulk_update` hoặc file khai báo) — **hỏi người dùng**, không tự hạ chất lượng.
 - Chạy: `sr_pipeline_run(sequence_ids)` → `sr_job_wait(ids, 600)` lặp. Ghi lại job_id từng lô.
 - Gate: dừng toàn lô, tóm tắt từng tập đang chờ, chờ duyệt.

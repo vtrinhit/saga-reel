@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sagareel.core.context import OpContext
 from sagareel.core.errors import ValidationFailed
 from sagareel.db.models import Sequence
-from sagareel.services import budget, entities, presets, projects
+from sagareel.services import entities, presets, projects
 from sagareel.services import sequences as seq_svc
 from sagareel.services.pipeline import engine
 from sagareel.services.pipeline import workflow as W
@@ -35,7 +35,6 @@ def estimate(ctx: OpContext, *, idea: str, genre: str, episodes: int, clips_per_
     with ctx.services.db.session() as s:
         wf = W.load(s, workflow_key, project_id)
         enabled = [x["step"] for x in W.apply_overrides(wf, dict(steps or {})) if x["enabled"]]
-        budgets = {k: budget.status(s, k, resolver=ctx.services.resolver) for k in ("image", "video")}
         conns = {k: writer.setting(s, f"{k}.connection") for k in ("image", "video")}
     warnings: list[dict[str, Any]] = []
     lo, hi = writer._span(g.get("clips"), (1, 1000))
@@ -57,15 +56,10 @@ def estimate(ctx: OpContext, *, idea: str, genre: str, episodes: int, clips_per_
     if not ep_lo <= seconds / max(1, episodes) <= ep_hi * 1.25:
         warnings.append({"code": "episode_length", "message": f"≈ {seconds / max(1, episodes):.0f} s/tập, thể loại "
                          f"khuyên {ep_lo:g}–{ep_hi:g} s."})
-    for kind, n in (("image", images), ("video", videos)):
-        rem = budgets[kind].get("remaining")
-        if n and rem is not None and n > rem:
-            warnings.append({"code": "budget", "message": f"Cần {n} {kind} nhưng ngân sách còn {rem} (kết nối giả "
-                             "không tính)."})
     return {"dry_run": True, "idea": T.clip_text(idea, 200), "genre": genre, "workflow": workflow_key,
             "steps": enabled, "episodes": episodes, "clips": clips, "images": images, "videos": videos,
             "still_motion_clips": clips if still else 0, "llm_calls": int(llm_calls), "seconds": seconds,
-            "connections": conns, "budget": budgets,
+            "connections": conns,
             "gates": [x for x in enabled if W.is_gate(x)], "warnings": warnings}
 
 

@@ -17,7 +17,7 @@ let calls: { op: string; body: Record<string, unknown> }[] = [];
 const project = {
   id: 1, key: 'kiep-ho-ly', name: 'Kiếp Hồ Ly', description: '', genre_key: 'serial', aspect: '9:16', resolution: '1080p',
   fps: 30, language: 'vi', languages: ['vi'], target_platforms: ['tiktok'], style_block: 'ink wash', negative_block: '',
-  settings: {}, budget: {}, cover_media_id: null, created_at: '2026-11-20T00:00:00', updated_at: '2026-11-20T00:00:00',
+  settings: {}, cover_media_id: null, created_at: '2026-11-20T00:00:00', updated_at: '2026-11-20T00:00:00',
   counts: { assets: 2, sequences: 36, clips: 410 },
 };
 const look = {
@@ -55,7 +55,6 @@ function opReply(op: string, body: Record<string, unknown>): unknown {
     case 'voice.list': return { items: [{ id: 9, project_id: 1, key: 'hoaimy', name: 'Hoài My', voice: 'vi-VN-HoaiMyNeural', connection: 'edge' }] };
     case 'bible.list': return { items: [{ id: 3, type: 'character', key: 'thang-ti', summary: 'Cậu bé chăn trâu', attributes: { name: 'Thằng Tí' }, status: 'pending', asset_id: null }] };
     case 'sequence.list': return { items: [] };
-    case 'budget.status': return { image: { enabled: true, total: 60, spent: 12, remaining: 48 }, video: { enabled: true, total: null, spent: 0, remaining: null } };
     case 'look.preview_prompt': return { text: 'PROMPT', refs: [], warnings: [], provider_caps: {} };
     default: return { items: [] };
   }

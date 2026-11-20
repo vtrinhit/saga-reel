@@ -5,7 +5,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { callOp } from '../../api/ops';
-import type { BudgetStatus, ChangeSet, HistoryPage, Job, JobPage, ProjectInfo, SequenceInfo, SequencePage } from '../../api/types';
+import type { ChangeSet, HistoryPage, Job, JobPage, ProjectInfo, SequenceInfo, SequencePage } from '../../api/types';
 import { buildNeeds, type PipelineSummary, type SequenceStatus } from '../../lib/activity';
 import { useServerEvent } from '../../lib/eventHub';
 import type { ClipCounts } from '../../lib/pipeline';
@@ -26,7 +26,6 @@ export const shellKeys = {
   workflows: ['shell', 'workflows'] as const,
   history: (projectId: number) => ['shell', 'history', projectId] as const,
   jobs: (projectId: number) => ['shell', 'jobs', projectId] as const,
-  budget: ['shell', 'budget'] as const,
 };
 
 /** Làm mới dữ liệu khung khi server báo thay đổi (gộp trong 400ms để không dồn request khi agent ghi liên tục). */
@@ -174,16 +173,6 @@ export function useShellPipelines(projectId: string | null, enabled: boolean) {
   });
 }
 
-export function useBudget(enabled: boolean) {
-  return useQuery({
-    queryKey: shellKeys.budget,
-    queryFn: async () => (await callOp('budget.status')) as unknown as BudgetStatus,
-    enabled,
-    staleTime: 30_000,
-    retry: false,
-  });
-}
-
 export function useHistory(projectId: string | null) {
   const id = numId(projectId);
   return useQuery({
@@ -257,7 +246,7 @@ export interface NeedCounts {
 
 /**
  * "Cần bạn" = đúng danh sách của trang Hoạt động/Cần bạn (`buildNeeds`: gate đang mở, bước chờ nhập, quy trình lỗi,
- * việc cần xử lý/lỗi, việc chờ ngân sách) + clip lệch nhân vật (`project.get counts.drift`). Chip và trang luôn khớp số.
+ * việc cần xử lý/lỗi) + clip lệch nhân vật (`project.get counts.drift`). Chip và trang luôn khớp số.
  */
 export function countNeeds(
   pipelines: PipelineSummary[] | undefined,

@@ -128,8 +128,7 @@ def test_seed_from_env_connection_fields_settings_and_history(tmp_db, tmp_path):
     assert data["image.model"] == "gpt-image-9"
     assert data["video.resolution"] == "1080p"
     assert data["video.duration"] == 10
-    assert data["budget.videos_total"] == 0
-    assert "budget.images_total" not in data  # giữ mặc định 60
+    assert not any(k.startswith("budget.") for k in data)
     assert not any(k.startswith("_") or k == "seeded_env_at" for k in data)
 
     with tmp_db.session() as s:

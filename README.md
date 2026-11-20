@@ -32,7 +32,7 @@ cần bạn duyệt. Mọi thao tác đều hoàn tác được, và agent (Clau
 
 **Điều khiển và an toàn**
 - Dây chuyền hai tầng (ma trận tập × chặng) và hộp "Cần bạn" gom mọi gate, lỗi và yêu cầu từ agent.
-- Ngân sách ảnh/video, lịch sử thay đổi theo từng người/agent, hoàn tác, thùng rác thay vì xoá hẳn.
+- Ước tính số ảnh/video trước khi chạy, lịch sử thay đổi theo từng người/agent, hoàn tác, thùng rác thay vì xoá hẳn.
 - Truy cập từ xa có mật khẩu, vai trò chỉ xem và token API; agent qua MCP, CLI hoặc REST.
 
 ## Yêu cầu
@@ -86,7 +86,7 @@ data/                   Dữ liệu chạy thật (cơ sở dữ liệu, media, 
 - [Hướng dẫn sử dụng](docs/huong-dan-su-dung.md): đi theo dây chuyền sản xuất, từ tạo dự án tới xuất gói.
 - [Truy cập từ xa](docs/remote-access.md): mở app ra ngoài một cách an toàn (mật khẩu, Cloudflare Tunnel, Tailscale).
 - [Agent và MCP](docs/agents-va-mcp.md): kết nối Claude Code/Desktop, quy tắc chạy an toàn, file khai báo dự án.
-- [Nhà cung cấp](docs/providers.md): các adapter ảnh/video/giọng/LLM, lỗi chuẩn, ngân sách (cho người phát triển).
+- [Nhà cung cấp](docs/providers.md): các adapter ảnh/video/giọng/LLM, lỗi chuẩn (cho người phát triển).
 - [Định dạng nhập clip hàng loạt](docs/import-format.md) và [file mẫu](docs/import-templates/clips.csv).
 - [Kiến trúc UX](docs/design/ux-architecture.md), [thiết kế hệ thống](docs/superpowers/specs/2026-11-19-sagareel-studio-design.md),
   [phụ lục nghề làm phim](docs/superpowers/specs/2026-11-20-film-craft-addendum.md), [DESIGN.md](DESIGN.md).

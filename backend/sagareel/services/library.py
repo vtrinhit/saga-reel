@@ -1,7 +1,7 @@
 """Library (spec §6, §8, §10, §23.9; phụ lục film-craft §1): loại tài sản, tài sản, look, sheet, drift check.
 
 - Mọi ghi thực thể ★ đi qua UnitOfWork (lịch sử, hoàn tác). Take là bảng Plain: ghi thẳng, không bao giờ xoá/ghi đè.
-- Sheet: mỗi (look, góc, take) là **một job** `library.sheet` (một lần gọi provider có tiền mỗi job — ngân sách và
+- Sheet: mỗi (look, góc, take) là **một job** `library.sheet` (một lần gọi provider có tiền mỗi job — sổ chi tiêu và
   việc nối lại theo `external_id` đều tính theo job). Góc `anchor` sinh chỉ từ chữ; mọi góc khác chỉ ref ảnh mỏ neo.
   Look chưa có mỏ neo: chỉ gửi job anchor, job anchor đầu tiên thành công đặt `anchor_media_id` rồi mới gửi các góc
   còn lại (danh sách mang trong `params.follow`).
@@ -36,7 +36,7 @@ from sagareel.db.models import (
     Sequence,
     Take,
 )
-from sagareel.services import budget, entities, jobs, llm, media
+from sagareel.services import entities, jobs, llm, media
 from sagareel.services.projects import KEY_RE, slugify
 
 SHEET_JOB = "library.sheet"
@@ -631,12 +631,8 @@ async def sheet_generate(ctx: OpContext, look_id: int, views: list[str] | None =
                 else None, **params}
 
     def run() -> dict[str, Any]:
-        with ctx.services.db.session() as s:
-            if dry_run:
-                estimate["budget"] = budget.status(s, "image", resolver=ctx.services.resolver, project_id=project.id)
-                return {"estimate": estimate}
-            budget.check(s, "image", units_each * count, conn.id, resolver=ctx.services.resolver,
-                         project_id=project.id)
+        if dry_run:
+            return {"estimate": estimate}
         lane = ProviderService.lane(conn)
         if has_anchor or compiler.ANCHOR not in norm:
             submitted = submit_sheet_jobs(ctx.services, look_id=look_id, project_id=project.id, views=norm,
@@ -755,9 +751,6 @@ async def look_generate_matrix(ctx: OpContext, asset_id: int, outfits: list[str]
         images = len(norm) * takes * len(new_items)
         estimate.update({"images": images, "units": float(unit.get("units", 1) or 1) * images, "views": norm,
                          "takes": takes, "connection": conn.name, "enabled": enabled})
-        if dry_run:
-            with ctx.services.db.session() as s:
-                estimate["budget"] = budget.status(s, "image", resolver=ctx.services.resolver)
     if dry_run:
         return {"items": items, "estimate": estimate}
 

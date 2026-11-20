@@ -22,7 +22,6 @@ interface IdeaEstimate {
   seconds: number;
   gates: string[];
   warnings: { code: string; message: string }[];
-  budget: { image?: { enabled: boolean; remaining: number | null }; video?: { enabled: boolean; remaining: number | null } };
 }
 
 export interface IdeaToVideoDialogProps {
@@ -37,7 +36,7 @@ export interface IdeaToVideoDialogProps {
 
 /**
  * Ý tưởng → video (`pipeline.idea_to_video`): form → **Ước tính chi phí** (dry_run: số clip/ảnh/video/LLM, giây phim,
- * cảnh báo thể loại/ngân sách) → **Tạo và viết bible**. Quy trình dừng ở gate đầu tiên; video không chạy trước gate.
+ * cảnh báo thể loại) → **Tạo và viết bible**. Quy trình dừng ở gate đầu tiên; video không chạy trước gate.
  */
 export function IdeaToVideoDialog({ open, onClose, projectId = null, defaultIdea = '', defaultGenre = 'serial', onStarted }: IdeaToVideoDialogProps) {
   const qc = useQueryClient();
@@ -91,7 +90,7 @@ export function IdeaToVideoDialog({ open, onClose, projectId = null, defaultIdea
     },
     onError: (e) => toast({ message: errorMessage(e, 'Không bắt đầu được quy trình từ ý tưởng.'), tone: 'error' }),
   });
-  const credits = est ? (est.budget.image?.enabled ? est.images : 0) + (est.budget.video?.enabled ? est.videos : 0) : 0;
+  const credits = est ? est.images + est.videos : 0;
   const changed = () => setEst(null);
 
   return (
@@ -175,7 +174,6 @@ export function IdeaToVideoDialog({ open, onClose, projectId = null, defaultIdea
             </dl>
             <p className="text-xs text-fg-2">
               {est.gates.length ? `Dừng ở gate ${est.gates.map(gateLabel).join(', ')} — video chỉ chạy sau khi bạn duyệt.` : 'Quy trình không có gate.'}
-              {est.budget.image?.enabled && est.budget.image.remaining != null ? ` Ngân sách ảnh còn ${nf.format(est.budget.image.remaining)} lượt.` : ''}
             </p>
             {est.warnings.map((w) => (
               <p key={w.code + w.message} className="sr-warnbox flex items-start gap-2 rounded-sm px-2 py-1.5 text-xs">

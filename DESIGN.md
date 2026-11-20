@@ -13,7 +13,7 @@
 | Điều hướng | tab theo công cụ (Thư viện · Tập · Studio · Việc · Xuất) | dây chuyền hai tầng + Cần bạn (§4) | trả lời "tập nào ở đâu, cái gì chờ tôi" cho 200 tập |
 | Bản sắc | vàng sáp = quyết định của bạn | thêm **vòng khoanh đứt** = đang chờ bạn quyết; agent không bao giờ có vàng (§1) | gate và agent là khái niệm mới |
 | Token | — | giữ toàn bộ tên + giá trị; **đổi** `--w-rail` 64→76; **thêm** 10 token (§3.6) | nhãn rail 2 chữ không được xuống dòng |
-| Pattern | ClipCard, TakeCompare, Studio | thêm StageSpine, ProductionMatrix, GateCard, NeedItem, AgentFeed, CostMeter, ReviewQueue (§6) | |
+| Pattern | ClipCard, TakeCompare, Studio | thêm StageSpine, ProductionMatrix, GateCard, NeedItem, AgentFeed, ReviewQueue (§6) | |
 | Phím duyệt | §6.1 v1 | chuẩn theo hợp đồng Task H (§7.1) | ba nguồn từng mâu thuẫn |
 
 ## 1. Bản sắc: "Take Khoanh"
@@ -355,7 +355,7 @@ Lý do, route và luồng ở `docs/design/ux-architecture.md`. v2 thay toàn b�
 |---|---|---|---|
 | 1920 | ô tìm đầy đủ + mọi chip có chữ | rail 200 có nhãn ngang | popover phải 360; có thể ghim |
 | 1600 | ô tìm đầy đủ | rail 76 | popover |
-| 1280 | ô tìm thu thành icon; đồng hồ chi phí, chip agent/Cần bạn/Việc có chữ | rail 76 | popover |
+| 1280 | ô tìm thu thành icon; chip agent/Cần bạn/Việc có chữ | rail 76 | popover |
 | 768 | chữ phụ của chip ẩn | rail → thanh tab ngang dính dưới topbar; inspector thành drawer | popover |
 | 375 | dấu · Dự án ▾ · tìm · Cần bạn (vòng) · mạng | thanh dưới: **Cần bạn · Duyệt · Tập · Việc · Thêm**; thanh chặng chỉ hiện icon, chặng hiện tại có chữ, tự cuộn tới giữa | toàn màn |
 
@@ -517,7 +517,7 @@ Luật chung: mọi control có 8 trạng thái (default · hover `bg-3` · focu
 | Component | Đặc tả |
 |---|---|
 | **ConfirmDelete** | Bước 1: bấm "Xoá" → nút đổi thành "Bấm lần nữa để xoá 12 clip" (danger) trong 4 giây. Bước 2 chỉ khi xoá vĩnh viễn, > 50 mục, hoặc cả tập/dự án: modal nói chính xác cái gì mất + ô gõ tên tập để xác nhận. Mặc định là vào Thùng rác 30 ngày + toast Hoàn tác. |
-| **EstimateDialog** | trước mọi lần chạy trả phí: bảng theo loại (ảnh / clip / TTS / LLM): số lượng × đơn giá = lượt và ≈ ₫; tổng `2xl` mono; ngân sách tháng còn lại; vượt ngân sách → băng warn; nút chính "Chạy 48 việc · 96 lượt". Tuỳ chọn "Không hỏi lại dưới 5 lượt" (Cài đặt › Ngân sách). |
+| **EstimateDialog** | trước mọi lần chạy trả phí: bảng theo loại (ảnh / clip / TTS / LLM): số lượng × đơn giá = lượt và ≈ ₫; tổng `2xl` mono; cảnh báo provider (băng warn); nút chính "Chạy 48 việc · 96 lượt". Luôn hỏi, một lần xác nhận (không có ngân sách/trần). |
 | **Cảnh báo khả năng provider** | băng warn trong EstimateDialog/Inspector: "GrokTele không nhận ảnh tham chiếu thứ 2 — chỉ gửi ảnh đầu." [Đổi provider] [Vẫn chạy]. |
 | **Toast** | dưới phải (điện thoại: trên thanh dưới), bg-4, e2, tối đa 3; `aria-live=polite`, không cướp focus; có Hoàn tác thì sống 8 giây, dừng đếm khi hover/focus; `Ctrl Z` cũng hoàn tác. |
 | **Skeleton** | đúng hình nội dung (card 9:16, hàng timeline, JobRow), bg-2 tĩnh; cả vùng một nhịp opacity .6↔1 1,6s (tắt khi reduced-motion). |
@@ -565,10 +565,9 @@ Luật chung: mọi control có 8 trạng thái (default · hover `bg-3` · focu
 - Chân: **Trả lại kèm góp ý** (mở dialog textarea → `gate.reject`) · **Duyệt và chạy tiếp** (primary). Điện thoại: lưới 2
   cột 48px, nhãn rút gọn "Trả lại" / "Duyệt · chạy tiếp".
 - Viewer: không có chân; dòng "Chỉ chủ dự án duyệt được gate".
-- Vượt ngân sách: NextCost có băng warn và nút chính đổi thành "Duyệt, chạy tới hết phần miễn phí".
 
 ### 6.4 NeedItem (hàng trong Cần bạn)
-Lưới `32px · 1fr · chevron`: biểu tượng tròn 32 (gate = vòng đứt accent; lỗi/lệch/ngân sách = nền màu trạng thái 14%) +
+Lưới `32px · 1fr · chevron`: biểu tượng tròn 32 (gate = vòng đứt accent; lỗi/lệch = nền màu trạng thái 14%) +
 tiêu đề sm 500 + một dòng chi tiết xs fg-2 (luôn có số hoặc lý do). Cả hàng là một link tới đúng màn đã lọc.
 
 ### 6.5 AgentFeed và panel Hoạt động
@@ -578,9 +577,8 @@ tiêu đề sm 500 + một dòng chi tiết xs fg-2 (luôn có số hoặc lý d
   số thay đổi phiên, chi phí).
 - Timeline: `giờ mono · ActorTag + hành động · nơi` + nút **Hoàn tác** khi change set còn hoàn tác được.
 
-### 6.6 CostMeter (topbar)
-Chip 2 dòng: "MaiVideo **412**/1.236 lượt" + "65% tháng", vạch 3px dưới (`scaleX`). > 80% vạch warn; chặn → chữ failed +
-"18 việc bị giữ". Bấm → dialog chi phí theo provider (`budget.status`).
+### 6.6 CostMeter (đã bỏ)
+Tính năng ngân sách đã bỏ: topbar không còn đồng hồ chi phí; chi phí hiện ở EstimateDialog (trước khi chạy) và GateCard.
 
 ### 6.7 ReviewQueue + TakeCompare
 - ≥ 1280: `280 | 1fr | 320` = hàng đợi (ảo hoá, J/K) · so sánh · inspector gọn (prompt, verdict V, chi phí clip).
@@ -595,7 +593,7 @@ Chip 2 dòng: "MaiVideo **412**/1.236 lượt" + "65% tháng", vạch 3px dướ
 
 ### 6.9 EstimateDialog — bổ sung (gốc ở §5.5)
 - Gom theo **chặng** khi chạy pipeline; dòng "Thời gian" có số song song của lane.
-- Vượt ngân sách: băng warn + **phương án rẻ hơn** thành nút phụ ("Chạy tới hết Phân cảnh · 0 lượt").
+- **Phương án rẻ hơn** thành nút phụ khi có ("Chạy tới hết Phân cảnh · 0 lượt").
 
 ### 6.10 CommandPalette — bổ sung (gốc ở §5.4)
 Nhóm: Đi tới (Tổng quan, Tập n, Studio tập n, nhân vật…) · Hành động (Duyệt khung hình tập n, Tạo lại các clip đã cũ, Mở
@@ -705,7 +703,7 @@ Luật: câu thường (chỉ hoa chữ đầu và tên riêng); nút bắt đ�
 - [ ] Mọi chữ ≥ 4,5:1 trên nền thực; "chưa tới" dùng fg-3 cho chữ, fg-4 chỉ cho icon/disabled.
 - [ ] Focus accent 2px cách 2px, hiện tức thì; khác dấu "đang chọn".
 - [ ] Trạng thái clip/chặng có icon + chữ (`sr-only` khi ô chỉ có ký hiệu).
-- [ ] Nút trả phí ghi giá; duyệt gate ghi giá bước kế; vượt ngân sách có phương án rẻ hơn.
+- [ ] Nút trả phí ghi giá; duyệt gate ghi giá bước kế; có phương án rẻ hơn khi hợp.
 - [ ] Mọi thay đổi có actor; có hoàn tác.
 - [ ] 320/375/768/1280/1920: không cuộn ngang trang (đo `scrollWidth`); vùng hai chiều cuộn trong `role=region`.
 - [ ] Nhãn bấm được (rail, tab, nút, chặng) không xuống dòng ở mọi mốc.

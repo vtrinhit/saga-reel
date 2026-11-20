@@ -88,7 +88,6 @@ export const ERROR_TEXT: Record<string, string> = {
   workdir_unavailable: 'Không tạo được thư mục làm việc của việc này.',
   provider_unavailable: 'Provider không dùng được (kết nối đang tắt, chưa cấu hình hoặc không phản hồi).',
   provider_rejected: 'Provider từ chối yêu cầu.',
-  budget_exceeded: 'Vượt ngân sách.',
   capability_mismatch: 'Provider không hỗ trợ yêu cầu này.',
   job_unknown: 'Không rõ provider đã nhận việc này hay chưa.',
   maivideo_job_unknown: 'Không rõ MaiVideo đã nhận việc này hay chưa.',

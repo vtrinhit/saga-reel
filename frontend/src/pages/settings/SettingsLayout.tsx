@@ -1,4 +1,4 @@
-import { Gauge, Globe, HardDrive, Plug, Route as RouteIcon, Rows3, type LucideIcon } from 'lucide-react';
+import { Globe, HardDrive, Plug, Route as RouteIcon, Rows3, type LucideIcon } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router';
 import { cn, focusRing } from '../../lib/cn';
 import { PageHeader } from '../PageHeader';
@@ -14,7 +14,6 @@ export const SETTINGS_SECTIONS: Section[] = [
   { to: 'llm', label: 'Định tuyến LLM', icon: RouteIcon },
   { to: 'concurrency', label: 'Luồng', icon: Rows3 },
   { to: 'access', label: 'Truy cập từ xa', icon: Globe },
-  { to: 'budget', label: 'Ngân sách & song song', icon: Gauge },
   { to: 'storage', label: 'Lưu trữ', icon: HardDrive },
 ];
 

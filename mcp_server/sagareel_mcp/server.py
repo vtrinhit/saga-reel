@@ -30,7 +30,7 @@ INSTRUCTIONS = (
     "SagaReel Studio — studio dựng video AI. Mỗi thao tác là một op; tool `sr_<nhóm>_<hành động>` cho op hay dùng, "
     "`sr_describe_ops` xem danh mục + schema, `sr_call` gọi op bất kỳ. Quy tắc an toàn: (1) xoá hai bước — gọi "
     "`*_delete_preview` lấy `confirm_token`, báo người dùng, rồi mới xoá; (2) op tốn tiền: chạy `dry_run: true` "
-    "trước, tôn trọng ngân sách (`budget_exceeded`); (3) op chạy lâu trả `job_id` → `sr_job_wait`; (4) gate dừng "
+    "trước để xem ước tính và báo người dùng; (3) op chạy lâu trả `job_id` → `sr_job_wait`; (4) gate dừng "
     "chờ người duyệt (`needs_attention`/`waiting_*`) thì hỏi người dùng, không tự vượt; (5) sửa nhầm → "
     "`sr_history_undo`. Lỗi trả `error_code: chi tiết (gợi ý: …)` tiếng Việt — đọc gợi ý rồi sửa params."
 )

@@ -11,12 +11,11 @@ const est = (over: Partial<TryEstimate> = {}): TryEstimate => ({
   connection_id: 1,
   adapter: 'fake_image',
   enabled: true,
-  budget: { enabled: true, total: 60, spent: 12, remaining: 48 },
   ...over,
 });
 
 const run = (s: TryState, ...actions: Parameters<typeof tryReducer>[1][]) => actions.reduce(tryReducer, s);
-const err = new ApiError({ code: 'budget_exceeded', detail: 'Vượt ngân sách ảnh.', status: 402 });
+const err = new ApiError({ code: 'provider_unavailable', detail: 'Kết nối đang tắt.', status: 503 });
 
 describe('supportsDryRun', () => {
   it('chỉ ảnh, video, TTS có ước tính trước (dry_run)', () => {
@@ -43,7 +42,7 @@ describe('tryReducer: ước tính → chạy → theo dõi job', () => {
     expect(run(s, { type: 'run' }).step).toBe('running');
   });
 
-  it('ước tính lỗi → về form kèm lỗi; chạy lỗi (vd vượt ngân sách) → về bảng ước tính kèm lỗi, giữ ước tính', () => {
+  it('ước tính lỗi → về form kèm lỗi; chạy lỗi (vd kết nối tắt) → về bảng ước tính kèm lỗi, giữ ước tính', () => {
     let s = run(INITIAL, { type: 'submit', dryRun: true }, { type: 'failed', error: err });
     expect(s).toMatchObject({ step: 'form', error: err });
     s = run(INITIAL, { type: 'submit', dryRun: true }, { type: 'estimated', estimate: est() }, { type: 'run' }, { type: 'failed', error: err });

@@ -75,7 +75,7 @@ def test_sheet_dry_run_and_missing_anchor(client, setup):
     look = setup["look_id"]
     est = ok(client, "sheet.generate", {"look_id": look, "connection": "fake-img", "dry_run": True})["estimate"]
     assert est["views"] == ["anchor", "closeup", "profile", "back", "three_quarter"] and est["images"] == 5
-    assert "budget" in est
+    assert "budget" not in est
     r = call(client, "sheet.generate", {"look_id": look, "views": ["profile"], "connection": "fake-img"})
     assert r.status_code == 409 and r.json()["error_code"] == "anchor_missing"
     r = call(client, "sheet.generate", {"look_id": look, "views": ["nope"], "connection": "fake-img"})
