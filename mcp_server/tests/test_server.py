@@ -253,3 +253,18 @@ async def test_token_suspended_surfaces_code_and_hint_without_reread(app_mock, t
     assert getattr(err, "code", None) == "token_suspended" and "bật lại" in (getattr(err, "hint", "") or "")
     assert len(route.calls) == 1
     await client.aclose()
+
+
+async def test_estimate_shortcut_sequence_id_uses_sequence_estimate(app_mock):
+    seen = []
+
+    def answer(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"images": 3})
+
+    app_mock.post("/api/ops/sequence.estimate").mock(side_effect=answer)
+    c, _ = await _session()
+    async with c:
+        r = await c.call_tool("sr_estimate", {"sequence_id": 5})
+    assert not r.is_error, _text(r)
+    assert seen == [{"sequence_id": 5}]

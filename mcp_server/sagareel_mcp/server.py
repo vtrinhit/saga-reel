@@ -165,10 +165,15 @@ class Handlers:
 
     async def _t_estimate(self, tool: ToolDef, args: dict) -> Any:
         op = args.get("op")
+        params = dict(args.get("params") or {})
+        if not op and args.get("sequence_id") is not None and "sequence.estimate" in tool.extra.get("ops", []):
+            op = "sequence.estimate"
+        if args.get("sequence_id") is not None:
+            params.setdefault("sequence_id", args["sequence_id"])
         if op not in tool.extra.get("ops", []):
             raise AppError("invalid_arguments", f"Op ước tính không hợp lệ: {op!r}.",
                            hint=f"Chọn một trong: {', '.join(tool.extra.get('ops', []))}.")
-        return await self.state.client.call(op, args.get("params") or {})
+        return await self.state.client.call(op, params)
 
     async def _t_job_wait(self, tool: ToolDef, args: dict) -> Any:
         ids = args.get("ids")

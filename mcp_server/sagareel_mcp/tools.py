@@ -198,10 +198,11 @@ def _estimate_tool(estimate_ops: list[str]) -> ToolDef:
         input_schema={
             "type": "object",
             "properties": {
-                "op": {"type": "string", "enum": estimate_ops, "description": "Op ước tính"},
+                "op": {"type": "string", "enum": estimate_ops,
+                       "description": "Op ước tính; bỏ trống + có sequence_id → sequence.estimate"},
+                "sequence_id": {"type": "integer", "description": "Lối tắt: ước tính cả tập (sequence.estimate)"},
                 "params": {"type": "object", "default": {}, "description": "Params của op ước tính"},
             },
-            "required": ["op"],
         },
         annotations={"read_only_hint": True, "destructive_hint": False, "idempotent_hint": True,
                      "open_world_hint": False},
