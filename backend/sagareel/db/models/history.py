@@ -13,6 +13,7 @@ from sagareel.db.base import Base, JSONDict, Plain
 
 class ChangeSet(Plain, Base):
     __tablename__ = "change_set"
+    __table_args__ = (Index("ix_change_set_project_id_id", "project_id", "id"),)  # history.list theo dự án (M8)
 
     op_name: Mapped[str]
     actor: Mapped[str]

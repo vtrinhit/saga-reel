@@ -332,7 +332,11 @@ def _sequence(s: Session, q: Sequence, med: _Media, asset_ref, look_key: dict[in
 # --- YAML -----------------------------------------------------------------------------------------------------------
 
 
-class _Dumper(yaml.SafeDumper):
+# libyaml (C) nhanh hơn ~10× bộ phát Python thuần — quyết định thời gian xuất project hàng nghìn clip (M8).
+_BaseDumper = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
+
+
+class _Dumper(_BaseDumper):  # type: ignore[misc, valid-type]
     pass
 
 

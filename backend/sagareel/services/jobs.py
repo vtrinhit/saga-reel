@@ -16,6 +16,7 @@ Chống tạo trùng job tốn tiền:
 
 from __future__ import annotations
 
+import bisect
 import inspect
 import math
 from collections.abc import Awaitable, Callable
@@ -23,7 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from sagareel.core.errors import AppError, Conflict, NotFound
@@ -231,15 +232,18 @@ def _iso(value: datetime | None) -> str | None:
 def queue_positions(session: Session, rows: list[Job]) -> dict[int, int]:
     """Vị trí trong hàng đợi của lane (1 = chạy kế tiếp) cho các job `queued`: cùng thứ tự worker giành job
     (priority giảm dần, rồi id)."""
-    out: dict[int, int] = {}
-    for job in rows:
-        if job.status != "queued":
-            continue
-        ahead = session.scalar(select(func.count()).select_from(Job).where(
-            Job.status == "queued", Job.lane == job.lane,
-            or_(Job.priority > job.priority, and_(Job.priority == job.priority, Job.id < job.id)))) or 0
-        out[job.id] = int(ahead) + 1
-    return out
+    queued = [j for j in rows if j.status == "queued"]
+    if not queued:
+        return {}
+    # Một câu SQL cho mọi lane liên quan (trước đây mỗi job `queued` một câu COUNT).
+    order: dict[str, list[tuple[int, int]]] = {}
+    for lane, priority, job_id in session.execute(
+        select(Job.lane, Job.priority, Job.id).where(Job.status == "queued", Job.lane.in_({j.lane for j in queued}))
+    ):
+        order.setdefault(lane, []).append((-priority, job_id))
+    for keys in order.values():
+        keys.sort()
+    return {j.id: bisect.bisect_left(order.get(j.lane, []), (-j.priority, j.id)) + 1 for j in queued}
 
 
 def with_queue_position(session: Session, rows: list[Job]) -> list[dict[str, Any]]:

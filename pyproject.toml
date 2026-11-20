@@ -42,6 +42,8 @@ sagareel = ["defaults/**/*", "db/migrations/**/*", "assets/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
+addopts = "-m \"not slow\""
+markers = ["slow: kiểm thử quy mô lớn (M8); chạy bằng -m slow"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [

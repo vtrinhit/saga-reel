@@ -102,13 +102,13 @@ def _media_file(services, m: Media | None) -> Path | None:
         return None
 
 
-def _take_media(s: Session, take_id: int | None) -> Media | None:
-    if not take_id:
-        return None
-    t = s.get(Take, take_id)
-    if t is None or not t.media_id:
-        return None
-    return s.get(Media, t.media_id)
+def _fetch_in(s: Session, model, column, values, *where, chunk: int = 500) -> list:
+    """SELECT ... WHERE column IN (values) theo lô `chunk` (giới hạn số tham số SQLite) + điều kiện phụ."""
+    vals = list(values)
+    out: list = []
+    for i in range(0, len(vals), chunk):
+        out += s.scalars(select(model).where(column.in_(vals[i:i + chunk]), *where)).all()
+    return out
 
 
 def _stable_pick(key: str, options: list[str]) -> str:
@@ -159,12 +159,40 @@ def load(
         for ln in line_rows:
             lines_by_clip.setdefault(ln.clip_id, []).append(ln)
 
+        # Nạp trước take + media theo lô (tránh N+1: 1000 clip + 2000 câu thoại từng gây ~6000 câu SQL).
+        take_ids = {i for c in clip_rows for i in (c.image_take_id, c.video_take_id) if i}
+        take_ids |= {ln.audio_take_id for ln in line_rows if ln.audio_take_id}
+        takes_by_id: dict[int, Take] = {t.id: t for t in _fetch_in(s, Take, Take.id, take_ids)}
+        audio_takes: dict[int, list[Take]] = {}  # id câu thoại → take âm thanh thành công, mới nhất trước
+        voiced = [ln.id for ln in line_rows if ln.source in ("tts", "upload")]
+        for t in sorted(_fetch_in(s, Take, Take.owner_id, voiced, Take.owner_type == "dialogue",
+                                  Take.part == "audio", Take.status == "succeeded"), key=lambda t: -t.id):
+            audio_takes.setdefault(t.owner_id, []).append(t)
+        media_ids = {t.media_id for t in takes_by_id.values() if t.media_id}
+        media_ids |= {t.media_id for ts in audio_takes.values() for t in ts if t.media_id}
+        media_ids |= {c.input_media_id for c in clip_rows if c.input_media_id}
+        media_by_id: dict[int, Media] = {m.id: m for m in _fetch_in(s, Media, Media.id, media_ids)}
+
+        resolved: dict[int, Path | None] = {}
+
+        def media_file(m: Media | None) -> Path | None:
+            """`_media_file` nhớ theo media id trong một lần nạp (nhiều clip/câu thoại dùng chung một file)."""
+            if m is None:
+                return None
+            if m.id not in resolved:
+                resolved[m.id] = _media_file(services, m)
+            return resolved[m.id]
+
+        def take_media(take_id: int | None) -> Media | None:
+            t = takes_by_id.get(take_id) if take_id else None
+            return media_by_id.get(t.media_id) if t is not None and t.media_id else None
+
         clips_in: list[ClipIn] = []
         next_link = {a.id: b.link for a, b in zip(clip_rows, list(clip_rows)[1:], strict=False)}
         for c in clip_rows:
-            video = None if variant == "animatic" else _take_media(s, c.video_take_id)
-            image = _take_media(s, c.image_take_id) or (s.get(Media, c.input_media_id) if c.input_media_id else None)
-            vpath, ipath = _media_file(services, video), _media_file(services, image)
+            video = None if variant == "animatic" else take_media(c.video_take_id)
+            image = take_media(c.image_take_id) or (media_by_id.get(c.input_media_id) if c.input_media_id else None)
+            vpath, ipath = media_file(video), media_file(image)
             grok_keep = any(ln.source == "grok" for ln in lines_by_clip.get(c.id, []))
             src: dict[str, Any]
             if vpath is not None and video is not None:
@@ -241,22 +269,15 @@ def load(
             audio: Media | None = None
             take: Take | None = None
             if ln.source in ("tts", "upload"):
+                cands = audio_takes.get(ln.id, [])
                 if primary and ln.audio_take_id:
-                    take = s.get(Take, ln.audio_take_id)
+                    take = takes_by_id.get(ln.audio_take_id)
                 else:
-                    take = s.scalars(
-                        select(Take).where(Take.owner_type == "dialogue", Take.owner_id == ln.id,
-                                           Take.part == "audio", Take.status == "succeeded", Take.lang == lang)
-                        .order_by(Take.id.desc()).limit(1)
-                    ).first()
+                    take = next((t for t in cands if t.lang == lang), None)
                     if take is None and primary:
-                        take = s.scalars(
-                            select(Take).where(Take.owner_type == "dialogue", Take.owner_id == ln.id,
-                                               Take.part == "audio", Take.status == "succeeded")
-                            .order_by(Take.id.desc()).limit(1)
-                        ).first()
-                audio = s.get(Media, take.media_id) if take is not None and take.media_id else None
-            apath = _media_file(services, audio)
+                        take = cands[0] if cands else None
+                audio = media_by_id.get(take.media_id) if take is not None and take.media_id else None
+            apath = media_file(audio)
             if ln.source in ("tts", "upload") and apath is None:
                 loaded.warnings.append({"code": "dialogue_audio_missing", "line_id": ln.id,
                                         "message": "Câu thoại chưa có âm thanh; chỉ hiện phụ đề."})
@@ -281,7 +302,7 @@ def load(
             elif it.sound_id:
                 snd = s.get(Sound, it.sound_id)
                 m = s.get(Media, snd.media_id) if snd is not None else None
-            mpath = _media_file(services, m)
+            mpath = media_file(m)
             if it.track in ("music", "sfx") and mpath is None:
                 loaded.warnings.append({"code": "item_media_missing", "item_id": it.id,
                                         "message": f"Item {it.track} #{it.id} không có file âm thanh; bỏ qua."})
