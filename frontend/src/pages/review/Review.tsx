@@ -3,7 +3,6 @@ import { CircleCheck, Flag, ListOrdered, PanelRight, Sparkles } from 'lucide-rea
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { callOp } from '../../api/ops';
-import { callOpLoose } from '../../api/opsLoose';
 import type { ProjectInfo, SequencePage } from '../../api/types';
 import { errText, useRegenerate } from '../../components/clip/useRegenerate';
 import { DecisionBar, SuggestBand } from '../../components/review/DecisionBar';
@@ -16,10 +15,11 @@ import { ErrorState } from '../../components/ui/ErrorState';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { SkeletonRows } from '../../components/ui/Skeleton';
 import { isTypingTarget } from '../../components/shell/useShellKeys';
-import { fetchAllClips, useAssets, useCost } from '../../lib/episodeData';
+import { fetchQueue, useAssets, useCost } from '../../lib/episodeData';
 import type { Clip, SuggestChange, Take, Verdict } from '../../lib/episodeTypes';
 import { formatClipSeconds, isFlagged, shotShort } from '../../lib/episodeView';
 import { reviewKeyAction, type ReviewAction } from '../../lib/reviewKeys';
+import { changeSetOf, undoAction, undoChangeSet } from '../../lib/episodeUndo';
 import { toast } from '../../stores/toast';
 import { cn } from '../../lib/cn';
 
@@ -43,7 +43,8 @@ function filterParams(f: FilterKey, part: 'image' | 'video'): Record<string, unk
     case 'skipped':
       return { review: ['skipped'] };
     default:
-      return { review: ['pending'] };
+      // = `takes_pending` của tập/dự án: clip chưa duyệt đã có take.
+      return { review: ['pending'], has_take: true };
   }
 }
 
@@ -68,6 +69,8 @@ interface UndoEntry {
   prevTakeId: number | null;
   prevReview: Clip['review'];
   part: 'image' | 'video';
+  /** change set của các lần ghi (theo thứ tự ghi) — hoàn tác đúng từng change set, ngược thứ tự. */
+  changeSets: number[];
 }
 
 /** `/p/:pid/review?seq=&part=image|video&filter=` — duyệt take bằng bàn phím. */
@@ -95,27 +98,28 @@ export function Review() {
 
   const project = useQuery({
     queryKey: ['shell', 'project', pid],
-    queryFn: () => callOpLoose<ProjectInfo>('project.get', { id: pid }),
+    queryFn: async () => (await callOp('project.get', { id: pid })) as unknown as ProjectInfo,
     staleTime: 60_000,
     retry: false,
   });
   const seqList = useQuery({
     queryKey: ['shell', 'sequences', pid],
-    queryFn: () => callOpLoose<SequencePage>('sequence.list', { project_id: pid, limit: 500 }),
+    queryFn: async () => (await callOp('sequence.list', { project_id: pid, limit: 500 })) as unknown as SequencePage,
     retry: false,
   });
   const seqById = useMemo(() => new Map((seqList.data?.items ?? []).map((s) => [s.id, s])), [seqList.data]);
+  // `sequence.list counts.takes_pending` (server đếm) — tập còn take chờ duyệt, theo thứ tự tập.
+  const pendingSeqIds = useMemo(
+    () => (seqList.data?.items ?? []).filter((s) => Number(s.counts?.takes_pending ?? 0) > 0).map((s) => s.id).slice(0, 500),
+    [seqList.data],
+  );
   const assetsQ = useAssets(pid);
   const assets = useMemo(() => new Map((assetsQ.data ?? []).map((a) => [a.id, a])), [assetsQ.data]);
 
-  // Hàng đợi: chụp một lần khi mở (không rút hàng khi đang duyệt) — `review.queue` chỉ nhận một tập nên lặp từng tập.
+  // Hàng đợi: chụp một lần khi mở (không rút hàng khi đang duyệt) — một lượt `review.queue(sequence_ids)` cho cả lô.
   const queueQ = useQuery({
     queryKey: ['review', pid, seqIds.join(','), part, filter],
-    queryFn: async () => {
-      const out: Clip[] = [];
-      for (const s of seqIds) out.push(...(await fetchAllClips(s, filterParams(filter, part))));
-      return out;
-    },
+    queryFn: () => fetchQueue(seqIds, filterParams(filter, part)),
     enabled: seqIds.length > 0,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
@@ -199,15 +203,19 @@ export function Review() {
       return;
     }
     const c = clip;
-    const entry: UndoEntry = { clipId: c.id, index, prevTakeId: selectedId ?? null, prevReview: c.review, part };
+    const entry: UndoEntry = { clipId: c.id, index, prevTakeId: selectedId ?? null, prevReview: c.review, part, changeSets: [] };
+    const track = (r: unknown) => {
+      const id = changeSetOf(r);
+      if (id != null) entry.changeSets.push(id);
+    };
     // lạc quan: sang clip kế ngay
     decide(c, 'approved');
     patchLocal(c.id, { review: 'approved', ...(part === 'image' ? { image_take_id: cell.take.id } : { video_take_id: cell.take.id }) });
     go(index + 1);
     try {
-      if (cell.take.id !== selectedId) await callOp('take.select', { take_id: cell.take.id });
-      await callOp('take.verdict', { take_id: cell.take.id, verdict: 'keep' });
-      await callOp('clip.update', { id: c.id, values: { review: 'approved' } });
+      if (cell.take.id !== selectedId) track(await callOp('take.select', { take_id: cell.take.id }));
+      track(await callOp('take.verdict', { take_id: cell.take.id, verdict: 'keep', reason: null }));
+      track(await callOp('clip.update', { id: c.id, values: { review: 'approved' }, expected_updated_at: null }));
       undoStack.current.push(entry);
       toast({ message: `Đã chọn take ${cell.no} cho ${c.key}.`, undo: () => void undo() });
       void qc.invalidateQueries({ queryKey: ['episode', c.sequence_id] });
@@ -225,11 +233,14 @@ export function Review() {
   const skip = async () => {
     if (!clip) return;
     const c = clip;
-    const entry: UndoEntry = { clipId: c.id, index, prevTakeId: selectedId ?? null, prevReview: c.review, part };
+    const entry: UndoEntry = { clipId: c.id, index, prevTakeId: selectedId ?? null, prevReview: c.review, part, changeSets: [] };
     decide(c, 'skipped');
     go(index + 1);
     try {
-      if (c.review !== 'skipped') await callOp('clip.update', { id: c.id, values: { review: 'skipped' } });
+      if (c.review !== 'skipped') {
+        const id = changeSetOf(await callOp('clip.update', { id: c.id, values: { review: 'skipped' }, expected_updated_at: null }));
+        if (id != null) entry.changeSets.push(id);
+      }
       undoStack.current.push(entry);
     } catch (e) {
       toast({ message: `Không lưu được bỏ qua ${c.key}: ${errText(e)}`, tone: 'error' });
@@ -243,8 +254,12 @@ export function Review() {
       return;
     }
     try {
-      if (e.prevTakeId) await callOp('take.select', { take_id: e.prevTakeId });
-      await callOp('clip.update', { id: e.clipId, values: { review: e.prevReview } });
+      if (e.changeSets.length) {
+        // Hoàn tác đúng các change set đã ghi, mới nhất trước.
+        for (const id of [...e.changeSets].reverse()) await undoChangeSet(pid, id);
+      } else if (e.prevReview !== clips.find((c) => c.id === e.clipId)?.review) {
+        await callOp('clip.update', { id: e.clipId, values: { review: e.prevReview }, expected_updated_at: null });
+      }
       setDecisions((m) => {
         const n = new Map(m);
         n.delete(e.clipId);
@@ -290,15 +305,21 @@ export function Review() {
     });
   };
 
-  const setVerdict = async (v: Verdict) => {
+  /** `v` null = xoá verdict (bấm lại verdict đang chọn). */
+  const setVerdict = async (v: Verdict | null) => {
     const cell = cells[cursor];
     if (!cell) return;
     try {
-      rememberReason(reason);
-      const r = (await callOp('take.verdict', { take_id: cell.take.id, verdict: v, reason: reason.trim() || null })) as unknown as { suggest_change: SuggestChange | null };
+      if (v) rememberReason(reason);
+      const r = (await callOp('take.verdict', { take_id: cell.take.id, verdict: v, reason: v ? reason.trim() || null : null })) as unknown as {
+        suggest_change: SuggestChange | null;
+      };
       void takesQ.refetch();
       if (r.suggest_change) setSuggest(r.suggest_change);
-      toast({ message: `Take ${cell.no}: ${VERDICT_LABEL[v]}.` });
+      toast({
+        message: v ? `Take ${cell.no}: ${VERDICT_LABEL[v]}.` : `Đã xoá verdict của take ${cell.no}.`,
+        undo: undoAction(pid, r, () => void takesQ.refetch()),
+      });
     } catch (e) {
       toast({ message: `Không lưu được verdict: ${errText(e)}`, tone: 'error' });
     }
@@ -445,7 +466,23 @@ export function Review() {
     return (
       <div className="grid gap-4">
         <h1 className="text-xl">Duyệt take</h1>
-        <p className="text-sm text-fg-2">Chọn tập để duyệt. Từ Tổng quan có thể chọn nhiều tập rồi bấm "Duyệt các take".</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-fg-2 tnum">
+            {project.data?.counts?.takes_pending != null
+              ? `${Number(project.data.counts.takes_pending).toLocaleString('vi-VN')} take chờ duyệt trong dự án. `
+              : ''}
+            Chọn tập để duyệt, hoặc duyệt liền mọi tập còn take chờ.
+          </p>
+          {pendingSeqIds.length ? (
+            <Link
+              to={`?seq=${pendingSeqIds.join(',')}&part=image`}
+              className="inline-flex h-control items-center gap-2 rounded-md bg-accent px-3 text-sm font-medium text-accent-on hover:bg-accent-hi focus-visible:outline focus-visible:outline-focus focus-visible:outline-offset-focus focus-visible:outline-accent"
+            >
+              <CircleCheck className="sr-ico" aria-hidden />
+              Duyệt {pendingSeqIds.length.toLocaleString('vi-VN')} tập có take chờ
+            </Link>
+          ) : null}
+        </div>
         {seqList.isPending ? <SkeletonRows count={5} /> : null}
         {seqList.data?.items.length === 0 ? (
           <EmptyState icon={CircleCheck} title="Dự án chưa có tập nào để duyệt." />
@@ -459,7 +496,12 @@ export function Review() {
               >
                 <span className="font-mono text-xs text-fg-2 tnum">{String(s.number).padStart(2, '0')}</span>
                 <span className="min-w-0 flex-1 truncate py-px text-sm">{s.title}</span>
-                <span className="text-xs text-fg-2 tnum">{(s.counts?.clips ?? 0).toLocaleString('vi-VN')} clip</span>
+                <span className="text-xs text-fg-2 tnum">
+                  {Number(s.counts?.takes_pending ?? 0) > 0 ? (
+                    <span className="font-medium text-fg-1">{Number(s.counts.takes_pending).toLocaleString('vi-VN')} chờ duyệt · </span>
+                  ) : null}
+                  {(s.counts?.clips ?? 0).toLocaleString('vi-VN')} clip
+                </span>
               </Link>
             </li>
           ))}
@@ -494,7 +536,7 @@ export function Review() {
       promptRef={promptRef}
       verdictRef={verdictRef}
       currentVerdict={cells[cursor]?.take.verdict ?? ''}
-      onVerdict={(v) => void setVerdict(v)}
+      onVerdict={(v) => void setVerdict(cells[cursor]?.take.verdict === v ? null : v)}
       clipCost={clipCost ? { cost: clipCost.cost, takes: clipCost.takes } : null}
       seqCost={costQ.data?.total ?? null}
       onSaved={(p) => patchLocal(clip.id, p)}
@@ -754,7 +796,7 @@ function ReviewInspector({
             ))}
           </div>
         ) : null}
-        <div role="group" aria-label="Verdict take đang xem" className="flex flex-wrap gap-1.5">
+        <div role="group" aria-label="Verdict take đang xem (bấm lại để xoá)" className="flex flex-wrap gap-1.5">
           {(Object.keys(VERDICT_LABEL) as Verdict[]).map((v) => (
             <Button key={v} variant={currentVerdict === v ? 'primary' : 'secondary'} aria-pressed={currentVerdict === v} onClick={() => onVerdict(v)}>
               {VERDICT_LABEL[v]}

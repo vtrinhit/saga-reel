@@ -1,11 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Calculator, Plus, RotateCcw, Trash2, TriangleAlert } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
+import { useParams } from 'react-router';
 import { callOp } from '../../api/ops';
+import { useEnumOptions } from '../../lib/episodeData';
+import { undoAction } from '../../lib/episodeUndo';
 import { cn } from '../../lib/cn';
 import type { AssetBrief, Clip, DialogueLine, PromptPreview, Take } from '../../lib/episodeTypes';
 import {
-  ENGINE_LABEL, LINK_LABEL, SHOT_ENUMS, SHOT_FIELD_LABEL, formatClipSeconds, type ClipView, type ShotField,
+  SHOT_FIELD_LABEL, formatClipSeconds, type ClipView, type ShotField,
 } from '../../lib/episodeView';
 import { toast } from '../../stores/toast';
 import { Button } from '../ui/Button';
@@ -145,6 +148,7 @@ function PromptSection({ clip: c, onSave }: ClipInspectorProps) {
 }
 
 function ShotSection({ clip: c, onSave }: ClipInspectorProps) {
+  const enums = useEnumOptions();
   const id = useId();
   const [dur, setDur] = useState(String(c.duration_ms / 1000));
   useEffect(() => setDur(String(c.duration_ms / 1000)), [c.id, c.duration_ms]);
@@ -157,7 +161,7 @@ function ShotSection({ clip: c, onSave }: ClipInspectorProps) {
             {SHOT_FIELD_LABEL[f]}
             <select value={c[f]} onChange={(e) => void onSave(c, { [f]: e.target.value } as Partial<Clip>).catch(() => undefined)} className={sel}>
               <option value="">Chưa đặt</option>
-              {SHOT_ENUMS[f].map(([k, label]) => (
+              {enums.shot[f].map(([k, label]) => (
                 <option key={k} value={k}>{label}</option>
               ))}
             </select>
@@ -182,13 +186,13 @@ function ShotSection({ clip: c, onSave }: ClipInspectorProps) {
         <label className="grid min-w-0 gap-1 text-xs text-fg-2">
           Engine
           <select value={c.engine} onChange={(e) => void onSave(c, { engine: e.target.value as Clip['engine'] }).catch(() => undefined)} className={sel}>
-            {Object.entries(ENGINE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            {enums.engine.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </label>
         <label className="grid min-w-0 gap-1 text-xs text-fg-2">
           Nối với clip trước
           <select value={c.link} onChange={(e) => void onSave(c, { link: e.target.value as Clip['link'] }).catch(() => undefined)} className={sel}>
-            {Object.entries(LINK_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            {enums.link.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </label>
       </div>
@@ -307,6 +311,7 @@ function DialogueSection({ clip: c, assets }: { clip: Clip; assets: Map<number, 
 
 function TakeSection({ clip: c, part }: { clip: Clip; part: 'image' | 'video' }) {
   const qc = useQueryClient();
+  const pid = Number(useParams().projectId);
   const q = useQuery({
     queryKey: ['episode', 'takes', c.id, part, c.updated_at],
     queryFn: async () =>
@@ -321,16 +326,16 @@ function TakeSection({ clip: c, part }: { clip: Clip; part: 'image' | 'video' })
   const pick = async (t: Take) => {
     if (t.id === selectedId) return;
     setBusy(t.id);
-    const prev = selectedId;
     try {
-      await callOp('take.select', { take_id: t.id });
+      const out = await callOp('take.select', { take_id: t.id });
       void qc.invalidateQueries({ queryKey: ['episode', c.sequence_id] });
       void qc.invalidateQueries({ queryKey: ['episode', 'takes', c.id] });
       toast({
         message: 'Đã chọn take.',
-        undo: prev
-          ? () => void callOp('take.select', { take_id: prev }).then(() => qc.invalidateQueries({ queryKey: ['episode', c.sequence_id] }))
-          : undefined,
+        undo: undoAction(pid, out, () => {
+          void qc.invalidateQueries({ queryKey: ['episode', c.sequence_id] });
+          void qc.invalidateQueries({ queryKey: ['episode', 'takes', c.id] });
+        }),
       });
     } catch (e) {
       toast({ message: `Không lưu được lựa chọn take: ${errText(e)}`, tone: 'error' });

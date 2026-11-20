@@ -3,7 +3,7 @@
  * được). Chế độ: giọng quyết định độ dài / clip quyết định (tăng tốc giọng) / không khớp.
  */
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { callOpLoose } from '../../api/opsLoose';
+import { callOp } from '../../api/ops';
 import { errorText, type DurationPlan } from '../../lib/studioData';
 import { clipSeconds } from '../../lib/timeline';
 import { Button } from '../ui/Button';
@@ -28,11 +28,11 @@ export function DurationPlanDialog({ open, seqId, onClose, onApplied, readOnly }
   const [mode, setMode] = useState<Mode | null>(null);
   const plan = useQuery({
     queryKey: ['studio', 'duration-plan', seqId, mode],
-    queryFn: () => callOpLoose<DurationPlan>('audio.duration_plan', { sequence_id: seqId, mode }),
+    queryFn: async () => (await callOp('audio.duration_plan', { sequence_id: seqId, mode })) as unknown as DurationPlan,
     enabled: open,
   });
   const apply = useMutation({
-    mutationFn: () => callOpLoose('audio.apply_duration_plan', { sequence_id: seqId, mode: plan.data?.mode ?? mode }),
+    mutationFn: () => callOp('audio.apply_duration_plan', { sequence_id: seqId, mode: (plan.data?.mode ?? mode) as Mode | null }),
     onSuccess: () => onApplied(changes.length),
   });
   const items = plan.data?.items ?? [];

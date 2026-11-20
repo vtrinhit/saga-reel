@@ -8,12 +8,13 @@ import { AudioLines, Clock, MessageSquareText, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useIsViewer } from '../../api/auth';
-import { callOpLoose } from '../../api/opsLoose';
+import { callOp } from '../../api/ops';
 import type { Job } from '../../api/types';
 import { DialogueLine } from '../../components/audio/DialogueLine';
 import { DurationPlanDialog, MODE_LABEL } from '../../components/audio/DurationPlanDialog';
 import { SoundLibrary } from '../../components/audio/SoundLibrary';
 import { SubtitleStyleSelect } from '../../components/audio/SubtitleStyleSelect';
+import { TranslateDub } from '../../components/audio/TranslateDub';
 import { useAudioPlayback } from '../../components/audio/useAudioPlayback';
 import { VoiceRow, voiceSummary } from '../../components/audio/VoiceRow';
 import { InspectorSection } from '../../components/studio/StudioInspector';
@@ -89,7 +90,7 @@ export function AudioPage() {
   // Trạng thái TTS theo câu: việc `audio.tts` mới nhất của mỗi dialogue_id.
   const ttsJobs = useQuery({
     queryKey: sk.ttsJobs(pid ?? -1),
-    queryFn: async () => (await callOpLoose<{ items: Job[] }>('job.list', { project_id: pid, type: 'audio.tts', limit: 300 })).items,
+    queryFn: async () => ((await callOp('job.list', { project_id: pid!, type: 'audio.tts', limit: 300 })) as unknown as { items: Job[] }).items,
     enabled: pid != null,
     refetchInterval: (q) => ((q.state.data ?? []).some((j) => ['queued', 'running', 'pending'].includes(j.status)) ? 4000 : false),
   });
@@ -106,17 +107,20 @@ export function AudioPage() {
 
   const ttsLines = lines.filter((l) => l.source !== 'grok' && l.source !== 'none');
   const readCount = primary ? ttsLines.filter((l) => l.audio_take_id).length : 0;
+  const untranslated = primary ? 0 : ttsLines.filter((l) => l.text.trim() && !l.translations?.[lang]?.trim()).length;
 
   // Số câu cần đọc (dry_run, không tạo việc).
   const plan = useQuery({
     queryKey: ['studio', 'tts-plan', sid, lang, lines.length],
-    queryFn: () => callOpLoose<{ estimate: { lines: number; cached: number } }>('audio.generate', { sequence_id: sid, lang, dry_run: true }),
+    queryFn: async () =>
+      (await callOp('audio.generate', { sequence_id: sid!, lang, dry_run: true, force: false })) as unknown as { estimate: { lines: number; cached: number } },
     enabled: sid != null && !viewer && lines.length > 0,
   });
   const todo = plan.data?.estimate.lines ?? null;
 
   const generate = useMutation({
-    mutationFn: () => callOpLoose<{ job_ids: number[]; cached: unknown[] }>('audio.generate', { sequence_id: sid, lang }),
+    mutationFn: async () =>
+      (await callOp('audio.generate', { sequence_id: sid!, lang, dry_run: false, force: false })) as unknown as { job_ids: number[]; cached: unknown[] },
     onSuccess: (r) => {
       toast({ tone: 'success', message: r.job_ids.length ? `Đã xếp ${r.job_ids.length} câu để đọc.` : 'Mọi câu đã có âm thanh (dùng lại bản đã đọc).' });
       void qc.invalidateQueries({ queryKey: sk.ttsJobs(pid ?? -1) });
@@ -130,10 +134,10 @@ export function AudioPage() {
     mutationFn: async ({ speaker, profileId }: { speaker: number; profileId: number | null }) => {
       if (speaker === NARRATOR) {
         const settings = { ...(project.data?.settings ?? {}), narrator_voice_profile_id: profileId };
-        return callOpLoose('project.update', { id: pid, values: { settings }, expected_updated_at: project.data?.updated_at ?? null });
+        return callOp('project.update', { id: pid!, values: { settings }, expected_updated_at: project.data?.updated_at ?? null });
       }
       const a = assetById.get(speaker);
-      return callOpLoose('asset.update', { id: speaker, values: { voice_profile_id: profileId }, expected_updated_at: a?.updated_at ?? null });
+      return callOp('asset.update', { id: speaker, values: { voice_profile_id: profileId }, expected_updated_at: a?.updated_at ?? null });
     },
     onSuccess: () => {
       toast({ tone: 'success', message: 'Đã đổi giọng. Câu đã đọc sẽ được đọc lại khi bạn bấm Đọc.' });
@@ -148,8 +152,8 @@ export function AudioPage() {
   const styleKey = String(seqSettings.subtitle_style ?? project.data?.settings?.subtitle_style ?? ((project.data?.aspect ?? '9:16').startsWith('16') ? '16x9' : '9x16'));
   const setStyle = useMutation({
     mutationFn: (key: string) =>
-      callOpLoose('sequence.update', {
-        id: sid,
+      callOp('sequence.update', {
+        id: sid!,
         values: { settings: { ...seqSettings, subtitle_style: key } },
         expected_updated_at: sequence.data?.updated_at ?? null,
       }),
@@ -165,7 +169,7 @@ export function AudioPage() {
 
   const addLine = async (clipId: number, text: string) => {
     try {
-      await callOpLoose('dialogue.create', { clip_id: clipId, text });
+      await callOp('dialogue.create', { clip_id: clipId, text });
       toast({ tone: 'success', message: 'Đã thêm câu thoại.', undo: () => void undoLast(pid!).then(() => m.refresh()) });
       m.refresh();
     } catch (e) {
@@ -175,8 +179,8 @@ export function AudioPage() {
   // Xoá mềm 1 bước + Hoàn tác (DESIGN §5.5 ConfirmDelete bước 1).
   const deleteLine = async (id: number) => {
     try {
-      const pv = await callOpLoose<{ confirm_token: string }>('dialogue.delete_preview', { ids: [id] });
-      await callOpLoose('dialogue.delete', { confirm_token: pv.confirm_token });
+      const pv = (await callOp('dialogue.delete_preview', { ids: [id] })) as unknown as { confirm_token: string };
+      await callOp('dialogue.delete', { confirm_token: pv.confirm_token });
       toast({ message: 'Đã xoá câu thoại.', undo: () => void undoLast(pid!).then(() => m.refresh()) });
       m.refresh();
     } catch (e) {
@@ -236,6 +240,18 @@ export function AudioPage() {
           <Button icon={Clock} onClick={() => setPlanOpen(true)} disabled={!lines.length}>
             Kế hoạch thời lượng
           </Button>
+          {!viewer && !primary && sid != null ? (
+            <TranslateDub
+              seqId={sid}
+              lang={lang}
+              missing={untranslated}
+              onDone={() => {
+                m.refresh();
+                void qc.invalidateQueries({ queryKey: sk.ttsJobs(pid ?? -1) });
+                void plan.refetch();
+              }}
+            />
+          ) : null}
           {!viewer ? (
             <Button
               variant="primary"
@@ -307,7 +323,7 @@ export function AudioPage() {
                         playing={play.playing === `line-${l.id}`}
                         loadingAudio={play.loading === `line-${l.id}`}
                         readOnly={viewer}
-                        onPlay={() => void play.playLine(l.id, l.audio_take_id)}
+                        onPlay={() => play.playLine(l.id, l.audio_media_id)}
                         speakers={speakerOptions}
                         onDelete={() => void deleteLine(l.id)}
                         onSave={(v) => void m.updateLine(l, v, primary ? 'lời thoại' : `bản dịch ${lang}`)}
@@ -375,7 +391,7 @@ export function AudioPage() {
           onApplied={(n) => {
             setPlanOpen(false);
             m.refresh();
-            toast({ tone: 'success', message: `Đã khớp thời lượng ${n} clip theo giọng.`, undo: () => void callOpLoose('history.undo', { project_id: pid }).then(() => m.refresh()) });
+            toast({ tone: 'success', message: `Đã khớp thời lượng ${n} clip theo giọng.`, undo: () => void undoLast(pid!).then(() => m.refresh()) });
           }}
         />
       ) : null}
@@ -414,7 +430,7 @@ function NewVoice({ projectId, lang2, onCreated }: { projectId: number; lang2: s
     if (!name.trim()) return;
     setBusy(true);
     try {
-      await callOpLoose('voice.create', {
+      await callOp('voice.create', {
         name: name.trim(),
         project_id: projectId,
         voice: voice.trim() || null,

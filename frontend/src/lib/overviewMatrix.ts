@@ -1,6 +1,6 @@
 /**
- * Ma trận Tổng quan (tập × chặng) — hàm thuần. `pipeline.status(project_id)` trả mỗi tập `{steps: [{name, enabled,
- * status}], gates}` (dạng danh sách); `lib/pipeline.ts::toStages` đọc dạng map → đổi ở đây, không sửa file chung.
+ * Ma trận Tổng quan (tập × chặng) — hàm thuần. `pipeline.status(project_id)` trả mỗi tập `{status, waiting, steps:
+ * [{name, enabled, status}], gates}`; `lib/pipeline.ts::toStages` đọc thẳng dạng này.
  */
 import type { SequenceInfo } from '../api/types';
 import { toStages, type ClipCounts, type Stage } from './pipeline';
@@ -24,19 +24,13 @@ export interface GroupNode {
   rank: string;
 }
 
-/** Danh sách bước → (workflow, pipeline map) cho `toStages`. */
-export function adaptSummary(s: PipelineSummary | undefined): { workflow: unknown; pipeline: unknown } {
-  if (!s || !s.steps?.length) return { workflow: null, pipeline: {} };
-  const workflow = s.steps.map((x) => ({ key: x.name, enabled: x.enabled }));
-  const steps: Record<string, { status: string }> = {};
-  for (const x of s.steps) steps[x.name] = { status: x.status };
-  return { workflow, pipeline: { steps } };
-}
-
-export function rowStages(seq: SequenceInfo, summary: PipelineSummary | undefined): Stage[] {
-  const { workflow, pipeline } = adaptSummary(summary);
+/**
+ * Chặng của một hàng: bản tóm tắt `pipeline.status` (danh sách bước của lần chạy) → `toStages`; tập chưa chạy dùng
+ * `workflow` (preset của tập) + số clip/kịch bản.
+ */
+export function rowStages(seq: SequenceInfo, summary: PipelineSummary | undefined, workflow: unknown = null): Stage[] {
   const counts: ClipCounts = { clips: Number(seq.counts?.clips ?? 0), hasScript: !!seq.script?.trim() };
-  return toStages(workflow, pipeline, summary?.gates ?? seq.gates, counts);
+  return toStages(workflow, summary ?? seq.pipeline, summary?.gates ?? seq.gates, counts);
 }
 
 export type MatrixRow =
@@ -52,6 +46,7 @@ export function buildMatrixRows(
   summaries: Map<number, PipelineSummary>,
   groups: Map<number, GroupNode>,
   collapsed: Set<number | null> = new Set(),
+  workflowOf: (seq: SequenceInfo) => unknown = () => null,
 ): MatrixRow[] {
   const out: MatrixRow[] = [];
   const useGroups = groups.size > 0;
@@ -65,7 +60,7 @@ export function buildMatrixRows(
       out.push({ kind: 'group', key: `g${i}:${gid ?? 'none'}`, groupId: gid, title: g ? g.title : 'Chưa xếp nhóm', count: j - i });
     }
     if (!collapsed.has(gid)) {
-      for (let k = i; k < j; k++) out.push({ kind: 'seq', key: `s${seqs[k].id}`, seq: seqs[k], stages: rowStages(seqs[k], summaries.get(seqs[k].id)) });
+      for (let k = i; k < j; k++) out.push({ kind: 'seq', key: `s${seqs[k].id}`, seq: seqs[k], stages: rowStages(seqs[k], summaries.get(seqs[k].id), workflowOf(seqs[k])) });
     }
     i = j;
   }

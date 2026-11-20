@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleAlert, Play } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { callOp } from '../../api/ops';
-import { errorMessage, gateLabel, type PipelinePlan } from '../../lib/activity';
+import { errorMessage, gateLabel, untilFirstGate, type PipelinePlan } from '../../lib/activity';
 import { toast } from '../../stores/toast';
 import { useConnection } from '../../stores/connection';
 import { Button } from '../ui/Button';
@@ -81,12 +81,15 @@ export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workfl
   const over =
     (b?.image?.enabled && b.image.remaining != null && (est?.images ?? 0) > b.image.remaining) ||
     (b?.video?.enabled && b.video.remaining != null && (est?.videos ?? 0) > b.video.remaining);
-  const firstGate = plan.data?.step_keys?.find((s) => s.startsWith('gate:'));
+  // `steps` = [{key, units, llm_calls, cost}] theo thứ tự: phần tới gate đầu là phần chạy ngay; cột sau là cả quy trình.
+  const seg = untilFirstGate(plan.data?.steps);
+  const firstGate = seg.gate ?? plan.data?.step_keys?.find((s) => s.startsWith('gate:')) ?? null;
   const rows = est
     ? [
-        { kind: 'Ảnh', n: est.images, unit: b?.image?.enabled ? 'lượt' : 'không giới hạn' },
-        { kind: 'Video', n: est.videos, unit: b?.video?.enabled ? 'lượt' : 'không giới hạn' },
-        { kind: 'Lần gọi LLM', n: est.llm_calls, unit: 'token' },
+        { kind: 'Ảnh', now: seg.images, n: est.images, unit: b?.image?.enabled ? 'lượt' : 'không giới hạn' },
+        { kind: 'Video', now: seg.videos, n: est.videos, unit: b?.video?.enabled ? 'lượt' : 'không giới hạn' },
+        { kind: 'Câu thoại TTS', now: seg.tts, n: est.tts ?? seg.tts, unit: 'câu' },
+        { kind: 'Lần gọi LLM', now: seg.llm, n: est.llm_calls, unit: 'token' },
       ]
     : [];
 
@@ -139,7 +142,8 @@ export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workfl
               <thead>
                 <tr className="border-b border-line-1 text-left text-xs text-fg-2">
                   <th className="py-1.5 font-normal">Loại</th>
-                  <th className="py-1.5 text-right font-normal">Số lượng</th>
+                  <th className="py-1.5 text-right font-normal">{firstGate ? `Tới gate ${gateLabel(firstGate)}` : 'Lần chạy này'}</th>
+                  <th className="py-1.5 text-right font-normal">Cả quy trình</th>
                   <th className="py-1.5 text-right font-normal">Tính bằng</th>
                 </tr>
               </thead>
@@ -147,7 +151,8 @@ export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workfl
                 {rows.map((r) => (
                   <tr key={r.kind} className="border-b border-line-1">
                     <td className="py-1.5">{r.kind}</td>
-                    <td className="py-1.5 text-right font-mono tnum">{nf.format(r.n)}</td>
+                    <td className="py-1.5 text-right font-mono font-semibold tnum">{nf.format(r.now)}</td>
+                    <td className="py-1.5 text-right font-mono text-fg-2 tnum">{nf.format(r.n)}</td>
                     <td className="py-1.5 text-right text-xs text-fg-2">{r.unit}</td>
                   </tr>
                 ))}
@@ -155,7 +160,7 @@ export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workfl
             </table>
             <p className="text-xs text-fg-2">
               {firstGate ? `Dừng ở gate ${gateLabel(firstGate)} để bạn duyệt. ` : 'Quy trình không có gate — chạy tới hết. '}
-              Số trên là toàn bộ phần chưa làm của quy trình; clip chưa chia chưa được tính ảnh/video.
+              Cột “Cả quy trình” là toàn bộ phần chưa làm; tập chưa chia clip được ước theo thể loại.
               {b?.image?.enabled && b.image.remaining != null ? ` Ngân sách ảnh còn ${nf.format(b.image.remaining)} lượt.` : ''}
               {b?.video?.enabled && b.video.remaining != null ? ` Ngân sách video còn ${nf.format(b.video.remaining)} lượt.` : ''}
             </p>

@@ -4,17 +4,17 @@
  * ngữ, giữ 5 phút — kiểm tra có bản cuối thì đo loudness bằng ffmpeg nên không chạy lại liên tục).
  */
 import { useQuery } from '@tanstack/react-query';
-import { callOpLoose } from '../../api/opsLoose';
-import { cellKey, durationLimit, langLabel, type CellKey } from '../../lib/exportMatrix';
+import { callOp } from '../../api/ops';
+import { cellKey, durationLimit, langLabel, type CellKey, type GeneratedMeta } from '../../lib/exportMatrix';
 import { errorText, sk, type CheckReport, type PlatformData, type PresetRow } from '../../lib/studioData';
 import { cn, focusRing } from '../../lib/cn';
 import { ExportCell } from './ExportCell';
 
-export function useCheck(seqId: number | null, platform: string, lang: string, metadata?: Record<string, unknown> | null) {
+export function useCheck(seqId: number | null, platform: string, lang: string, metadata?: GeneratedMeta | null) {
   return useQuery({
     queryKey: metadata ? [...sk.check(seqId ?? -1, platform, lang), 'md', metadata] : sk.check(seqId ?? -1, platform, lang),
-    queryFn: () =>
-      callOpLoose<CheckReport>('export.check', { sequence_id: seqId, platform, lang, split_parts: true, metadata: metadata ?? null }),
+    queryFn: async () =>
+      (await callOp('export.check', { sequence_id: seqId!, platform, lang, split_parts: true, metadata: metadata ?? null })) as unknown as CheckReport,
     enabled: seqId != null && !!platform && !!lang,
     staleTime: 5 * 60_000,
     retry: false,

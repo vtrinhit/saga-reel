@@ -82,6 +82,8 @@ export function gateChecklist(gate: string, st: SequenceStatus | undefined, summ
  * Thẻ gate (DESIGN §6.3): vòng đứt + tiêu đề + khi nào; checklist; NextCost (giá bước kế + ngân sách còn); chân hai
  * nút. Người xem: không có chân. Vượt ngân sách: nút chính vẫn là "Duyệt và chạy tiếp" nhưng NextCost báo trước.
  */
+const PREVIEW_VARIANT: Record<string, string> = { animatic: 'animatic', draft: 'nháp', preview: 'xem trước', final: 'cuối' };
+
 export function GateCard({
   projectId,
   summary,
@@ -129,6 +131,23 @@ export function GateCard({
           </p>
         </div>
       </header>
+
+      {summary.preview?.media_id ? (
+        <figure className="grid gap-1">
+          {/* Bản dựng xem trước gần nhất của tập: duyệt ngay trong thẻ, không cần mở Studio. */}
+          <video
+            src={summary.preview.url || `/media/${summary.preview.media_id}`}
+            controls
+            playsInline
+            preload="metadata"
+            className="max-h-[360px] w-full rounded-sm bg-black object-contain"
+            aria-label={`Bản ${PREVIEW_VARIANT[summary.preview.variant] ?? summary.preview.variant} của tập ${summary.number}`}
+          />
+          <figcaption className="text-xs text-fg-2">
+            Bản {PREVIEW_VARIANT[summary.preview.variant] ?? summary.preview.variant} mới nhất của tập
+          </figcaption>
+        </figure>
+      ) : null}
 
       <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <ul className="grid content-start gap-1.5" aria-label="Kiểm tra trước khi duyệt">

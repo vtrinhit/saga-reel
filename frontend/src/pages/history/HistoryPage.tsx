@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from 'react-router';
 import { useIsViewer } from '../../api/auth';
 import { callOp } from '../../api/ops';
 import type { ChangeSet, HistoryPage as Page } from '../../api/types';
-import { shellKeys } from '../../components/shell/useShellData';
+import { shellKeys, useHistory } from '../../components/shell/useShellData';
 import { ActorTag, actorLabel } from '../../components/ui/ActorTag';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -34,7 +34,7 @@ import { PageHeader } from '../PageHeader';
 const PAGE = 100;
 const nf = new Intl.NumberFormat('vi-VN');
 
-const historyKey = (pid: number) => ['history', 'page', pid] as const;
+const historyKey = (pid: number, actor: string | null = null) => ['history', 'page', pid, actor ?? ''] as const;
 
 function isTyping(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null;
@@ -61,24 +61,32 @@ export function HistoryPage() {
   const [open, setOpen] = useState<number | null>(focusCs);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
 
+  // Lọc theo người sửa ở server (`history.list(actor)`; `agent:` = mọi agent) — trang nào cũng đủ 100 thay đổi của họ.
   const q = useInfiniteQuery({
-    queryKey: historyKey(pid),
+    queryKey: historyKey(pid, actor),
     queryFn: async ({ pageParam }) =>
-      (await callOp('history.list', { project_id: pid, limit: PAGE, ...(pageParam != null ? { cursor: pageParam } : {}) })) as unknown as Page,
+      (await callOp('history.list', {
+        project_id: pid,
+        limit: PAGE,
+        ...(actor ? { actor } : {}),
+        ...(pageParam != null ? { cursor: pageParam } : {}),
+      })) as unknown as Page,
     initialPageParam: null as number | null,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     enabled: pid > 0,
   });
-  useServerEvent('entity.changed', () => void qc.invalidateQueries({ queryKey: historyKey(pid) }));
+  useServerEvent('entity.changed', () => void qc.invalidateQueries({ queryKey: ['history', 'page', pid] }));
+  // Danh sách người sửa cho bộ lọc: lấy từ 50 thay đổi gần nhất của dự án (dữ liệu khung, không gọi thêm).
+  const recent = useHistory(String(pid));
 
   const all = useMemo(() => q.data?.pages.flatMap((p) => p.items) ?? [], [q.data]);
   const items = filterHistory(all, actor, entityType);
   const groups = groupByDay(items);
-  const actors = actorsOf(all);
+  const actors = actorsOf([...(recent.data?.items ?? []), ...(actor && !actor.endsWith(':') ? [{ actor }] : [])]);
   const types = [...new Set(all.flatMap((c) => c.entities.map((e) => e.type)))].sort();
 
   const refresh = () => {
-    void qc.invalidateQueries({ queryKey: historyKey(pid) });
+    void qc.invalidateQueries({ queryKey: ['history', 'page', pid] });
     void qc.invalidateQueries({ queryKey: shellKeys.all });
     void qc.invalidateQueries({ queryKey: ['activity'] });
   };
@@ -165,7 +173,11 @@ export function HistoryPage() {
           label="Ai sửa"
           value={actor ?? ''}
           onChange={(v) => setFilter('actor', v || null)}
-          options={[{ value: '', label: 'Mọi người và agent' }, ...actors.map((a) => ({ value: a, label: a.startsWith('agent:') || a.startsWith('llm:') ? actorLabel(a).name : `Bạn (${a})` }))]}
+          options={[
+            { value: '', label: 'Mọi người và agent' },
+            { value: 'agent:', label: 'Mọi agent' },
+            ...actors.map((a) => ({ value: a, label: a.startsWith('agent:') || a.startsWith('llm:') ? actorLabel(a).name : `Bạn (${a})` })),
+          ]}
           className="w-60"
         />
         <Select
@@ -182,7 +194,7 @@ export function HistoryPage() {
             onClick={() => run.mutate({ mode: 'undo', cs: actorUndo })}
             loading={run.isPending && run.variables?.cs?.id === actorUndo.id}
           >
-            Hoàn tác thay đổi mới nhất của {actorLabel(actor).name}
+            Hoàn tác thay đổi mới nhất của {actor === 'agent:' ? 'agent' : actorLabel(actor).name}
           </Button>
         ) : null}
         <p className="ml-auto text-xs text-fg-3 tnum" aria-live="polite">
@@ -293,9 +305,10 @@ function HistoryRow({
             aria-expanded={open}
             aria-controls={detailId}
             onClick={onToggle}
-            className={cn('mt-0.5 inline-flex items-center gap-1 rounded-sm text-xs text-fg-2 hover:text-fg-1', focusRing)}
+            title={`Thao tác: ${cs.op_name}`}
+            className={cn('mt-0.5 inline-flex min-h-6 items-center gap-1 rounded-sm text-xs text-fg-2 hover:text-fg-1', focusRing)}
           >
-            <span className="font-mono">{cs.op_name}</span>
+            <span>{open ? 'Ẩn chi tiết' : 'Chi tiết'}</span>
             {cs.entities.length ? <span>· {entitySummary(cs.entities)}</span> : null}
             {undone ? <span>· đã hoàn tác</span> : null}
             <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-fast', open && 'rotate-180')} strokeWidth={1.75} aria-hidden />

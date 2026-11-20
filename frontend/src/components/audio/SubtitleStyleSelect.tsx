@@ -3,7 +3,7 @@
  * + xem trước cách chia cụm/ngắt dòng bằng `audio.subtitle_preview` trên một câu thật của tập.
  */
 import { useQuery } from '@tanstack/react-query';
-import { callOpLoose } from '../../api/opsLoose';
+import { callOp } from '../../api/ops';
 import type { PresetRow } from '../../lib/studioData';
 import { shortTime } from '../../lib/timeline';
 import { Select } from '../ui/Select';
@@ -23,7 +23,8 @@ export function SubtitleStyleSelect({ styles, value, sample, readOnly, onChange 
   const current = styles.find((s) => s.key === value);
   const preview = useQuery({
     queryKey: ['studio', 'subtitle-preview', value, sample],
-    queryFn: () => callOpLoose<Preview>('audio.subtitle_preview', { text: sample, duration_ms: Math.max(1500, (sample ?? '').split(/\s+/).length * 330), style: value }),
+    queryFn: async () =>
+      (await callOp('audio.subtitle_preview', { text: sample ?? '', duration_ms: Math.max(1500, (sample ?? '').split(/\s+/).length * 330), style: value })) as unknown as Preview,
     enabled: !!sample && !!value,
     staleTime: 5 * 60_000,
   });

@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useIsViewer } from '../../api/auth';
 import { useJob } from '../../api/hooks';
-import { callOpLoose } from '../../api/opsLoose';
+import { callOp } from '../../api/ops';
 import { Player, type PlayerHandle } from '../../components/studio/Player';
 import { ScriptEditor } from '../../components/studio/ScriptEditor';
 import { StoryboardGrid } from '../../components/studio/StoryboardGrid';
@@ -51,7 +51,8 @@ import {
   useSounds,
   useStudioLiveRefresh,
   useTimelineItems,
-  useVideoSources,
+  renderSourceMs,
+  videoSources,
   VARIANT_LABEL,
   waitingGate,
   type PlatformData,
@@ -124,7 +125,9 @@ export function StudioPage() {
   const sounds = useMemo(() => soundsQ.data ?? [], [soundsQ.data]);
   const transitions = useMemo(() => transitionTable(transQ.data), [transQ.data]);
   const soundById = useMemo(() => new Map(sounds.map((s) => [s.id, s])), [sounds]);
-  const videoSrc = useVideoSources(clips);
+  const videoSrc = useMemo(() => videoSources(clips), [clips]);
+  // Độ dài trên timeline = độ dài bản dựng: chỉ clip mà render giữ nguyên nguồn mới dài theo nguồn.
+  const layoutSrc = useMemo(() => renderSourceMs(clips, videoSrc), [clips, videoSrc]);
   const maxDur = useMemo(() => {
     const m = new Map<number, number>();
     for (const c of clips) {
@@ -139,8 +142,8 @@ export function StudioPage() {
       const s = it.sound_id != null ? soundById.get(it.sound_id) : undefined;
       return s ? { ...it, params: { title: s.title, ...it.params } } : it;
     });
-    return compute(buildInput(clips, lines, enriched, { fps: FPS, videoSourceMs: (id) => videoSrc.get(id) ?? null }), { transitions, fps: FPS });
-  }, [clips, lines, items, soundById, transitions, videoSrc]);
+    return compute(buildInput(clips, lines, enriched, { fps: FPS, videoSourceMs: (id) => layoutSrc.get(id) ?? null }), { transitions, fps: FPS });
+  }, [clips, lines, items, soundById, transitions, layoutSrc]);
   const clipById = useMemo(() => new Map(clips.map((c) => [c.id, c])), [clips]);
   const slotById = useMemo(() => new Map(tl.clips.map((s) => [s.id, s])), [tl.clips]);
 
@@ -186,7 +189,7 @@ export function StudioPage() {
 
   const preview = useMutation({
     mutationFn: (seconds: number | null) =>
-      callOpLoose<{ id: number }>('render.start', { sequence_id: sid, variant: 'draft', preview_seconds: seconds }),
+      callOp('render.start', { sequence_id: sid!, variant: 'draft', preview_seconds: seconds ?? undefined, priority: 0 }) as unknown as Promise<{ id: number }>,
     onSuccess: (j, seconds) => {
       setJobId(j.id);
       toast({ message: seconds ? `Đang dựng ${seconds} giây đầu để xem trước.` : 'Đang dựng bản nháp cả tập.' });
@@ -198,10 +201,12 @@ export function StudioPage() {
   const [estimate, setEstimate] = useState<{ clip: ClipRow; rows: EstimateRow[]; warnings: string[] } | null>(null);
   const regen = useMutation({
     mutationFn: async ({ clip, dry }: { clip: ClipRow; dry: boolean }) =>
-      callOpLoose<{ job_ids: number[]; estimate: { jobs: number; parts: Record<string, { jobs: number; cost: number }> }; warnings?: { message: string }[]; skipped?: unknown[] }>(
-        'clip.regenerate',
-        { ids: [clip.id], part: 'video', dry_run: dry },
-      ),
+      (await callOp('clip.regenerate', { ids: [clip.id], part: 'video', dry_run: dry })) as unknown as {
+        job_ids: number[];
+        estimate: { jobs: number; parts: Record<string, { jobs: number; cost: number }> };
+        warnings?: { message: string }[];
+        skipped?: unknown[];
+      },
     onSuccess: (r, { clip, dry }) => {
       if (dry) {
         const rows: EstimateRow[] = Object.entries(r.estimate.parts).map(([k, v]) => ({
@@ -220,7 +225,7 @@ export function StudioPage() {
 
   const saveScript = useMutation({
     mutationFn: (script: string) =>
-      callOpLoose('sequence.update', { id: sid, values: { script }, expected_updated_at: sequence.data?.updated_at ?? null }),
+      callOp('sequence.update', { id: sid!, values: { script }, expected_updated_at: sequence.data?.updated_at ?? null }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: sk.sequence(sid ?? -1) });
       toast({ message: 'Đã lưu kịch bản.', tone: 'success' });
@@ -263,7 +268,7 @@ export function StudioPage() {
           e.preventDefault();
           const c = clipAt(tl.clips, playhead);
           if (c && playhead - c.start_ms > 100 && c.end_ms - playhead > 100) {
-            void callOpLoose('clip.split', { id: c.id, at_ms: Math.round(playhead - c.start_ms) })
+            void callOp('clip.split', { id: c.id, at_ms: Math.round(playhead - c.start_ms) })
               .then(() => (toast({ message: `Đã cắt ${clipById.get(c.id)?.key ?? 'clip'} tại ${shortTime(playhead)}.`, tone: 'success' }), m.refresh()))
               .catch((err) => toastError('Không cắt được clip', err));
           }
@@ -333,7 +338,7 @@ export function StudioPage() {
     );
   }
 
-  const gate = waitingGate(sequence.data?.gates);
+  const gate = waitingGate(sequence.data?.pipeline);
   const renderInfo = playable
     ? `${VARIANT_LABEL[playable.variant] ?? playable.variant}${playable.meta?.preview_seconds ? ` ${playable.meta.preview_seconds as number} s đầu` : ''} · dựng ${relativeFromServer(playable.created_at)}`
     : null;
@@ -565,6 +570,7 @@ export function StudioPage() {
 
   return (
     <div className="grid min-w-0 gap-3">
+      <h1 className="sr-only">Studio{sequence.data ? ` · Tập ${sequence.data.number}` : ''}</h1>
       {/* Toolbar */}
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <SegmentedControl<View>

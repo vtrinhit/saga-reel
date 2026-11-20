@@ -8,11 +8,14 @@ export interface JobStatusView {
   label: string;
 }
 
-/** Trạng thái job → pill (icon + màu) + nhãn tiếng Việt. */
-export function jobStatusView(j: Pick<Job, 'status' | 'progress'>): JobStatusView {
+/** `job.list` / `job.get` kèm vị trí trong hàng đợi của lane (1 = chạy kế tiếp; null khi không chờ). */
+export type WithQueuePosition = { queue_position?: number | null };
+
+/** Trạng thái job → pill (icon + màu) + nhãn tiếng Việt; việc chờ có vị trí hàng đợi → "Chờ #n". */
+export function jobStatusView(j: Pick<Job, 'status' | 'progress'> & WithQueuePosition): JobStatusView {
   switch (j.status) {
     case 'queued':
-      return { pill: 'queued', label: 'Chờ' };
+      return { pill: 'queued', label: j.queue_position ? `Chờ #${j.queue_position}` : 'Chờ' };
     case 'running':
       return { pill: 'running', label: j.progress != null && j.progress > 0 ? `Đang chạy ${Math.floor(j.progress)}%` : 'Đang chạy' };
     case 'succeeded':

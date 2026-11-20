@@ -25,17 +25,23 @@ export function actorsOf(items: Pick<ChangeSet, 'actor'>[]): string[] {
   return [...set].sort((a, b) => Number(a.startsWith('agent:')) - Number(b.startsWith('agent:')) || a.localeCompare(b));
 }
 
+/** Khớp actor như `history.list(actor)` của server: kết thúc bằng ':' = tiền tố (vd `agent:` = mọi agent). */
+export function actorMatches(actor: string, filter: string): boolean {
+  return filter.endsWith(':') ? actor.startsWith(filter) : actor === filter;
+}
+
 export function filterHistory(items: ChangeSet[], actor: string | null, entityType: string | null): ChangeSet[] {
   return items.filter(
-    (c) => (!actor || c.actor === actor) && (!entityType || c.entities.some((e) => e.type === entityType)),
+    (c) => (!actor || actorMatches(c.actor, actor)) && (!entityType || c.entities.some((e) => e.type === entityType)),
   );
 }
 
-/** Change set mới nhất của actor còn hoàn tác được (không tính chính các thao tác hoàn tác/làm lại). */
+/** Change set mới nhất của actor (hoặc tiền tố `agent:`) còn hoàn tác được (không tính thao tác hoàn tác/làm lại). */
 export function latestUndoable(items: ChangeSet[], actor: string): ChangeSet | null {
   return (
-    items.find((c) => c.actor === actor && c.undone_at == null && c.op_name !== 'history.undo' && c.op_name !== 'history.redo') ??
-    null
+    items.find(
+      (c) => actorMatches(c.actor, actor) && c.undone_at == null && c.op_name !== 'history.undo' && c.op_name !== 'history.redo',
+    ) ?? null
   );
 }
 

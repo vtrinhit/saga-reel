@@ -37,3 +37,10 @@
 ## Từ kiểm chứng thật M1 (người điều phối, 2026-11-20)
 - BUG: `job.cancel` một job sheet `anchor` đã gửi provider trả `skipped` (đúng: không huỷ được lượt đã gửi) nhưng **các view `follow` vẫn tự xếp hàng khi anchor xong** → tốn thêm 4 ảnh. Sửa: huỷ (hoặc yêu cầu huỷ) job cha phải đánh dấu `follow_cancelled` để không sinh view tiếp; UI hiện "đã gửi, không huỷ được lượt này; các góc sau sẽ không chạy".
 - Từ I: xfade lỗi timebase — ĐÃ SỬA trên main (settb=AVTB). Còn: `dialogue.list` thiếu độ dài audio; `clip.list` thiếu media id/thumbnail/độ dài nguồn; `export.check` trả metadata sinh ra + `export.create` nhận metadata ghi đè; op dịch + lồng tiếng (`audio.translate_dub(sequence_id, lang)`); `apply_duration_plan` vs độ dài video take (BF đang làm phần render theo duration).
+
+## Từ UF (vòng 3)
+- `clip.list`/`review.queue` nhận `ids`; `job.list` lọc `sequence_id`; `job.updated` kèm `queue_position` (tính gộp, không COUNT từng job).
+- `entity.changed` ghi loại thay đổi (created/deleted/moved); `dialogue.*`/`timeline.*` trả `change_set_id`.
+- `audio.translate_dub` chạy dạng job, dry-run đếm cả câu chưa dịch.
+- Hashtag mẫu có `#`, không khoảng trắng; `export.list` → `{items}`; `counts.flags` tách image/video; `active_only` có tuỳ chọn gồm pipeline lỗi.
+- Tóm tắt lịch sử tiếng Việt hết; `project.create` kiểm khoá nền tảng; OpenAPI: tham số có mặc định không bắt buộc.

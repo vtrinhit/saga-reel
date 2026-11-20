@@ -3,6 +3,7 @@ import {
   countClipFlags,
   currentStage,
   DEFAULT_WORKFLOW,
+  normalizeRun,
   openGates,
   seqFromRoute,
   stageDescription,
@@ -10,6 +11,7 @@ import {
   stageHref,
   toStages,
 } from './pipeline';
+import real from './__fixtures__/pipeline-real.json';
 
 const keys = (st: ReturnType<typeof toStages>) => st.map((s) => s.key);
 
@@ -91,6 +93,41 @@ describe('toStages', () => {
     const st = toStages(['generate_images', 'auto_select|gate:storyboard'], null, null, null);
     expect(st[2].steps).toEqual(['generate_images', 'auto_select', 'gate:storyboard']);
     expect(st[2].gate?.key).toBe('gate:storyboard');
+  });
+});
+
+describe('dữ liệu thật của backend (lib/__fixtures__/pipeline-real.json)', () => {
+  it('sequence.get {run, memory} dừng ở gate:animatic → Animatic "chờ bạn", chặng trước xong, Video chưa tới', () => {
+    const seq = real.sequenceGetWaitingGate;
+    const st = toStages(null, seq.pipeline, seq.gates, { clips: 6 });
+    expect(st[3]).toMatchObject({ key: 'animatic', status: 'wait', gate: { key: 'gate:animatic', status: 'waiting' } });
+    expect(st.slice(0, 3).map((s) => s.status)).toEqual(['done', 'done', 'done']);
+    expect(st[4].status).toBe('todo');
+    // gate tắt trong lần chạy (outline/pilot/final) không vẽ
+    expect(st[0].gate).toBeNull();
+    expect(st[7].status).toBe('skipped');
+    expect(openGates(seq.gates, seq.pipeline)).toBe(1);
+    expect(normalizeRun(seq.pipeline)).toMatchObject({ status: 'waiting_review', waitingGate: 'gate:animatic' });
+  });
+
+  it('bước chờ nhập (waiting_input) → chặng của bước đó "chờ bạn"', () => {
+    const seq = real.sequenceGetWaitingInput;
+    const st = toStages(null, seq.pipeline, seq.gates, null);
+    expect(st[1]).toMatchObject({ key: 'breakdown', status: 'wait' });
+    expect(openGates(seq.gates, seq.pipeline)).toBe(0);
+  });
+
+  it('bản tóm tắt pipeline.status cùng kết quả với sequence.get', () => {
+    const item = real.pipelineStatusItems.find((x) => x.status === 'waiting_review')!;
+    expect(toStages(null, item, item.gates, null)[3].status).toBe('wait');
+  });
+
+  it('tập chưa chạy: preset.get kind=workflow ({data:{steps:[{step}]}}) quyết định gate bật', () => {
+    const st = toStages(real.presetFullAuto, { memory: {} }, {}, null);
+    expect(st.map((s) => s.gate?.key ?? null)).toEqual([null, null, null, 'gate:animatic', null, null, null, null]);
+    expect(st[2].steps).toEqual(['generate_images', 'auto_select']);
+    expect(st[7].status).toBe('skipped'); // export tắt trong full_auto
+    expect(normalizeRun({ memory: {} })).toBeNull();
   });
 });
 
