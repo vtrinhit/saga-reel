@@ -29,6 +29,7 @@ import anyio
 from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
+from sagareel.core import speech
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, Conflict, NotFound, ValidationFailed
 from sagareel.db.base import utcnow
@@ -257,8 +258,8 @@ def satisfied(s: Session, task: str, sequence_id: int) -> bool:
         lines: dict[int, int] = {}
         for ln in s.scalars(select(DialogueLine).where(DialogueLine.clip_id.in_([c.id for c in rows]),
                                                        DialogueLine.deleted_at.is_(None))):
-            lines[ln.clip_id] = lines.get(ln.clip_id, 0) + len(ln.text)
-        return all(lines.get(c.id, 0) <= max(0, (c.duration_ms / 1000 - 2) * 4.5) for c in rows)
+            lines[ln.clip_id] = lines.get(ln.clip_id, 0) + speech.syllables(ln.text)
+        return all(lines.get(c.id, 0) <= speech.max_syllables(c.duration_ms / 1000) for c in rows)
     return False
 
 

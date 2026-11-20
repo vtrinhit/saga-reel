@@ -28,6 +28,7 @@ import yaml
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from sagareel.core import speech
 from sagareel.compile.contracts import CompiledPrompt, RefItem
 from sagareel.core import templating
 from sagareel.core.errors import AppError, NotFound
@@ -55,6 +56,8 @@ TEMPLATES_DIR = DEFAULTS_DIR / "templates"
 KINDS_PATH = DEFAULTS_DIR / "library" / "asset_kinds.yaml"
 
 IMAGE_TEMPLATE = "image.synced"
+NARRATOR_VOICE_DEFAULT = ("a calm, warm adult Vietnamese man's voice with a northern accent, speaking slowly "
+                          "and gently like recalling a childhood memory")
 MOTION_TEMPLATE = "motion.synced"
 SHEET_TEMPLATES = ("sheet.character", "sheet.location", "sheet.prop")
 TEMPLATE_KINDS = {IMAGE_TEMPLATE: "image", MOTION_TEMPLATE: "motion", **{k: "sheet" for k in SHEET_TEMPLATES}}
@@ -578,12 +581,12 @@ def compile_clip_motion(session: Session, clip_id: int) -> CompiledPrompt:
         if line.source != "grok":
             continue
         speaker = session.get(Asset, line.speaker_asset_id) if line.speaker_asset_id else None
-        dialogue.append({"name": speaker.name if speaker else "The narrator", "emotion": line.emotion or "",
-                         "text": line.text})
-    budget = max(0.0, (clip.duration_ms / 1000 - 2) * 4.5)
-    chars = sum(len(d["text"]) for d in dialogue)
-    if dialogue and chars > budget:
-        warnings.append(f"Thoại Grok dài {chars} ký tự, vượt ~{int(budget)} ký tự vừa với clip "
+        dialogue.append({"name": speaker.name if speaker else "", "narrator": speaker is None,
+                         "emotion": line.emotion or "", "text": line.text})
+    budget = speech.max_syllables(clip.duration_ms / 1000)
+    n_syl = sum(speech.syllables(d["text"]) for d in dialogue)
+    if dialogue and n_syl > budget:
+        warnings.append(f"Thoại Grok dài {n_syl} âm tiết, vượt ~{budget} âm tiết vừa với clip "
                         f"{clip.duration_ms / 1000:g} s (dialogue_too_long).")
     shot = shot_text(clip)
     variables = {
@@ -593,8 +596,9 @@ def compile_clip_motion(session: Session, clip_id: int) -> CompiledPrompt:
         "dialogue": dialogue,
         "language": _LANG.get(project.language, project.language),
         "sfx": clip.sfx_desc or "",
-        "ambient": str(dict(cc.scene.state or {}).get("ambient") or "natural room tone") if cc.scene else
-        "natural room tone",
+        "ambient": str(dict(cc.scene.state or {}).get("ambient") or "") if cc.scene else "",
+        # Giọng người kể cố định cho cả dự án (để voice-over của video AI đồng nhất giữa các clip).
+        "narrator_voice": str((project.settings or {}).get("narrator_voice_desc") or NARRATOR_VOICE_DEFAULT),
         "clip": {"key": clip.key, "duration_s": clip.duration_ms / 1000},
     }
     body, _src = template_body(session, MOTION_TEMPLATE)

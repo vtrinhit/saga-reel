@@ -255,7 +255,7 @@ async def test_agent_mode_waits_then_prompts_submit_resumes(services, owner_ctx,
         assert pack["pipeline"]["waiting"]["step"] == "image_prompts"
         assert set(pack["templates"]) == {"story_image_prompts"} and len(pack["clips"]) == 2
         assert pack["genre"]["key"] == "serial" and "provider_caps" in pack
-        assert pack["clips"][0]["dialogue"][0]["text"] == "Ai?" and pack["clips"][0]["dialogue_limit_chars"] == 18
+        assert pack["clips"][0]["dialogue"][0]["text"] == "Ai?" and pack["clips"][0]["dialogue_limit_syllables"] == 18
         with services.db.session() as s:
             ids = [c.id for c in s.scalars(select(Clip).where(Clip.sequence_id == sid).order_by(Clip.rank))]
         # gửi thiếu một clip → vẫn chờ

@@ -300,7 +300,7 @@ async def test_dialogue_only_targets_too_long(owner_ctx, proj, seq, fake_llm):
     fake_llm.on("story_dialogue", {"items": [{"clip": "c0001", "lines": [{"speaker": "linh", "text": "Ai?"}]}]})
     out = await writer.write_dialogue(owner_ctx, sequence_id=seq)
     assert out["written"] == 1 and out["lines"] == 1
-    assert "giới hạn: 18 ký tự" in fake_llm.calls_of("story_dialogue")[0]["variables"]["clips"]
+    assert "giới hạn: 18 âm tiết" in fake_llm.calls_of("story_dialogue")[0]["variables"]["clips"]
     with owner_ctx.services.db.session() as s:
         live = s.scalars(select(DialogueLine).where(DialogueLine.clip_id == c1.id,
                                                     DialogueLine.deleted_at.is_(None))).all()

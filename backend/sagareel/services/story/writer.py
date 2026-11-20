@@ -20,6 +20,7 @@ import anyio
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from sagareel.core import speech
 from sagareel.compile import compiler
 from sagareel.core import rank
 from sagareel.core.context import OpContext
@@ -630,11 +631,11 @@ def plan_clips(split: S.SplitOut, cast: Cast, genre_key: str, g: dict[str, Any])
                 else:
                     sid = a.id
             lines.append({"speaker_asset_id": sid, "text": ln.text.strip(), "emotion": ln.emotion})
-            chars += len(ln.text.strip())
-        limit = max(0.0, (clamped - 2) * 4.5)
+            chars += speech.syllables(ln.text)
+        limit = speech.max_syllables(clamped)
         if lines and chars > limit:
-            _warn(warnings, "dialogue_too_long", f"Clip {i}: thoại {chars} ký tự > {limit:.0f} (≈ (giây − 2) × 4,5).",
-                  clip=i)
+            _warn(warnings, "dialogue_too_long",
+                  f"Clip {i}: thoại {chars} âm tiết > {limit} (≈ (giây − 2) × 4,5 âm tiết/giây).", clip=i)
         fields = {
             "title": T.clip_text(c.action, 80), "duration_ms": round(clamped * 1000), "engine": engine,
             "link": link, **enums, "first_frame_desc": c.first_frame_desc, "last_frame_desc": c.last_frame_desc,
@@ -810,7 +811,7 @@ def clip_brief(c: Clip, assets: dict[int, Asset], lines: list[DialogueLine], sce
             names = ", ".join(dict.fromkeys(assets[ln.speaker_asset_id].name for ln in dubbed))
             parts.append(f"lồng tiếng sau (chỉ khẩu hình, không viết lời): {names}")
     if part == "dialogue":
-        parts.append(f"giới hạn: {max(0, int((c.duration_ms / 1000 - 2) * 4.5))} ký tự")
+        parts.append(f"giới hạn: {speech.max_syllables(c.duration_ms / 1000)} âm tiết")
     return " | ".join(parts)
 
 
@@ -898,8 +899,8 @@ async def write_dialogue(ctx: OpContext, *, sequence_id: int | None = None, clip
             if overwrite or feedback or clip_ids:
                 targets = rows
             else:
-                targets = [c for c in rows if sum(len(ln.text) for ln in lines.get(c.id, []))
-                           > max(0, (c.duration_ms / 1000 - 2) * 4.5)]
+                targets = [c for c in rows if sum(speech.syllables(ln.text) for ln in lines.get(c.id, []))
+                           > speech.max_syllables(c.duration_ms / 1000)]
             aids = {a["asset_id"] for c in targets for a in (c.assets or []) if isinstance(a, dict)
                     and isinstance(a.get("asset_id"), int)}
             aids |= {ln.speaker_asset_id for c in targets for ln in lines.get(c.id, []) if ln.speaker_asset_id}

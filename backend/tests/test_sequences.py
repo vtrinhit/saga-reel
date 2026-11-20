@@ -132,12 +132,12 @@ def test_lint_rules(owner_ctx, project):
         # chuỗi continue 4 clip
         {"key": "k1", "link": "continue"}, {"key": "k2", "link": "continue"}, {"key": "k3", "link": "continue"},
         {"key": "k4", "link": "continue"},
-        # thoại quá dài: 6 s → tối đa 18 ký tự
+        # thoại quá dài: 6 s → tối đa 18 âm tiết
         {"key": "d1", "duration_ms": 6000},
     ]
     rows = clips.bulk_create(owner_ctx, seq, mk)
     with owner_ctx.services.db.session() as s:
-        s.add(DialogueLine(clip_id=rows[-1]["id"], rank="a0", text="Một câu thoại rất dài vượt mức cho phép"))
+        s.add(DialogueLine(clip_id=rows[-1]["id"], rank="a0", text="Một câu thoại rất dài vượt mức cho phép, người kể phải đọc liền một hơi mới hết được đoạn này đâu"))
     out = sequences.lint(owner_ctx, seq)
     codes = _codes(out)
     assert ("axis_flip", "a2") in codes

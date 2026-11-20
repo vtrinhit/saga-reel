@@ -15,6 +15,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from sagareel.core import speech
 from sagareel.core import rank
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, ConfirmRequired, ValidationFailed
@@ -385,18 +386,20 @@ def scene_delete(ctx: OpContext, confirm_token: str | None) -> dict[str, Any]:
 
 # --- Lint (ngữ pháp shot) -------------------------------------------------------------------------------------------
 
-CHARS_PER_S = 4.5
 CONTINUE_CHAIN_MAX = 3
 
 
 def _dialogue_chars(s: Session, sequence_id: int) -> dict[int, int]:
+    """Số âm tiết thoại theo clip (core.speech)."""
     rows = s.execute(
-        select(DialogueLine.clip_id, func.coalesce(func.sum(func.length(DialogueLine.text)), 0))
+        select(DialogueLine.clip_id, DialogueLine.text)
         .join(Clip, Clip.id == DialogueLine.clip_id)
         .where(Clip.sequence_id == sequence_id, Clip.deleted_at.is_(None), DialogueLine.deleted_at.is_(None))
-        .group_by(DialogueLine.clip_id)
     )
-    return {cid: int(n) for cid, n in rows}
+    out: dict[int, int] = {}
+    for cid, text in rows:
+        out[cid] = out.get(cid, 0) + speech.syllables(text)
+    return out
 
 
 def _primary_asset(c: Clip) -> Any:
@@ -448,10 +451,11 @@ def lint(ctx: OpContext, sequence_id: int) -> dict[str, Any]:
         else:
             chain = 0
         n = chars.get(c.id, 0)
-        limit = max(0.0, (c.duration_ms / 1000 - 2) * CHARS_PER_S)
+        limit = speech.max_syllables(c.duration_ms / 1000)
         if n > limit:
-            warn("dialogue_too_long", c, f"Lời thoại clip {c.key} dài {n} ký tự, vượt {int(limit)} ký tự cho "
-                 f"{c.duration_ms / 1000:g} s (≈ (thời lượng − 2) × 4,5).", chars=n, max_chars=int(limit))
+            warn("dialogue_too_long", c, f"Lời thoại clip {c.key} dài {n} âm tiết, vượt {limit} âm tiết cho "
+                 f"{c.duration_ms / 1000:g} s (≈ (thời lượng − 2) × 4,5 âm tiết/giây).",
+                 syllables=n, max_syllables=limit)
         prev = c
     counts: dict[str, int] = {}
     for w in warnings:

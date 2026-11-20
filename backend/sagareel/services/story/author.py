@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from sagareel.core import speech
 from sagareel.compile import compiler
 from sagareel.core import rank
 from sagareel.core.context import OpContext
@@ -65,7 +66,7 @@ def _clip_dict(c: Clip, lines: list[DialogueLine], keys: dict[int, str]) -> dict
     d["dialogue"] = [{"id": ln.id, "speaker": keys.get(ln.speaker_asset_id, "narrator") if ln.speaker_asset_id
                       else "narrator", "speaker_asset_id": ln.speaker_asset_id, "text": ln.text,
                       "emotion": ln.emotion} for ln in lines]
-    d["dialogue_limit_chars"] = max(0, int((c.duration_ms / 1000 - 2) * 4.5))
+    d["dialogue_limit_syllables"] = speech.max_syllables(c.duration_ms / 1000)
     return d
 
 

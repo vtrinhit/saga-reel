@@ -166,7 +166,7 @@
 
 - key: story_dialogue
   label: Viết lời thoại hàng loạt
-  description: Viết/chỉnh lời thoại các clip vừa thời lượng (≤ (giây − 2) × 4,5 ký tự), đúng người nói.
+  description: Viết/chỉnh lời thoại các clip vừa thời lượng (≤ (giây − 2) × 4,5 âm tiết), đúng người nói.
   template_key: story_dialogue
   needs_vision: false
   json_mode: true

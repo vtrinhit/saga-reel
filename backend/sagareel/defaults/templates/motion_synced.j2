@@ -10,10 +10,17 @@ Camera: {{ camera }}.
 {% if b.stamp %}[{{ b.stamp }}] {% endif %}{{ b.text }}
 {%- endfor %}
 {%- for d in dialogue %}
-Dialogue: {{ d.name }} says in {{ language }}{% if d.emotion %}, {{ d.emotion }}{% endif %}: "{{ d.text }}"
+{%- if d.narrator %}
+Voice-over (off-screen narrator, nobody on screen speaks it; {{ narrator_voice }}) says in {{ language }}{% if d.emotion %} ({{ d.emotion }}){% endif %}: "{{ d.text }}"
+{%- else %}
+Dialogue: {{ d.name }} says in {{ language }}{% if d.emotion %} ({{ d.emotion }}){% endif %}, natural lip movement: "{{ d.text }}"
+{%- endif %}
 {%- endfor %}
 {%- if sfx %}
 SFX: {{ sfx }}.
 {%- endif %}
-Ambient noise: {{ ambient }}. No background music.
+{%- if ambient %}
+Ambient sound: {{ ambient }}.
+{%- endif %}
+No background music.
 The camera then holds. Stable face, consistent outfit, natural hand movement, single continuous shot, no scene cut, no morphing, no text, no subtitles, no watermark.

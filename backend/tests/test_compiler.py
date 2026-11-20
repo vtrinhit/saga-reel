@@ -239,7 +239,7 @@ def test_motion_synced_beats_dialogue_verbatim(owner_ctx, mk):
     assert text.startswith("Start from the provided image;")
     assert "Camera: slow push-in." in text and "Linh đặt điện thoại xuống" in text
     assert "[00:00-00:05] turns to the door" in text and "[00:05-00:10] slowly sits down" in text
-    assert 'Dialogue: Linh says in Vietnamese, calmly: " Anh về rồi à? "' in text
+    assert 'Dialogue: Linh says in Vietnamese (calmly), natural lip movement: " Anh về rồi à? "' in text
     assert "lời TTS" not in text and "SFX: door creak." in text and "no morphing" in text
     short = mk.clip(seq, motion_prompt="m", duration_ms=6000, beats=["one", "two"])
     with owner_ctx.services.db.session() as s:
@@ -324,3 +324,11 @@ def test_look_with_too_many_refs_warns(owner_ctx, mk):
     assert any("7 ảnh" in w for w in compile_image(owner_ctx, cid).warnings)
     with owner_ctx.services.db.session() as s:
         assert s.get(Asset, char).deleted_at is None
+
+
+def test_speech_counts_syllables_not_chars():
+    from sagareel.core import speech
+
+    assert speech.syllables("Ba về rồi!") == 3
+    assert speech.syllables("Xe đã chở gần hết nhà tôi—vậy mà bố vẫn chừa cho tôi một chỗ.") == 16
+    assert speech.max_syllables(6) == 18 and speech.fits("Ba ơi, con đợi ba ở đây nè.", 6)
