@@ -44,3 +44,10 @@
 - `audio.translate_dub` chạy dạng job, dry-run đếm cả câu chưa dịch.
 - Hashtag mẫu có `#`, không khoảng trắng; `export.list` → `{items}`; `counts.flags` tách image/video; `active_only` có tuỳ chọn gồm pipeline lỗi.
 - Tóm tắt lịch sử tiếng Việt hết; `project.create` kiểm khoá nền tảng; OpenAPI: tham số có mặc định không bắt buộc.
+
+## Từ kiểm chứng thật M5/M6/M4-export (2026-11-20)
+- Bìa xuất: lấy khung từ video đã burn phụ đề ("Ba ơi," dính bìa) và tiêu đề đè ngang mặt → lấy khung sạch (ảnh take gốc / render không phụ đề), đặt tiêu đề vào dải ít chi tiết trong safe zone.
+- Ngắt phụ đề tiếng Việt chẻ đôi cụm láy "từ / từ" → không ngắt giữa hai từ giống nhau liền kề, ưu tiên ngắt sau dấu câu/cụm.
+- Metadata gói ngôn ngữ khác (en): tiêu đề, mô tả, từ khoá phải theo ngôn ngữ gói (hiện tiêu đề/từ khoá còn tiếng Việt).
+- Drift check báo nhầm đạo cụ chủ ý của clip ("bọc vải") → đưa prompt/đạo cụ của clip vào ngữ cảnh kiểm tra.
+- Motion prompt clip 6 s vẫn dùng mốc giờ (quy tắc: chỉ clip 10–15 s).
