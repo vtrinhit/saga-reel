@@ -45,7 +45,7 @@ const OPS: Record<string, unknown> = {
   },
   'budget.status': { image: { enabled: true, total: 100, spent: 10, remaining: 90 }, video: { enabled: false, total: null, spent: 0, remaining: null } },
   'token.list': [{ id: 1, name: 'biên-tập', role: 'owner', active: true, last_used_at: null }],
-  'pipeline.run': { dry_run: true, workflow: 'storyboard_first', steps: ['write_script', 'generate_images', 'gate:storyboard'], sequences: [{ sequence_id: 12, clips: 48, images: 48, videos: 0, llm_calls: 1, status: 'waiting_review' }], estimate: { images: 48, videos: 0, llm_calls: 1, budget: { image: { enabled: true, total: 100, spent: 10, remaining: 90 }, video: { enabled: false, total: null, spent: 0, remaining: null } } } },
+  'pipeline.run': { dry_run: true, workflow: 'storyboard_first', step_keys: ['write_script', 'generate_images', 'gate:storyboard'], steps: [], sequences: [{ sequence_id: 12, clips: 48, images: 48, videos: 0, llm_calls: 1, status: 'waiting_review' }], estimate: { images: 48, videos: 0, llm_calls: 1, budget: { image: { enabled: true, total: 100, spent: 10, remaining: 90 }, video: { enabled: false, total: null, spent: 0, remaining: null } } } },
   'sequence.status': { sequence_id: 12, number: 12, title: 'Đêm trăng máu', has_script: true, clips: { total: 0, with_image: 0, with_video: 0, image_prompt: 0, motion_prompt: 0, approved: 0, flagged: 0, seconds: 0 }, active_jobs: 0 },
   'gate.approve': { gate: 'outline', resumed: true },
   'bible.list': {
@@ -57,9 +57,9 @@ const OPS: Record<string, unknown> = {
   },
   'sequence.list': { items: [{ id: 12, project_id: 3, number: 12, title: 'Đêm trăng máu', synopsis: 'Khang gặp An', script: 'Cảnh 1 · Phố Hội, mưa đêm.', workflow_key: 'storyboard_first', gates: {}, pipeline: {}, counts: {} }], next_cursor: null },
   'sequence.get': { id: 12, project_id: 3, number: 12, title: 'Đêm trăng máu', synopsis: 'Khang gặp An', script: 'Cảnh 1 · Phố Hội, mưa đêm.', workflow_key: 'storyboard_first', gates: {}, pipeline: {}, counts: {} },
-  'preset.list': [
+  'preset.list': { items: [
     { id: 1, kind: 'platform', key: 'tiktok', name: 'TikTok', data: { label: 'TikTok', width: 1080, duration_s: { min: 3, max: 600, recommended: [15, 60] } }, builtin: true, modified: true, project_id: null },
-  ],
+  ] },
   'render.cache_stats': { segments: { files: 2, bytes: 2048 }, chunks: { files: 0, bytes: 0 }, work: { files: 1, bytes: 10 }, total: { files: 3, bytes: 2058 } },
 };
 

@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -109,6 +109,7 @@ def take_dict(t: Take) -> dict[str, Any]:
         "media_id": t.media_id, "status": t.status, "job_id": t.job_id, "inputs": dict(t.inputs or {}),
         "parent_take_id": t.parent_take_id, "cost": t.cost, "elapsed_ms": t.elapsed_ms, "rating": t.rating,
         "verdict": t.verdict, "notes": t.notes, "auto_score": dict(t.auto_score or {}), "lang": t.lang,
+        "selected_by": t.selected_by,
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
     }
@@ -247,7 +248,38 @@ def asset_list(ctx: OpContext, project_id: int, kind: str | None = None, q: str 
         rows = s.scalars(stmt.order_by(Asset.id).limit(limit + 1)).all()
         more = len(rows) > limit
         rows = rows[:limit]
-        return {"items": [asset_out(s, a) for a in rows], "next_cursor": rows[-1].id if more else None}
+        drift_a, drift_v = drift_counts(s, project_id)
+        items = []
+        for a in rows:
+            d = asset_out(s, a)
+            for lk in d["looks"]:
+                lk["counts"] = {"drift": drift_v.get(lk["id"], 0)}
+            d["counts"] = {"looks": len(d["looks"]), "drift": drift_a.get(a.id, 0)}
+            items.append(d)
+        return {"items": items, "next_cursor": rows[-1].id if more else None}
+
+
+def drift_counts(s: Session, project_id: int) -> tuple[dict[int, int], dict[int, int]]:
+    """Số clip (chưa xoá) mang cờ `drift` theo tài sản và theo look (`clip.assets[].asset_id/variant_id`)."""
+    by_asset: dict[int, int] = {}
+    by_look: dict[int, int] = {}
+    rows = s.execute(
+        select(Clip.assets).join(Sequence, Sequence.id == Clip.sequence_id)
+        .where(Sequence.project_id == project_id, Sequence.deleted_at.is_(None), Clip.deleted_at.is_(None),
+               text("coalesce(json_extract(clip.flags, '$.drift'), 0) NOT IN (0, '', 'false')"))).scalars()
+    for assets in rows:
+        seen_a: set[int] = set()
+        seen_v: set[int] = set()
+        for ref in assets or []:
+            if not isinstance(ref, dict):
+                continue
+            if isinstance(ref.get("asset_id"), int) and ref["asset_id"] not in seen_a:
+                seen_a.add(ref["asset_id"])
+                by_asset[ref["asset_id"]] = by_asset.get(ref["asset_id"], 0) + 1
+            if isinstance(ref.get("variant_id"), int) and ref["variant_id"] not in seen_v:
+                seen_v.add(ref["variant_id"])
+                by_look[ref["variant_id"]] = by_look.get(ref["variant_id"], 0) + 1
+    return by_asset, by_look
 
 
 def asset_update(ctx: OpContext, asset_id: int, values: dict[str, Any],
@@ -599,9 +631,10 @@ async def sheet_generate(ctx: OpContext, look_id: int, views: list[str] | None =
     def run() -> dict[str, Any]:
         with ctx.services.db.session() as s:
             if dry_run:
-                estimate["budget"] = budget.status(s, "image", resolver=ctx.services.resolver)
+                estimate["budget"] = budget.status(s, "image", resolver=ctx.services.resolver, project_id=project.id)
                 return {"estimate": estimate}
-            budget.check(s, "image", units_each * count, conn.id, resolver=ctx.services.resolver)
+            budget.check(s, "image", units_each * count, conn.id, resolver=ctx.services.resolver,
+                         project_id=project.id)
         lane = ProviderService.lane(conn)
         if has_anchor or compiler.ANCHOR not in norm:
             submitted = submit_sheet_jobs(ctx.services, look_id=look_id, project_id=project.id, views=norm,
@@ -632,8 +665,21 @@ def sheet_select(ctx: OpContext, look_id: int, view: str, take_id: int) -> dict[
         if t.status != "succeeded" or t.media_id is None:
             raise AppError("take_not_ready", f"Take #{take_id} chưa tạo xong ({t.status}).", status=409)
         apply_sheet_media(lk, view, t.media_id)
+        mark_sheet_selected(s, u, t, ctx.actor)
         s.flush()
         return look_out(s, lk)
+
+
+def mark_sheet_selected(s: Session, u: UnitOfWork | None, t: Take, actor: str) -> None:
+    """Một take được chọn mỗi (look, góc): ghi `selected_by` cho take này, xoá ở các take khác cùng góc (có lịch sử
+    khi chạy trong UoW → hoàn tác trả lại người chọn trước)."""
+    for x in s.scalars(select(Take).where(Take.owner_type == "variant", Take.owner_id == t.owner_id,
+                                          Take.part == "sheet", Take.view == t.view)):
+        want = actor if x.id == t.id else ""
+        if x.selected_by != want:
+            if u is not None:
+                u.track(x)
+            x.selected_by = want
 
 
 def apply_sheet_media(lk: AssetVariant, view: str, media_id: int) -> None:
@@ -649,10 +695,19 @@ def sheet_list(ctx: OpContext, look_id: int) -> dict[str, Any]:
         rows = s.scalars(select(Take).where(Take.owner_type == "variant", Take.owner_id == look_id,
                                             Take.part == "sheet").order_by(Take.id)).all()
         selected = {compiler.ANCHOR: lk.anchor_media_id, **dict(lk.sheet or {})}
+        # Đúng một take "đang chọn" mỗi góc: take có `selected_by` khớp media đang dùng; dữ liệu cũ (chưa ghi người
+        # chọn) → take mới nhất trùng media.
+        chosen: dict[str, int] = {}
+        for t in rows:
+            if t.media_id is not None and selected.get(t.view) == t.media_id and t.selected_by:
+                chosen[t.view] = t.id
+        for t in reversed(rows):
+            if t.view not in chosen and t.media_id is not None and selected.get(t.view) == t.media_id:
+                chosen[t.view] = t.id
         views: dict[str, list] = {}
         for t in rows:
             d = take_dict(t)
-            d["selected"] = t.media_id is not None and selected.get(t.view) == t.media_id
+            d["selected"] = chosen.get(t.view) == t.id
             views.setdefault(t.view, []).append(d)
         return {"look": look_out(s, lk), "views": views, "selected": selected}
 
@@ -764,6 +819,14 @@ def take_finish(services, take_id: int, *, status: str, media_id: int | None = N
             t.inputs = {**dict(t.inputs or {}), "error": error}
 
 
+def _follow_cancelled(services, job_id: int) -> bool:
+    from sagareel.db.models import Job
+
+    with services.db.session() as s:
+        job = s.get(Job, job_id)
+        return bool(job is not None and (job.params or {}).get("follow_cancelled"))
+
+
 def sheet_job_done(services, job_id: int, take_id: int, look_id: int, view: str, media_id: int,
                    follow: dict | None, conn_id: int, lane: str, image_params: dict) -> dict[str, Any]:
     """Tự chọn take đầu tiên của mỗi góc (mỏ neo/sheet còn trống). Job anchor đặt mỏ neo → gửi các góc trong `follow`."""
@@ -784,7 +847,13 @@ def sheet_job_done(services, job_id: int, take_id: int, look_id: int, view: str,
         elif (lk.sheet or {}).get(view) is None:
             apply_sheet_media(lk, view, media_id)
             selected = True
+        if selected:
+            t = s.get(Take, take_id)
+            if t is not None:
+                mark_sheet_selected(s, None, t, SYSTEM_ACTOR)
     follow_jobs: list[dict] = []
+    if set_anchor and follow and follow.get("views") and _follow_cancelled(services, job_id):
+        follow = None  # job.cancel đã yêu cầu bỏ các góc sau (lượt anchor đã gửi provider nên vẫn chạy xong)
     if set_anchor and follow and follow.get("views"):
         follow_jobs = submit_sheet_jobs(services, look_id=look_id, project_id=project_id,
                                         views=list(follow["views"]), takes=int(follow.get("takes", 1)),

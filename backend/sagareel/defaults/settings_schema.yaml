@@ -206,3 +206,17 @@ render.scene_max_s:
   type: int
   default: 180
   description: Cảnh dài hơn số giây này được tách thành nhiều khối dựng.
+
+# --- task bf ---
+budget.confirm_below_units:
+  type: int
+  default: 5
+  description: Không hỏi xác nhận lại với thao tác tốn tiền dưới số lượt (ảnh + video) này; 0 = luôn hỏi.
+storage.trash_keep_days:
+  type: int
+  default: 30
+  description: Gợi ý giữ file trong thùng rác (data/trash) bao nhiêu ngày trước khi dọn hẳn (trash.purge_preview older_than_days).
+render.cache_auto_prune:
+  type: bool
+  default: true
+  description: Tự dọn cache dựng phim (LRU theo render.cache_max_gb / render.min_free_gb) sau mỗi lần dựng và khi gọi media.cleanup.

@@ -43,6 +43,14 @@ class CommittedChange(NamedTuple):
 # kể cả từ thread worker vì context được chép), sau khi op xong `execute` phát một `entity.changed`.
 committed_changes: ContextVar[list[CommittedChange] | None] = ContextVar("sagareel_committed_changes", default=None)
 
+def last_change_set_id() -> int | None:
+    """Id change set commit gần nhất trong op đang chạy (None nếu chưa có / không chạy trong op).
+
+    Op ghi trả kèm `change_set_id` để UI hoàn tác đúng thao tác (`history.undo(change_set_id)`)."""
+    changes = committed_changes.get()
+    return changes[-1].change_set_id if changes else None
+
+
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 

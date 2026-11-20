@@ -58,7 +58,8 @@ export function IdeaToVideoDialog({ open, onClose, projectId = null, defaultIdea
     queryKey: ['pipeline', 'idea-presets'],
     queryFn: async () => {
       const [g, w] = await Promise.all([callOp('preset.list', { kind: 'genre' }), callOp('preset.list', { kind: 'workflow' })]);
-      return { genres: g as unknown as { key: string; name: string }[], workflows: w as unknown as { key: string; name: string }[] };
+      type Row = { key: string; name: string };
+      return { genres: (g as unknown as { items: Row[] }).items, workflows: (w as unknown as { items: Row[] }).items };
     },
     enabled: open,
     staleTime: 5 * 60_000,

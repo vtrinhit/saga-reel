@@ -42,7 +42,17 @@ class SceneDeleteParams(BaseModel):
     confirm_token: str | None = None
 
 
-@op("scene.create", summary="Tạo cảnh trong tập", params=SceneCreateParams, mcp="tool")
+class SceneListParams(BaseModel):
+    sequence_id: int
+
+
+@op("scene.list", summary="Liệt kê cảnh của tập theo thứ tự, kèm số clip/thời lượng mỗi cảnh",
+    params=SceneListParams, read_only=True, idempotent=True, mcp="tool")
+def scene_list(ctx: OpContext, p: SceneListParams) -> dict:
+    return sequences.scene_list(ctx, p.sequence_id)
+
+
+@op("scene.create",summary="Tạo cảnh trong tập", params=SceneCreateParams, mcp="tool")
 def scene_create(ctx: OpContext, p: SceneCreateParams) -> dict:
     return sequences.scene_create(ctx, p.sequence_id, p.title, key=p.key, after_scene_id=p.after_scene_id,
                                   location_asset_id=p.location_asset_id, summary=p.summary, state=p.state)

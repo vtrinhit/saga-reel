@@ -160,6 +160,7 @@ def load(
             lines_by_clip.setdefault(ln.clip_id, []).append(ln)
 
         clips_in: list[ClipIn] = []
+        next_link = {a.id: b.link for a, b in zip(clip_rows, list(clip_rows)[1:], strict=False)}
         for c in clip_rows:
             video = None if variant == "animatic" else _take_media(s, c.video_take_id)
             image = _take_media(s, c.image_take_id) or (s.get(Media, c.input_media_id) if c.input_media_id else None)
@@ -176,6 +177,25 @@ def load(
                     sm = normalize.SourceMedia(vpath, video.sha256, info.has_audio, info.duration_ms)
                 cp = normalize.ClipParams(c.trim_in_ms, c.trim_out_ms, float(c.speed or 1.0),
                                           "keep" if grok_keep else (c.grok_audio or "ambient"), None)
+                fit: dict[str, Any] = {"mode": "source"}
+                if c.engine == "ai_video" and sm.duration_ms:
+                    # Theo clip.duration_ms (spec §11): video dài → cắt; ngắn → chậm ≤ 0,8× rồi giữ khung cuối.
+                    fitted, fit = normalize.fit_to_duration(sm.duration_ms, cp, c.duration_ms)
+                    if fit["mode"] == "trim" and next_link.get(c.id) == "continue":
+                        # Clip kế `continue` bắt đầu từ khung CUỐI của video nguồn → cắt đuôi sẽ lệch mối nối:
+                        # giữ nguyên độ dài nguồn.
+                        fit = {"mode": "source"}
+                        loaded.warnings.append({
+                            "code": "continue_untrimmed", "clip_id": c.id,
+                            "message": f"Clip {c.key} dài hơn thời lượng đặt nhưng clip sau nối tiếp (continue) từ "
+                                       "khung cuối; giữ nguyên độ dài video."})
+                    else:
+                        cp = fitted
+                    if fit.get("hold_last_frame_ms"):
+                        loaded.warnings.append({
+                            "code": "video_short", "clip_id": c.id,
+                            "message": f"Video clip {c.key} ngắn hơn thời lượng clip; giữ khung cuối "
+                                       f"{fit['hold_last_frame_ms'] / 1000:.1f} s."})
                 try:
                     p = normalize.plan(sm, cp, prof)
                 except AppError as e:
@@ -610,6 +630,9 @@ async def _silence(cache_dir: Path, cancel: asyncio.Event | None) -> Path:
 
 
 def _prune(services, keep: set[Path]) -> dict:
+    """Dọn cache phái sinh LRU theo `render.cache_max_gb` / `render.min_free_gb` (tắt bằng `render.cache_auto_prune`)."""
+    if _setting(services, "render.cache_auto_prune") is False:
+        return {"files": 0, "bytes": 0, "skipped": True}
     gb = _setting(services, "render.cache_max_gb")
     free_gb = _setting(services, "render.min_free_gb")
     return cache.prune(services.settings.cache_dir, max_bytes=int(float(gb if gb is not None else 30) * 1024 ** 3),

@@ -2,6 +2,276 @@
  {
   "costly": false,
   "destructive": false,
+  "group": "agents",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "agents.pause_all",
+  "params_schema": {
+   "properties": {},
+   "title": "AuthNoParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "$defs": {
+    "TokenInfo": {
+     "properties": {
+      "active": {
+       "title": "Active",
+       "type": "boolean"
+      },
+      "created_at": {
+       "format": "date-time",
+       "title": "Created At",
+       "type": "string"
+      },
+      "expires_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Expires At"
+      },
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "last_used_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Last Used At"
+      },
+      "local_only": {
+       "default": false,
+       "description": "Token agent cục bộ của app (chỉ dùng trên máy này)",
+       "title": "Local Only",
+       "type": "boolean"
+      },
+      "name": {
+       "title": "Name",
+       "type": "string"
+      },
+      "revoked_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Revoked At"
+      },
+      "role": {
+       "enum": [
+        "owner",
+        "viewer"
+       ],
+       "title": "Role",
+       "type": "string"
+      },
+      "suspended": {
+       "default": false,
+       "description": "Agent đang tạm dừng (request nhận 403 token_suspended)",
+       "title": "Suspended",
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "id",
+      "name",
+      "role",
+      "created_at",
+      "expires_at",
+      "last_used_at",
+      "revoked_at",
+      "active"
+     ],
+     "title": "TokenInfo",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "changed": {
+     "description": "Số token đổi trạng thái",
+     "title": "Changed",
+     "type": "integer"
+    },
+    "suspended": {
+     "title": "Suspended",
+     "type": "boolean"
+    },
+    "tokens": {
+     "items": {
+      "$ref": "#/$defs/TokenInfo"
+     },
+     "title": "Tokens",
+     "type": "array"
+    }
+   },
+   "required": [
+    "suspended",
+    "changed",
+    "tokens"
+   ],
+   "title": "AgentsPauseOut",
+   "type": "object"
+  },
+  "summary": "Tạm dừng MỌI agent (mọi token API còn hiệu lực, kể cả agent cục bộ) — nút dừng khẩn",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "agents",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "agents.resume_all",
+  "params_schema": {
+   "properties": {},
+   "title": "AuthNoParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "$defs": {
+    "TokenInfo": {
+     "properties": {
+      "active": {
+       "title": "Active",
+       "type": "boolean"
+      },
+      "created_at": {
+       "format": "date-time",
+       "title": "Created At",
+       "type": "string"
+      },
+      "expires_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Expires At"
+      },
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "last_used_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Last Used At"
+      },
+      "local_only": {
+       "default": false,
+       "description": "Token agent cục bộ của app (chỉ dùng trên máy này)",
+       "title": "Local Only",
+       "type": "boolean"
+      },
+      "name": {
+       "title": "Name",
+       "type": "string"
+      },
+      "revoked_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Revoked At"
+      },
+      "role": {
+       "enum": [
+        "owner",
+        "viewer"
+       ],
+       "title": "Role",
+       "type": "string"
+      },
+      "suspended": {
+       "default": false,
+       "description": "Agent đang tạm dừng (request nhận 403 token_suspended)",
+       "title": "Suspended",
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "id",
+      "name",
+      "role",
+      "created_at",
+      "expires_at",
+      "last_used_at",
+      "revoked_at",
+      "active"
+     ],
+     "title": "TokenInfo",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "changed": {
+     "description": "Số token đổi trạng thái",
+     "title": "Changed",
+     "type": "integer"
+    },
+    "suspended": {
+     "title": "Suspended",
+     "type": "boolean"
+    },
+    "tokens": {
+     "items": {
+      "$ref": "#/$defs/TokenInfo"
+     },
+     "title": "Tokens",
+     "type": "array"
+    }
+   },
+   "required": [
+    "suspended",
+    "changed",
+    "tokens"
+   ],
+   "title": "AgentsPauseOut",
+   "type": "object"
+  },
+  "summary": "Bật lại mọi agent đã tạm dừng (chỉ chủ trong giao diện/máy cục bộ, không qua token API)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
   "group": "asset",
   "idempotent": false,
   "long_running": false,
@@ -793,6 +1063,56 @@
   "viewer": true
  },
  {
+  "costly": true,
+  "destructive": false,
+  "group": "audio",
+  "idempotent": false,
+  "long_running": true,
+  "mcp": "tool",
+  "name": "audio.translate_dub",
+  "params_schema": {
+   "properties": {
+    "dry_run": {
+     "default": false,
+     "title": "Dry Run",
+     "type": "boolean"
+    },
+    "force": {
+     "default": false,
+     "description": "Dịch lại cả câu đã có bản dịch",
+     "title": "Force",
+     "type": "boolean"
+    },
+    "lang": {
+     "description": "Ngôn ngữ đích, vd. en, ja, zh-CN",
+     "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$",
+     "title": "Lang",
+     "type": "string"
+    },
+    "sequence_id": {
+     "title": "Sequence Id",
+     "type": "integer"
+    },
+    "tts": {
+     "default": true,
+     "description": "Đọc TTS bản dịch (giọng theo voice_profile.per_lang)",
+     "title": "Tts",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "sequence_id",
+    "lang"
+   ],
+   "title": "TranslateDubParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Dịch lời thoại của tập sang ngôn ngữ khác (LLM translate → translations, hoàn tác được) rồi lồng tiếng TTS theo giọng từng ngôn ngữ; dry_run ước tính",
+  "viewer": false
+ },
+ {
   "costly": false,
   "destructive": false,
   "group": "auth",
@@ -1562,7 +1882,21 @@
   "mcp": "tool",
   "name": "budget.status",
   "params_schema": {
-   "properties": {},
+   "properties": {
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Kèm trần riêng của dự án (project.budget)",
+     "title": "Project Id"
+    }
+   },
    "title": "BudgetStatusParams",
    "type": "object"
   },
@@ -1575,6 +1909,17 @@
        "description": "Ngân sách đang bật",
        "title": "Enabled",
        "type": "boolean"
+      },
+      "project": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/BudgetProjectStatus"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null
       },
       "remaining": {
        "anyOf": [
@@ -1614,9 +1959,58 @@
      ],
      "title": "BudgetKindStatus",
      "type": "object"
+    },
+    "BudgetProjectStatus": {
+     "properties": {
+      "project_id": {
+       "title": "Project Id",
+       "type": "integer"
+      },
+      "remaining": {
+       "anyOf": [
+        {
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Remaining"
+      },
+      "spent": {
+       "title": "Spent",
+       "type": "number"
+      },
+      "total": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Trần của dự án; null = không giới hạn",
+       "title": "Total"
+      }
+     },
+     "required": [
+      "project_id",
+      "total",
+      "spent",
+      "remaining"
+     ],
+     "title": "BudgetProjectStatus",
+     "type": "object"
     }
    },
    "properties": {
+    "confirm_below_units": {
+     "default": 5,
+     "description": "Không hỏi xác nhận lại với thao tác tốn tiền dưới số lượt này",
+     "title": "Confirm Below Units",
+     "type": "integer"
+    },
     "image": {
      "$ref": "#/$defs/BudgetKindStatus"
     },
@@ -1631,7 +2025,7 @@
    "title": "BudgetStatus",
    "type": "object"
   },
-  "summary": "Ngân sách ảnh/video: trần, đã dùng, còn lại (kết nối giả không tính)",
+  "summary": "Ngân sách ảnh/video: trần, đã dùng, còn lại (toàn cục + dự án nếu có project_id; kết nối giả không tính)",
   "viewer": true
  },
  {
@@ -2307,6 +2701,12 @@
        "description": "Clip có ít nhất một cờ, vd. [\"stale_video\", \"drift\"]",
        "title": "Flags"
       },
+      "has_take": {
+       "default": false,
+       "description": "Chỉ clip đã có take ảnh/video đang chọn (review=pending + has_take = đúng số `takes_pending`)",
+       "title": "Has Take",
+       "type": "boolean"
+      },
       "no_scene": {
        "default": false,
        "title": "No Scene",
@@ -2559,6 +2959,12 @@
        "default": null,
        "description": "Clip có ít nhất một cờ, vd. [\"stale_video\", \"drift\"]",
        "title": "Flags"
+      },
+      "has_take": {
+       "default": false,
+       "description": "Chỉ clip đã có take ảnh/video đang chọn (review=pending + has_take = đúng số `takes_pending`)",
+       "title": "Has Take",
+       "type": "boolean"
       },
       "no_scene": {
        "default": false,
@@ -4042,6 +4448,20 @@
        "title": "Focus Y",
        "type": "number"
       },
+      "metadata": {
+       "anyOf": [
+        {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Ghi đè metadata sinh ra (title, description, hashtags, keywords…); khoá null = giữ",
+       "title": "Metadata"
+      },
       "reframe": {
        "default": "blur_pad",
        "description": "Cách đổi tỉ lệ khung khi khác nền tảng",
@@ -4084,6 +4504,20 @@
      },
      "title": "Langs",
      "type": "array"
+    },
+    "metadata": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Ghi đè metadata (title, description, hashtags…) cho mọi gói; = options.metadata",
+     "title": "Metadata"
     },
     "options": {
      "$ref": "#/$defs/ExportOptions"
@@ -4318,6 +4752,20 @@
   "name": "history.list",
   "params_schema": {
    "properties": {
+    "actor": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Lọc theo người làm: đúng tên (vd. `agent:bot`) hoặc tiền tố khi kết thúc bằng `:` (vd. `agent:` = mọi agent)",
+     "title": "Actor"
+    },
     "cursor": {
      "anyOf": [
       {
@@ -6536,6 +6984,108 @@
  },
  {
   "costly": false,
+  "destructive": true,
+  "group": "media",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "media.cleanup",
+  "params_schema": {
+   "properties": {
+    "confirm_token": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Lấy từ bước *_preview (10 phút)",
+     "title": "Confirm Token"
+    }
+   },
+   "title": "ConfirmParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Chuyển file gốc của take không được chọn sang data/trash/ (cần confirm_token từ media.cleanup_preview; khôi phục bằng trash.restore)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "media",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "media.cleanup_preview",
+  "params_schema": {
+   "$defs": {
+    "CleanupFilters": {
+     "properties": {
+      "kinds": {
+       "anyOf": [
+        {
+         "items": {
+          "enum": [
+           "image",
+           "video",
+           "audio"
+          ],
+          "type": "string"
+         },
+         "type": "array"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "description": "Mặc định cả ba",
+       "title": "Kinds"
+      },
+      "project_id": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "default": null,
+       "title": "Project Id"
+      },
+      "unselected_takes_older_than_days": {
+       "default": 30,
+       "description": "Chỉ take (không được chọn) tạo cách đây ≥ số ngày này",
+       "minimum": 0,
+       "title": "Unselected Takes Older Than Days",
+       "type": "integer"
+      }
+     },
+     "title": "CleanupFilters",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "filters": {
+     "$ref": "#/$defs/CleanupFilters"
+    }
+   },
+   "title": "CleanupPreviewParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Xem trước dọn file gốc của take không được chọn (đủ cũ) sang thùng rác + confirm_token",
+  "viewer": false
+ },
+ {
+  "costly": false,
   "destructive": false,
   "group": "media",
   "idempotent": true,
@@ -6894,6 +7444,24 @@
  {
   "costly": false,
   "destructive": false,
+  "group": "meta",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "meta.enums",
+  "params_schema": {
+   "properties": {},
+   "title": "MetaEnumsParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Danh mục enum: cỡ cảnh/góc/chuyển động máy…, engine, kiểu nối, duyệt, phán quyết take",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
   "group": "pipeline",
   "idempotent": false,
   "long_running": false,
@@ -7122,6 +7690,32 @@
   "name": "pipeline.status",
   "params_schema": {
    "properties": {
+    "active_only": {
+     "default": false,
+     "description": "Toàn cục: chỉ tập có quy trình chưa xong",
+     "title": "Active Only",
+     "type": "boolean"
+    },
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Toàn cục: `next_cursor` của trang trước",
+     "title": "Cursor"
+    },
+    "limit": {
+     "default": 200,
+     "maximum": 500,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    },
     "project_id": {
      "anyOf": [
       {
@@ -7132,6 +7726,7 @@
       }
      ],
      "default": null,
+     "description": "Bỏ trống cả sequence_ids = mọi dự án (phân trang)",
      "title": "Project Id"
     },
     "sequence_ids": {
@@ -7156,7 +7751,7 @@
   },
   "read_only": true,
   "result_schema": null,
-  "summary": "Trạng thái quy trình từng tập: bước, gate, đang chờ gì, job con",
+  "summary": "Trạng thái quy trình từng tập (theo tập, dự án, hoặc mọi dự án): bước, gate (+ media xem trước), đang chờ gì, job con",
   "viewer": true
  },
  {
@@ -7866,8 +8461,20 @@
        "title": "Clips",
        "type": "integer"
       },
+      "drift": {
+       "default": 0,
+       "description": "Clip mang cờ drift",
+       "title": "Drift",
+       "type": "integer"
+      },
       "sequences": {
        "title": "Sequences",
+       "type": "integer"
+      },
+      "takes_pending": {
+       "default": 0,
+       "description": "Clip chờ duyệt đã có take (= review.queue review=pending + has_take)",
+       "title": "Takes Pending",
        "type": "integer"
       }
      },
@@ -8158,8 +8765,20 @@
        "title": "Clips",
        "type": "integer"
       },
+      "drift": {
+       "default": 0,
+       "description": "Clip mang cờ drift",
+       "title": "Drift",
+       "type": "integer"
+      },
       "sequences": {
        "title": "Sequences",
+       "type": "integer"
+      },
+      "takes_pending": {
+       "default": 0,
+       "description": "Clip chờ duyệt đã có take (= review.queue review=pending + has_take)",
+       "title": "Takes Pending",
        "type": "integer"
       }
      },
@@ -8440,8 +9059,20 @@
        "title": "Clips",
        "type": "integer"
       },
+      "drift": {
+       "default": 0,
+       "description": "Clip mang cờ drift",
+       "title": "Drift",
+       "type": "integer"
+      },
       "sequences": {
        "title": "Sequences",
+       "type": "integer"
+      },
+      "takes_pending": {
+       "default": 0,
+       "description": "Clip chờ duyệt đã có take (= review.queue review=pending + has_take)",
+       "title": "Takes Pending",
        "type": "integer"
       }
      },
@@ -8643,8 +9274,20 @@
        "title": "Clips",
        "type": "integer"
       },
+      "drift": {
+       "default": 0,
+       "description": "Clip mang cờ drift",
+       "title": "Drift",
+       "type": "integer"
+      },
       "sequences": {
        "title": "Sequences",
+       "type": "integer"
+      },
+      "takes_pending": {
+       "default": 0,
+       "description": "Clip chờ duyệt đã có take (= review.queue review=pending + has_take)",
+       "title": "Takes Pending",
        "type": "integer"
       }
      },
@@ -9042,8 +9685,20 @@
        "title": "Clips",
        "type": "integer"
       },
+      "drift": {
+       "default": 0,
+       "description": "Clip mang cờ drift",
+       "title": "Drift",
+       "type": "integer"
+      },
       "sequences": {
        "title": "Sequences",
+       "type": "integer"
+      },
+      "takes_pending": {
+       "default": 0,
+       "description": "Clip chờ duyệt đã có take (= review.queue review=pending + has_take)",
+       "title": "Takes Pending",
        "type": "integer"
       }
      },
@@ -10631,6 +11286,12 @@
        "description": "Clip có ít nhất một cờ, vd. [\"stale_video\", \"drift\"]",
        "title": "Flags"
       },
+      "has_take": {
+       "default": false,
+       "description": "Chỉ clip đã có take ảnh/video đang chọn (review=pending + has_take = đúng số `takes_pending`)",
+       "title": "Has Take",
+       "type": "boolean"
+      },
       "no_scene": {
        "default": false,
        "title": "No Scene",
@@ -10709,7 +11370,7 @@
       }
      ],
      "default": null,
-     "description": "Mặc định review=pending"
+     "description": "Mặc định review=pending; thêm has_take=true để khớp số takes_pending"
     },
     "limit": {
      "default": 50,
@@ -10719,13 +11380,36 @@
      "type": "integer"
     },
     "sequence_id": {
-     "title": "Sequence Id",
-     "type": "integer"
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Một tập (hoặc sequence_ids)",
+     "title": "Sequence Id"
+    },
+    "sequence_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "integer"
+       },
+       "maxItems": 500,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Nhiều tập: theo thứ tự tập; mỗi item kèm sequence_id",
+     "title": "Sequence Ids"
     }
    },
-   "required": [
-    "sequence_id"
-   ],
    "title": "ReviewQueueParams",
    "type": "object"
   },
@@ -10912,6 +11596,32 @@
   "group": "scene",
   "idempotent": true,
   "long_running": false,
+  "mcp": "tool",
+  "name": "scene.list",
+  "params_schema": {
+   "properties": {
+    "sequence_id": {
+     "title": "Sequence Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "sequence_id"
+   ],
+   "title": "SceneListParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Liệt kê cảnh của tập theo thứ tự, kèm số clip/thời lượng mỗi cảnh",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "scene",
+  "idempotent": true,
+  "long_running": false,
   "mcp": "call",
   "name": "scene.move",
   "params_schema": {
@@ -11001,25 +11711,48 @@
   "params_schema": {
    "properties": {
     "id": {
-     "title": "Id",
-     "type": "integer"
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Một tập (hoặc dùng sequence_ids)",
+     "title": "Id"
     },
     "per_clip": {
      "default": false,
      "description": "Kèm chi phí từng clip (sắp giảm dần)",
      "title": "Per Clip",
      "type": "boolean"
+    },
+    "sequence_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "integer"
+       },
+       "maxItems": 500,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Nhiều tập: trả `items` từng tập + tổng cộng",
+     "title": "Sequence Ids"
     }
    },
-   "required": [
-    "id"
-   ],
    "title": "SequenceCostParams",
    "type": "object"
   },
   "read_only": true,
   "result_schema": null,
-  "summary": "Tổng chi phí thật của tập (mọi take kể cả lần thử lại), theo phần",
+  "summary": "Tổng chi phí thật của tập (mọi take kể cả lần thử lại), theo phần; nhiều tập qua sequence_ids",
   "viewer": true
  },
  {
@@ -12268,6 +13001,70 @@
   "group": "skill",
   "idempotent": true,
   "long_running": false,
+  "mcp": "call",
+  "name": "skill.sync",
+  "params_schema": {
+   "properties": {},
+   "title": "SkillListParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "$defs": {
+    "SkillFileInfo": {
+     "properties": {
+      "path": {
+       "title": "Path",
+       "type": "string"
+      },
+      "size": {
+       "title": "Size",
+       "type": "integer"
+      },
+      "updated_at": {
+       "format": "date-time",
+       "title": "Updated At",
+       "type": "string"
+      }
+     },
+     "required": [
+      "path",
+      "size",
+      "updated_at"
+     ],
+     "title": "SkillFileInfo",
+     "type": "object"
+    }
+   },
+   "properties": {
+    "dir": {
+     "title": "Dir",
+     "type": "string"
+    },
+    "items": {
+     "items": {
+      "$ref": "#/$defs/SkillFileInfo"
+     },
+     "title": "Items",
+     "type": "array"
+    }
+   },
+   "required": [
+    "items",
+    "dir"
+   ],
+   "title": "SkillListOut",
+   "type": "object"
+  },
+  "summary": "Đồng bộ file skill giữa thư mục .claude/skills/ và DB (nhập file sửa ngoài app, ghi lại file theo DB) rồi liệt kê",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "skill",
+  "idempotent": true,
+  "long_running": false,
   "mcp": "tool",
   "name": "skill.update",
   "params_schema": {
@@ -13301,15 +14098,23 @@
      "type": "integer"
     },
     "verdict": {
-     "enum": [
-      "keep",
-      "trim",
-      "fix_post",
-      "regenerate",
-      "reject"
+     "anyOf": [
+      {
+       "enum": [
+        "keep",
+        "trim",
+        "fix_post",
+        "regenerate",
+        "reject"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
      ],
-     "title": "Verdict",
-     "type": "string"
+     "description": "Phán quyết; null = xoá phán quyết (và lý do)",
+     "title": "Verdict"
     }
    },
    "required": [
@@ -13321,7 +14126,7 @@
   },
   "read_only": false,
   "result_schema": null,
-  "summary": "Phán quyết take (keep/trim/fix_post/regenerate/reject) kèm lý do",
+  "summary": "Phán quyết take (keep/trim/fix_post/regenerate/reject) kèm lý do; null = xoá (hoàn tác được)",
   "viewer": false
  },
  {
@@ -13816,6 +14621,12 @@
      ],
      "title": "Last Used At"
     },
+    "local_only": {
+     "default": false,
+     "description": "Token agent cục bộ của app (chỉ dùng trên máy này)",
+     "title": "Local Only",
+     "type": "boolean"
+    },
     "name": {
      "title": "Name",
      "type": "string"
@@ -13839,6 +14650,12 @@
      ],
      "title": "Role",
      "type": "string"
+    },
+    "suspended": {
+     "default": false,
+     "description": "Agent đang tạm dừng (request nhận 403 token_suspended)",
+     "title": "Suspended",
+     "type": "boolean"
     },
     "token": {
      "description": "Token thô — chỉ hiện MỘT lần, hãy lưu lại ngay",
@@ -13918,6 +14735,12 @@
        ],
        "title": "Last Used At"
       },
+      "local_only": {
+       "default": false,
+       "description": "Token agent cục bộ của app (chỉ dùng trên máy này)",
+       "title": "Local Only",
+       "type": "boolean"
+      },
       "name": {
        "title": "Name",
        "type": "string"
@@ -13941,6 +14764,12 @@
        ],
        "title": "Role",
        "type": "string"
+      },
+      "suspended": {
+       "default": false,
+       "description": "Agent đang tạm dừng (request nhận 403 token_suspended)",
+       "title": "Suspended",
+       "type": "boolean"
       }
      },
      "required": [
@@ -13964,6 +14793,132 @@
    "type": "array"
   },
   "summary": "Danh sách token API (không có token thô hay hash)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "token",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "token.resume",
+  "params_schema": {
+   "properties": {
+    "name": {
+     "description": "Tên token (agent `agent:<tên>`), vd. local-agent",
+     "maxLength": 64,
+     "minLength": 1,
+     "title": "Name",
+     "type": "string"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "title": "TokenNameParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "$defs": {
+    "TokenInfo": {
+     "properties": {
+      "active": {
+       "title": "Active",
+       "type": "boolean"
+      },
+      "created_at": {
+       "format": "date-time",
+       "title": "Created At",
+       "type": "string"
+      },
+      "expires_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Expires At"
+      },
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "last_used_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Last Used At"
+      },
+      "local_only": {
+       "default": false,
+       "description": "Token agent cục bộ của app (chỉ dùng trên máy này)",
+       "title": "Local Only",
+       "type": "boolean"
+      },
+      "name": {
+       "title": "Name",
+       "type": "string"
+      },
+      "revoked_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Revoked At"
+      },
+      "role": {
+       "enum": [
+        "owner",
+        "viewer"
+       ],
+       "title": "Role",
+       "type": "string"
+      },
+      "suspended": {
+       "default": false,
+       "description": "Agent đang tạm dừng (request nhận 403 token_suspended)",
+       "title": "Suspended",
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "id",
+      "name",
+      "role",
+      "created_at",
+      "expires_at",
+      "last_used_at",
+      "revoked_at",
+      "active"
+     ],
+     "title": "TokenInfo",
+     "type": "object"
+    }
+   },
+   "items": {
+    "$ref": "#/$defs/TokenInfo"
+   },
+   "title": "TokenList",
+   "type": "array"
+  },
+  "summary": "Bật lại agent đã tạm dừng (token API không tự bật lại được)",
   "viewer": false
  },
  {
@@ -14027,6 +14982,12 @@
      ],
      "title": "Last Used At"
     },
+    "local_only": {
+     "default": false,
+     "description": "Token agent cục bộ của app (chỉ dùng trên máy này)",
+     "title": "Local Only",
+     "type": "boolean"
+    },
     "name": {
      "title": "Name",
      "type": "string"
@@ -14050,6 +15011,12 @@
      ],
      "title": "Role",
      "type": "string"
+    },
+    "suspended": {
+     "default": false,
+     "description": "Agent đang tạm dừng (request nhận 403 token_suspended)",
+     "title": "Suspended",
+     "type": "boolean"
     }
    },
    "required": [
@@ -14066,6 +15033,283 @@
    "type": "object"
   },
   "summary": "Thu hồi một token API (dùng lại sẽ bị từ chối)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "token",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "token.suspend",
+  "params_schema": {
+   "properties": {
+    "name": {
+     "description": "Tên token (agent `agent:<tên>`), vd. local-agent",
+     "maxLength": 64,
+     "minLength": 1,
+     "title": "Name",
+     "type": "string"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "title": "TokenNameParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": {
+   "$defs": {
+    "TokenInfo": {
+     "properties": {
+      "active": {
+       "title": "Active",
+       "type": "boolean"
+      },
+      "created_at": {
+       "format": "date-time",
+       "title": "Created At",
+       "type": "string"
+      },
+      "expires_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Expires At"
+      },
+      "id": {
+       "title": "Id",
+       "type": "integer"
+      },
+      "last_used_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Last Used At"
+      },
+      "local_only": {
+       "default": false,
+       "description": "Token agent cục bộ của app (chỉ dùng trên máy này)",
+       "title": "Local Only",
+       "type": "boolean"
+      },
+      "name": {
+       "title": "Name",
+       "type": "string"
+      },
+      "revoked_at": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Revoked At"
+      },
+      "role": {
+       "enum": [
+        "owner",
+        "viewer"
+       ],
+       "title": "Role",
+       "type": "string"
+      },
+      "suspended": {
+       "default": false,
+       "description": "Agent đang tạm dừng (request nhận 403 token_suspended)",
+       "title": "Suspended",
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "id",
+      "name",
+      "role",
+      "created_at",
+      "expires_at",
+      "last_used_at",
+      "revoked_at",
+      "active"
+     ],
+     "title": "TokenInfo",
+     "type": "object"
+    }
+   },
+   "items": {
+    "$ref": "#/$defs/TokenInfo"
+   },
+   "title": "TokenList",
+   "type": "array"
+  },
+  "summary": "Tạm dừng một agent: mọi token API tên này bị từ chối (403 token_suspended) tới khi bật lại",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "trash",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "trash.list",
+  "params_schema": {
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Cursor"
+    },
+    "limit": {
+     "default": 100,
+     "maximum": 500,
+     "minimum": 1,
+     "title": "Limit",
+     "type": "integer"
+    },
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Project Id"
+    }
+   },
+   "title": "TrashListParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Liệt kê file trong thùng rác (data/trash) + tổng dung lượng",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": true,
+  "group": "trash",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "call",
+  "name": "trash.purge",
+  "params_schema": {
+   "properties": {
+    "confirm_token": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Lấy từ bước *_preview (10 phút)",
+     "title": "Confirm Token"
+    }
+   },
+   "title": "ConfirmParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Xoá hẳn file trong thùng rác (không hoàn tác được; cần confirm_token)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "trash",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "trash.purge_preview",
+  "params_schema": {
+   "properties": {
+    "older_than_days": {
+     "default": 0,
+     "description": "Chỉ file đã vào thùng rác ≥ số ngày này",
+     "minimum": 0,
+     "title": "Older Than Days",
+     "type": "integer"
+    },
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Project Id"
+    }
+   },
+   "title": "PurgePreviewParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Xem trước xoá hẳn file trong thùng rác + confirm_token",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "trash",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "call",
+  "name": "trash.restore",
+  "params_schema": {
+   "properties": {
+    "media_ids": {
+     "items": {
+      "type": "integer"
+     },
+     "maxItems": 5000,
+     "minItems": 1,
+     "title": "Media Ids",
+     "type": "array"
+    }
+   },
+   "required": [
+    "media_ids"
+   ],
+   "title": "TrashRestoreParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Đưa file từ thùng rác về chỗ cũ",
   "viewer": false
  },
  {

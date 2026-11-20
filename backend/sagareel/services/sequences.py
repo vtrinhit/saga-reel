@@ -44,9 +44,14 @@ def _check_key(key: str, label: str) -> None:
 
 
 def _counts(s: Session, sequence_ids: list[int]) -> dict[int, dict[str, int]]:
-    out = {i: {"clips": 0, "scenes": 0, "duration_ms": 0} for i in sequence_ids}
+    out: dict[int, dict[str, Any]] = {i: {"clips": 0, "scenes": 0, "duration_ms": 0} for i in sequence_ids}
     if not sequence_ids:
         return out
+    pending = clips.count_pending(s, sequence_ids)
+    flags = clips.count_flags(s, sequence_ids)
+    for i in sequence_ids:
+        out[i]["takes_pending"] = pending[i]
+        out[i]["flags"] = flags[i]
     for sid, n, dur in s.execute(
         select(Clip.sequence_id, func.count(), func.coalesce(func.sum(Clip.duration_ms), 0))
         .where(Clip.sequence_id.in_(sequence_ids), Clip.deleted_at.is_(None)).group_by(Clip.sequence_id)
@@ -308,6 +313,21 @@ def scene_create(ctx: OpContext, sequence_id: int, title: str = "", *, key: str 
     return out
 
 
+def scene_list(ctx: OpContext, sequence_id: int) -> dict[str, Any]:
+    """Cảnh của tập theo rank, kèm số clip / tổng thời lượng mỗi cảnh (+ clip ngoài cảnh)."""
+    with ctx.services.db.session() as s:
+        entities.get(s, "sequence", sequence_id)
+        rows = s.scalars(select(Scene).where(Scene.sequence_id == sequence_id, Scene.deleted_at.is_(None))
+                         .order_by(Scene.rank, Scene.id)).all()
+        stats = {sid: (int(n), int(d or 0)) for sid, n, d in s.execute(
+            select(Clip.scene_id, func.count(), func.sum(Clip.duration_ms))
+            .where(Clip.sequence_id == sequence_id, Clip.deleted_at.is_(None)).group_by(Clip.scene_id))}
+        items = [{**entities.to_dict(r), "counts": {"clips": stats.get(r.id, (0, 0))[0],
+                                                     "duration_ms": stats.get(r.id, (0, 0))[1]}} for r in rows]
+        no_scene = stats.get(None, (0, 0))
+        return {"items": items, "unassigned": {"clips": no_scene[0], "duration_ms": no_scene[1]}}
+
+
 def scene_update(ctx: OpContext, scene_id: int, values: dict[str, Any],
                  expected_updated_at: datetime | None = None) -> dict[str, Any]:
     bad = sorted(k for k in values if k in ("rank", "sequence_id"))
@@ -486,6 +506,20 @@ def cost_summary(ctx: OpContext, sequence_id: int, per_clip: bool = False) -> di
                 e["by_part"][part] = float(cost or 0)
             out["clips"] = sorted(per.values(), key=lambda e: -e["cost"])
     return out
+
+
+def cost_summary_many(ctx: OpContext, sequence_ids: list[int]) -> dict[str, Any]:
+    """`cost_summary` cho nhiều tập: `items` (từng tập) + tổng cộng theo phần."""
+    items = [cost_summary(ctx, i) for i in dict.fromkeys(sequence_ids)]
+    by_part: dict[str, dict[str, Any]] = {}
+    for it in items:
+        for part, v in it["by_part"].items():
+            agg = by_part.setdefault(part, {"cost": 0.0, "takes": 0, "succeeded": 0, "retries": 0})
+            for k in agg:
+                agg[k] += v.get(k, 0)
+    return {"items": items, "total": sum(i["total"] for i in items), "takes": sum(i["takes"] for i in items),
+            "succeeded": sum(i["succeeded"] for i in items), "retries": sum(i["retries"] for i in items),
+            "by_part": by_part}
 
 
 # --- Shot list ------------------------------------------------------------------------------------------------------

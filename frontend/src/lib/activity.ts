@@ -43,13 +43,25 @@ export interface PipelineSummary {
   updated_at: string | null;
 }
 
+/** Một bước trong `pipeline.run` dry_run. */
+export interface PlanStep {
+  key: string;
+  label: string;
+  gate: boolean;
+  units: { images: number; videos: number; tts: number; renders: number };
+  llm_calls: number;
+  cost: number | null;
+}
+
 /** `pipeline.run` dry_run (`engine.plan`). */
 export interface PipelinePlan {
   dry_run: true;
   workflow: string;
-  steps: string[];
-  sequences: { sequence_id: number; clips: number; images: number; videos: number; llm_calls: number; status: string }[];
-  estimate: { images: number; videos: number; llm_calls: number; budget: BudgetStatus };
+  /** Bước bật theo thứ tự, kèm ước tính lượt (ảnh/video/TTS/dựng) + chi phí (null = chưa biết giá). */
+  steps: PlanStep[];
+  step_keys: string[];
+  sequences: { sequence_id: number; clips: number; clips_estimated?: boolean; images: number; videos: number; tts?: number; renders?: number; llm_calls: number; status: string }[];
+  estimate: { images: number; videos: number; llm_calls: number; tts?: number; renders?: number; cost?: number | null; clips_estimated?: boolean; budget: BudgetStatus };
   note?: string;
 }
 

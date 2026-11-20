@@ -147,32 +147,58 @@ def _norm_reason(reason: str | None) -> str:
     return " ".join((reason or "").lower().split())
 
 
-def verdict(ctx: OpContext, take_id: int, value: str, reason: str | None = None) -> dict[str, Any]:
-    """Đặt phán quyết; lý do lưu ở cột `take.verdict_reason`. Sau ≥ 2 take cùng chủ + phần bị `regenerate` với cùng
-    lý do → kèm `suggest_change` (gợi ý đổi cách thay vì tạo lại tiếp, spec §23.9)."""
-    if value not in VERDICTS:
-        raise ValidationFailed(f"Phán quyết phải là một trong: {', '.join(VERDICTS)}.")
+def _owner_project(s: Session, t: Take) -> int | None:
+    table = {"clip": "clip", "variant": "asset_variant", "dialogue": "dialogue_line"}.get(t.owner_type)
+    if table is None:
+        return None
+    try:
+        return entities.project_id_of(s, entities.get(s, table, t.owner_id))
+    except AppError:
+        return None
+
+
+def verdict(ctx: OpContext, take_id: int, value: str | None, reason: str | None = None) -> dict[str, Any]:
+    """Đặt phán quyết (None = xoá phán quyết + lý do); lý do lưu ở cột `take.verdict_reason`. Ghi qua UnitOfWork (có
+    change set, hoàn tác được). Sau ≥ 2 take cùng chủ + phần bị `regenerate` với cùng lý do → kèm `suggest_change`
+    (gợi ý đổi cách thay vì tạo lại tiếp, spec §23.9). Kết quả kèm `previous` (phán quyết + lý do trước đó)."""
+    if value is not None and value not in VERDICTS:
+        raise ValidationFailed(f"Phán quyết phải là một trong: {', '.join(VERDICTS)} (hoặc null để xoá).")
 
     def fn(s, t):
-        t.verdict = value
-        t.verdict_reason = reason or ""
-        if value != "regenerate" or not _norm_reason(reason):
-            return {"suggest_change": None}
-        s.flush()
-        same = [x for x in s.scalars(select(Take).where(
-            Take.owner_type == t.owner_type, Take.owner_id == t.owner_id, Take.part == t.part,
-            Take.verdict == "regenerate"))
-            if _norm_reason(x.verdict_reason) == _norm_reason(reason)]
-        if len(same) >= SUGGEST_AFTER:
-            return {"suggest_change": {
-                "reason": reason, "count": len(same), "take_ids": sorted(x.id for x in same),
-                "message": f"Đã {len(same)} lần tạo lại vì cùng lý do \"{reason}\" — nên đổi cách thay vì tạo lại "
-                           "tiếp.",
-                "suggestions": SUGGESTIONS,
-            }}
-        return {"suggest_change": None}
+        prev = {"verdict": t.verdict or None, "reason": t.verdict_reason or ""}
+        t.verdict = value or ""
+        t.verdict_reason = (reason or "") if value else ""
+        out = _verdict_suggest(s, t, value, reason)
+        out["previous"] = prev
+        return out
 
-    return _write_take(ctx, take_id, fn)
+    u = entities.uow(ctx, f"Phán quyết take #{take_id}", "take.verdict")
+    with u as s:
+        t = get_take(s, take_id)
+        u.track(t)
+        u.project_id = _owner_project(s, t)
+        extra = fn(s, t)
+        s.flush()
+        out = take_out(t, s.get(Media, t.media_id) if t.media_id else None)
+    out.update(extra)
+    return out
+
+
+def _verdict_suggest(s: Session, t: Take, value: str | None, reason: str | None) -> dict[str, Any]:
+    if value != "regenerate" or not _norm_reason(reason):
+        return {"suggest_change": None}
+    s.flush()
+    same = [x for x in s.scalars(select(Take).where(
+        Take.owner_type == t.owner_type, Take.owner_id == t.owner_id, Take.part == t.part,
+        Take.verdict == "regenerate"))
+        if _norm_reason(x.verdict_reason) == _norm_reason(reason)]
+    if len(same) >= SUGGEST_AFTER:
+        return {"suggest_change": {
+            "reason": reason, "count": len(same), "take_ids": sorted(x.id for x in same),
+            "message": f"Đã {len(same)} lần tạo lại vì cùng lý do \"{reason}\" — nên đổi cách thay vì tạo lại tiếp.",
+            "suggestions": SUGGESTIONS,
+        }}
+    return {"suggest_change": None}
 
 
 def apply_selection(s: Session, clip: Clip, take: Take) -> dict[str, Any]:
@@ -226,22 +252,57 @@ def review_queue(ctx: OpContext, sequence_id: int, flt: dict[str, Any] | None, c
     flt.setdefault("review", ["pending"])
     with ctx.services.db.session() as s:
         page = clips.list_page(s, sequence_id, cursor, limit, flt)
-        ids = [c["id"] for c in page["items"]]
-        counts: dict[int, dict[str, int]] = {}
-        if ids:
-            for oid, part, n in s.execute(
-                select(Take.owner_id, Take.part, func.count()).where(Take.owner_type == "clip",
-                                                                     Take.owner_id.in_(ids))
-                .group_by(Take.owner_id, Take.part)
-            ):
-                counts.setdefault(oid, {})[part] = n
-            sel_ids = {i for c in page["items"] for i in (c["image_take_id"], c["video_take_id"]) if i}
-            sel = {t["id"]: t for t in _with_media(s, list(s.scalars(select(Take).where(Take.id.in_(sel_ids)))))} \
-                if sel_ids else {}
-        for c in page["items"]:
-            c["take_counts"] = counts.get(c["id"], {})
-            c["selected_takes"] = {"image": sel.get(c["image_take_id"]) if ids else None,
-                                   "video": sel.get(c["video_take_id"]) if ids else None}
+        return _decorate_queue(s, page)
+
+
+def review_queue_many(ctx: OpContext, sequence_ids: list[int], flt: dict[str, Any] | None, cursor: str | None,
+                      limit: int) -> dict[str, Any]:
+    """Hàng duyệt qua nhiều tập: theo thứ tự tập (number, id) rồi rank. Cursor `"<sequence_id>|<rank>:<id>"`."""
+    flt = dict(flt or {})
+    flt.setdefault("review", ["pending"])
+    with ctx.services.db.session() as s:
+        seqs = [clips.get_sequence(s, i) for i in dict.fromkeys(sequence_ids)]
+        order = [q.id for q in sorted(seqs, key=lambda q: (q.number, q.id))]
+        start, inner = 0, None
+        if cursor:
+            sid, sep, inner = cursor.partition("|")
+            if not sep or not sid.isdigit() or int(sid) not in order:
+                raise clips._bad_cursor()
+            start = order.index(int(sid))
+        items: list[dict[str, Any]] = []
+        next_cursor = None
+        for idx in range(start, len(order)):
+            sid = order[idx]
+            page = clips.list_page(s, sid, inner if idx == start else None, limit - len(items), flt)
+            for c in page["items"]:
+                c["sequence_id"] = sid
+            items.extend(page["items"])
+            if len(items) >= limit:
+                if page["next_cursor"]:
+                    next_cursor = f"{sid}|{page['next_cursor']}"
+                elif idx + 1 < len(order):
+                    next_cursor = f"{order[idx + 1]}|"
+                break
+        return _decorate_queue(s, {"items": items, "next_cursor": next_cursor})
+
+
+def _decorate_queue(s: Session, page: dict[str, Any]) -> dict[str, Any]:
+    """Kèm số take từng phần + take đang chọn (có media) cho mỗi clip của trang."""
+    ids = [c["id"] for c in page["items"]]
+    counts: dict[int, dict[str, int]] = {}
+    sel: dict[int, dict[str, Any]] = {}
+    if ids:
+        for oid, part, n in s.execute(
+            select(Take.owner_id, Take.part, func.count()).where(Take.owner_type == "clip", Take.owner_id.in_(ids))
+            .group_by(Take.owner_id, Take.part)
+        ):
+            counts.setdefault(oid, {})[part] = n
+        sel_ids = {i for c in page["items"] for i in (c["image_take_id"], c["video_take_id"]) if i}
+        if sel_ids:
+            sel = {t["id"]: t for t in _with_media(s, list(s.scalars(select(Take).where(Take.id.in_(sel_ids)))))}
+    for c in page["items"]:
+        c["take_counts"] = counts.get(c["id"], {})
+        c["selected_takes"] = {"image": sel.get(c["image_take_id"]), "video": sel.get(c["video_take_id"])}
     return page
 
 
@@ -344,7 +405,8 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
                 p = projects[q.project_id]
                 info[c.id] = {"id": c.id, "key": c.key, "sequence_id": q.id, "project_id": p.id,
                               "seed": seed_for(p.key, q.key, c.key), "duration_ms": c.duration_ms,
-                              "aspect": p.aspect, "motion_preset": c.motion_preset}
+                              "aspect": p.aspect, "motion_preset": c.motion_preset,
+                              "connection": c.connection or "", "model": c.model or ""}
             plain_steps = [{**{k: v for k, v in st.items() if k != "clip"}, "clip_id": st["clip"].id}
                            for st in steps]
             return {"steps": plain_steps, "skipped": skipped, "info": info}
@@ -352,72 +414,105 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
     loaded = await anyio.to_thread.run_sync(load)
     steps, skipped, info = loaded["steps"], loaded["skipped"], loaded["info"]
     kinds = {st["type"] for st in steps}
-    targets: dict[str, tuple] = {}
     ps = po._ps(ctx)
+    # Kết nối theo bước: overrides > `clip.connection` (khi đúng loại; kèm `clip.model` cho ảnh) > mặc định cài đặt.
+    ov_ref = {"image": ov.get("connection") if part != "video" else None,
+              "video": ov.get("connection") if part == "video" else ov.get("video_connection")}
 
-    def prepare() -> dict[str, Any]:
-        out: dict[str, Any] = {}
-        if GEN_IMAGE in kinds:
-            conn, enabled, adapter = po._target(ctx, "image", ov.get("connection") if part != "video" else None)
-            resolution = ps.setting("image.resolution")
-            po._require_capability(adapter, "resolutions", resolution, "độ phân giải")
-            out["image"] = (conn, enabled, adapter, resolution)
-        if GEN_VIDEO in kinds:
-            vconn = ov.get("connection") if part == "video" else ov.get("video_connection")
-            conn, enabled, adapter = po._target(ctx, "video", vconn)
-            resolution = ps.setting("video.resolution")
-            po._require_capability(adapter, "resolutions", resolution, "độ phân giải")
-            out["video"] = (conn, enabled, adapter, resolution)
-        return out
+    def prepare() -> tuple[dict[tuple[str, str], tuple], dict[int, dict[str, str]]]:
+        kind_of: dict[str, str | None] = {}
 
-    targets = await anyio.to_thread.run_sync(prepare)
+        def clip_kind(ref: str) -> str | None:
+            if ref not in kind_of:
+                try:
+                    kind_of[ref] = ps.find(int(ref) if ref.isdigit() else ref)[0].kind
+                except AppError:
+                    raise AppError("clip_connection_invalid", f"Kết nối riêng của clip '{ref}' không tồn tại.",
+                                   hint="Sửa clip.connection (để trống = theo cài đặt) hoặc truyền "
+                                        "overrides.connection.", status=422) from None
+            return kind_of[ref]
+
+        refs: dict[int, dict[str, str]] = {}
+        out: dict[tuple[str, str], tuple] = {}
+        for st in steps:
+            kind = {GEN_IMAGE: "image", GEN_VIDEO: "video"}.get(st["type"])
+            if kind is None:
+                continue
+            ci = info[st["clip_id"]]
+            ref, model = ov_ref[kind], ""
+            if ref is None and ci["connection"] and clip_kind(ci["connection"]) == kind:
+                ref, model = ci["connection"], ci["model"]
+            key = (kind, "" if ref is None else str(ref))
+            refs.setdefault(st["clip_id"], {})[kind] = key[1]
+            if kind == "image" and model and not ov.get("model"):
+                refs[st["clip_id"]]["model"] = model
+            if key not in out:
+                conn, enabled, adapter = po._target(ctx, kind, ref)
+                resolution = ps.setting(f"{kind}.resolution")
+                po._require_capability(adapter, "resolutions", resolution, "độ phân giải")
+                out[key] = (conn, enabled, adapter, resolution)
+        return out, refs
+
+    targets, clip_refs = await anyio.to_thread.run_sync(prepare)
+
+    def target_of(st: dict) -> tuple:
+        kind = "image" if st["type"] == GEN_IMAGE else "video"
+        return targets[(kind, clip_refs[st["clip_id"]][kind])]
+
     estimate: dict[str, Any] = {"jobs": len(steps), "takes": len(steps), "parts": {}}
     units: dict[str, float] = {}
-    if "image" in targets:
-        conn, enabled, adapter, resolution = targets["image"]
-        aspect = next(iter(info.values()))["aspect"]
-        req = ImageRequest(prompt="", refs=[], aspect=aspect, resolution=resolution,
-                           model=ov.get("model") or conn.default_model or None, quality=None, out_dir=po._DRY_DIR)
-        est = await adapter.estimate(req)
-        k = sum(1 for st in steps if st["type"] == GEN_IMAGE)
-        units["image"] = float(est.get("units", 1)) * k
-        estimate["parts"]["image"] = {"jobs": k, "units": units["image"], "cost": (est.get("cost") or 0) * k,
-                                      "connection": conn.name, "connection_id": conn.id, "enabled": enabled,
-                                      "adapter": adapter.adapter_id}
+    paid_units: dict[str, float] = {}  # không tính kết nối giả (fake_*)
     durations: dict[int, tuple[int, str | None]] = {}
-    if "video" in targets:
-        conn, enabled, adapter, resolution = targets["video"]
-        allowed = adapter.capabilities().get("durations")
-        k = 0
-        total_units = 0.0
-        total_cost = 0.0
+    for kind, typ in (("image", GEN_IMAGE), ("video", GEN_VIDEO)):
+        if typ not in kinds:
+            continue
+        groups: dict[tuple[str, str], dict[str, Any]] = {}
         for st in steps:
-            if st["type"] != GEN_VIDEO:
+            if st["type"] != typ:
                 continue
-            k += 1
-            want = int(ov["duration"]) if ov.get("duration") else _ceil_s(info[st["clip_id"]]["duration_ms"])
-            durations[st["clip_id"]] = _pick_duration(want, allowed)
-            req = VideoRequest(image=po._DRY_DIR / "image", prompt="", duration_s=durations[st["clip_id"]][0],
-                               resolution=resolution, aspect=info[st["clip_id"]]["aspect"],
-                               out_path=po._DRY_DIR / "video.mp4")
+            conn, enabled, adapter, resolution = target_of(st)
+            ci = info[st["clip_id"]]
+            if kind == "image":
+                model = ov.get("model") or clip_refs[st["clip_id"]].get("model") or conn.default_model or None
+                req: Any = ImageRequest(prompt="", refs=[], aspect=ci["aspect"], resolution=resolution, model=model,
+                                        quality=None, out_dir=po._DRY_DIR)
+            else:
+                want = int(ov["duration"]) if ov.get("duration") else _ceil_s(ci["duration_ms"])
+                durations[st["clip_id"]] = _pick_duration(want, adapter.capabilities().get("durations"))
+                req = VideoRequest(image=po._DRY_DIR / "image", prompt="", duration_s=durations[st["clip_id"]][0],
+                                   resolution=resolution, aspect=ci["aspect"], out_path=po._DRY_DIR / "video.mp4")
             est = await adapter.estimate(req)
-            total_units += float(est.get("units", 1))
-            total_cost += float(est.get("cost") or 0)
-        units["video"] = total_units
-        estimate["parts"]["video"] = {"jobs": k, "units": total_units, "cost": total_cost, "connection": conn.name,
-                                      "connection_id": conn.id, "enabled": enabled, "adapter": adapter.adapter_id}
+            g = groups.setdefault((kind, clip_refs[st["clip_id"]][kind]), {
+                "jobs": 0, "units": 0.0, "cost": 0.0, "connection": conn.name, "connection_id": conn.id,
+                "enabled": enabled, "adapter": adapter.adapter_id})
+            g["jobs"] += 1
+            g["units"] += float(est.get("units", 1))
+            g["cost"] += float(est.get("cost") or 0)
+            if not adapter.adapter_id.startswith(budget.FAKE_PREFIX):
+                paid_units[kind] = paid_units.get(kind, 0.0) + float(est.get("units", 1))
+        gl = list(groups.values())
+        units[kind] = sum(g["units"] for g in gl)
+        estimate["parts"][kind] = {**gl[0], "jobs": sum(g["jobs"] for g in gl), "units": units[kind],
+                                   "cost": sum(g["cost"] for g in gl)}
+        if len(gl) > 1:  # clip dùng kết nối riêng → nhiều nhóm
+            estimate["parts"][kind]["connection"] = ", ".join(dict.fromkeys(g["connection"] for g in gl))
+            estimate["parts"][kind]["connections"] = gl
     if GEN_STILL in kinds:
         estimate["parts"]["still_motion"] = {"jobs": sum(1 for st in steps if st["type"] == GEN_STILL), "units": 0,
                                              "cost": 0}
 
+    project_ids = {ci["project_id"] for ci in info.values()}
+    project_id = project_ids.pop() if len(project_ids) == 1 else None
+
     def check_budget(dry: bool) -> None:
         with ctx.services.db.session() as s:
-            for kind, u in units.items():
-                conn = targets[kind][0]
+            for kind in units:
                 if dry:
-                    estimate["parts"][kind]["budget"] = budget.status(s, kind, resolver=ctx.services.resolver)
+                    estimate["parts"][kind]["budget"] = budget.status(s, kind, resolver=ctx.services.resolver,
+                                                                      project_id=project_id)
                 else:
-                    budget.check(s, kind, u, conn.id, resolver=ctx.services.resolver)
+                    budget.check(s, kind, paid_units.get(kind, 0.0), None, resolver=ctx.services.resolver,
+                                 project_id=project_id)
 
     await anyio.to_thread.run_sync(check_budget, dry_run)
     warnings = sorted({w for _, w in durations.values() if w})
@@ -463,11 +558,13 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
                     params["source_take_id"] = take_rows[st["after"]].id
                 lane = FFMPEG_LANE
                 if st["type"] == GEN_IMAGE:
-                    conn, _, _, resolution = targets["image"]
+                    conn, _, _, resolution = target_of(st)
                     params.update(connection_id=conn.id, resolution=resolution)
+                    if clip_refs[st["clip_id"]].get("model"):
+                        params["model"] = clip_refs[st["clip_id"]]["model"]  # clip.model (kèm clip.connection)
                     lane = ProviderService.lane(conn)
                 elif st["type"] == GEN_VIDEO:
-                    conn, _, _, resolution = targets["video"]
+                    conn, _, _, resolution = target_of(st)
                     params.update(connection_id=conn.id, resolution=resolution,
                                   duration=durations[st["clip_id"]][0])
                     lane = ProviderService.lane(conn)

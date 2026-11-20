@@ -236,3 +236,20 @@ async def test_file_token_reread_on_401(app_mock, tmp_path):
     assert await client.call("system.info") == {"ok": True}
     assert seen == ["Bearer sr_" + "o" * 32, f"Bearer {new}"]
     await client.aclose()
+
+
+async def test_token_suspended_surfaces_code_and_hint_without_reread(app_mock, tmp_path):
+    """Task BF: agent bị tạm dừng → 403 token_suspended đi thẳng ra (mã + hint), không đọc lại file token."""
+    _write_token(tmp_path)
+    route = app_mock.post("/api/ops/system.info").respond(403, json={
+        "ok": False, "error_code": "token_suspended", "detail": "Agent 'x' đang bị tạm dừng.",
+        "hint": "Chủ sở hữu bật lại trong giao diện."})
+    client = SagaReelClient()
+    err = None
+    try:
+        await client.call("system.info")
+    except Exception as e:  # noqa: BLE001
+        err = e
+    assert getattr(err, "code", None) == "token_suspended" and "bật lại" in (getattr(err, "hint", "") or "")
+    assert len(route.calls) == 1
+    await client.aclose()

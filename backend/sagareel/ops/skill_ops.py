@@ -52,6 +52,12 @@ def skill_get(ctx: OpContext, p: SkillPathParams) -> dict:
     return skills.get(ctx, p.path)
 
 
+@op("skill.sync", summary="Đồng bộ file skill giữa thư mục .claude/skills/ và DB (nhập file sửa ngoài app, ghi lại "
+    "file theo DB) rồi liệt kê", params=SkillListParams, result=SkillListOut, idempotent=True, viewer=False)
+def skill_sync(ctx: OpContext, p: SkillListParams) -> dict:
+    return skills.sync_report(ctx)
+
+
 @op("skill.update", summary="Sửa (hoặc tạo) file skill vận hành — có lịch sử, hoàn tác được; ghi ra .claude/skills/",
     params=SkillUpdateParams, result=SkillFileOut, idempotent=True, mcp="tool")
 def skill_update(ctx: OpContext, p: SkillUpdateParams) -> dict:

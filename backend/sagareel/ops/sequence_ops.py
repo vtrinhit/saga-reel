@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from sagareel.core.context import OpContext
+from sagareel.core.errors import ValidationFailed
 from sagareel.core.ops import op
 from sagareel.ops.project_ops import DeletePreviewOut
 from sagareel.services import sequences
@@ -59,7 +60,9 @@ class SequenceReorderParams(BaseModel):
 
 
 class SequenceCostParams(BaseModel):
-    id: int
+    id: int | None = Field(default=None, description="Một tập (hoặc dùng sequence_ids)")
+    sequence_ids: list[int] | None = Field(default=None, max_length=500,
+                                           description="Nhiều tập: trả `items` từng tập + tổng cộng")
     per_clip: bool = Field(default=False, description="Kèm chi phí từng clip (sắp giảm dần)")
 
 
@@ -122,9 +125,14 @@ def sequence_lint(ctx: OpContext, p: SequenceIdParams) -> dict:
     return sequences.lint(ctx, p.id)
 
 
-@op("sequence.cost_summary", summary="Tổng chi phí thật của tập (mọi take kể cả lần thử lại), theo phần",
+@op("sequence.cost_summary", summary="Tổng chi phí thật của tập (mọi take kể cả lần thử lại), theo phần; nhiều tập qua "
+    "sequence_ids",
     params=SequenceCostParams, read_only=True, idempotent=True, mcp="tool")
 def sequence_cost_summary(ctx: OpContext, p: SequenceCostParams) -> dict:
+    if p.sequence_ids:
+        return sequences.cost_summary_many(ctx, p.sequence_ids)
+    if p.id is None:
+        raise ValidationFailed("Cần id hoặc sequence_ids.")
     return sequences.cost_summary(ctx, p.id, p.per_clip)
 
 

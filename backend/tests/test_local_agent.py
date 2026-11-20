@@ -461,3 +461,22 @@ def test_sid_failure_falls_back_with_warning(tmp_path, monkeypatch, caplog):
     local_agent.write_token_file(p, "sr_" + "f" * 43)
     assert p.read_text(encoding="utf-8").strip() == "sr_" + "f" * 43
     assert any("SID" in r.getMessage() for r in caplog.records)
+
+
+def test_pause_all_survives_local_token_rotation(settings, make_local_client):
+    """Task BF: agents.pause_all tạm dừng cả token agent cục bộ; token tạo lại (mất file/khởi động lại) vẫn dừng."""
+    app, c = _start(settings, make_local_client)
+    with c:
+        out = c.post("/api/ops/agents.pause_all", json={}).json()
+        assert out["suspended"] is True and out["changed"] >= 1
+        old = _token_file(settings).read_text(encoding="utf-8").strip()
+        r = c.post("/api/ops/system.info", json={}, headers={"Authorization": f"Bearer {old}"})
+        assert r.status_code == 403 and r.json()["error_code"] == "token_suspended" and r.json()["hint"]
+    _token_file(settings).unlink()
+    app, c = _start(settings, make_local_client)
+    with c:
+        new = _token_file(settings).read_text(encoding="utf-8").strip()
+        h = {"Authorization": f"Bearer {new}"}
+        assert c.post("/api/ops/system.info", json={}, headers=h).status_code == 403
+        assert c.post("/api/ops/agents.resume_all", json={}).status_code == 200
+        assert c.post("/api/ops/system.info", json={}, headers=h).status_code == 200

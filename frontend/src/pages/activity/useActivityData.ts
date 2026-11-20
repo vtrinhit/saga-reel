@@ -64,7 +64,7 @@ export function usePipelines(projectIds: number[]) {
     queries: projectIds.map((pid) => ({
       queryKey: activityKeys.pipelines(pid),
       queryFn: async () => {
-        const r = (await callOp('pipeline.status', { project_id: pid })) as unknown as { items: PipelineSummary[] };
+        const r = (await callOp('pipeline.status', { project_id: pid, active_only: false, limit: 500 })) as unknown as { items: PipelineSummary[] };
         return (r.items ?? []).map((s) => ({ ...s, project_id: pid }));
       },
       retry: false,

@@ -317,6 +317,12 @@ def list(  # noqa: A001 — tên op `media.list`
 
 def file_path(settings: AppSettings, m: Media) -> Path:
     """Đường dẫn tuyệt đối của file; từ chối đường dẫn thoát khỏi data_dir, báo 404 nếu file đã mất."""
+    if getattr(m, "trashed_at", None) is not None or getattr(m, "purged_at", None) is not None:
+        gone = getattr(m, "purged_at", None) is not None
+        raise AppError("media_trashed",
+                       f"File của media #{m.id} đã {'bị xoá hẳn' if gone else 'chuyển vào thùng rác'}.",
+                       hint="Khôi phục bằng trash.restore (nếu chưa xoá hẳn)." if not gone else
+                       "Tạo lại take để có file mới.", status=410)
     root = settings.data_dir.resolve()
     p = (root / m.path).resolve()
     if not p.is_relative_to(root):

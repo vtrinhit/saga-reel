@@ -70,7 +70,7 @@ export function Overview() {
     queryKey: ['overview', pid, 'pipeline'],
     queryFn: async () =>
       new Map(
-        ((await callOp('pipeline.status', { project_id: pid })) as unknown as { items: PipelineSummary[] }).items.map((s) => [s.sequence_id, s]),
+        ((await callOp('pipeline.status', { project_id: pid, active_only: false, limit: 500 })) as unknown as { items: PipelineSummary[] }).items.map((s) => [s.sequence_id, s]),
       ),
     retry: false,
   });

@@ -17,12 +17,13 @@ Chống tạo trùng job tốn tiền:
 from __future__ import annotations
 
 import inspect
+import math
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from sagareel.core.errors import AppError, Conflict, NotFound
@@ -227,6 +228,25 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
 
 
+def queue_positions(session: Session, rows: list[Job]) -> dict[int, int]:
+    """Vị trí trong hàng đợi của lane (1 = chạy kế tiếp) cho các job `queued`: cùng thứ tự worker giành job
+    (priority giảm dần, rồi id)."""
+    out: dict[int, int] = {}
+    for job in rows:
+        if job.status != "queued":
+            continue
+        ahead = session.scalar(select(func.count()).select_from(Job).where(
+            Job.status == "queued", Job.lane == job.lane,
+            or_(Job.priority > job.priority, and_(Job.priority == job.priority, Job.id < job.id)))) or 0
+        out[job.id] = int(ahead) + 1
+    return out
+
+
+def with_queue_position(session: Session, rows: list[Job]) -> list[dict[str, Any]]:
+    pos = queue_positions(session, rows)
+    return [{**job_dict(j), "queue_position": pos.get(j.id)} for j in rows]
+
+
 def job_dict(job: Job) -> dict[str, Any]:
     """Hình JSON của một job (op trả về, payload sự kiện `job.updated`).
 
@@ -257,7 +277,7 @@ def job_dict(job: Job) -> dict[str, Any]:
         "error_code": job.error_code,
         "error_message": job.error_message,
         "hint": job.hint,
-        "result": dict(job.result or {}),
+        "result": json_safe(dict(job.result or {})),
         "cost_estimate": dict(job.cost_estimate or {}),
         "cost_actual": dict(job.cost_actual or {}),
         "created_at": _iso(job.created_at),
@@ -265,6 +285,17 @@ def job_dict(job: Job) -> dict[str, Any]:
         "finished_at": _iso(job.finished_at),
         "updated_at": _iso(job.updated_at),
     }
+
+
+def json_safe(value: Any) -> Any:
+    """NaN/±inf (vd. loudness của đoạn âm thanh rất ngắn = -inf LUFS) → None: JSON chuẩn không có các giá trị này."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(v) for v in value]
+    return value
 
 
 def log_dict(row: JobLog) -> dict[str, Any]:

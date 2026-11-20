@@ -28,7 +28,6 @@ import anyio
 from sagareel.core.errors import AppError
 from sagareel.core.uow import UnitOfWork
 from sagareel.db.models import Clip, Project, Sequence, Take
-from sagareel.media import ffmpeg
 from sagareel.providers.base import ImageRequest, VideoRequest
 from sagareel.services import jobs, media, staleness, takes
 from sagareel.services import provider_jobs as pj
@@ -185,28 +184,26 @@ def _take_media(services, take_id: int) -> tuple[str, int, dict]:
 
 async def _last_frame(run, video_take_id: int) -> int:
     """Media ảnh = khung cuối của take video (cache ở `take.inputs.last_frame_media_id`)."""
+    # Một bộ trích khung duy nhất: `compiler.ensure_frame` (cache theo media video, dùng chung với compiler khi
+    # `link=continue`); id được nhớ thêm ở `take.inputs.last_frame_media_id` cho lần sau.
+    from sagareel.compile import compiler
+
     _part, media_id, inputs = await anyio.to_thread.run_sync(_take_media, run.services, video_take_id)
     if inputs.get("last_frame_media_id"):
         return int(inputs["last_frame_media_id"])
-    src = await anyio.to_thread.run_sync(_media_file, run.services, media_id, "video")
-    out = run.workdir / f"last_frame_{video_take_id}.png"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with ffmpeg.atomic_output(out) as part_path:
-        await ffmpeg.run(["-sseof", "-0.5", "-i", str(src), "-update", "1", "-q:v", "2", str(part_path)],
-                         timeout=120, cancel=run.cancelled)
-    settings = run.services.settings
+    try:
+        frame_id = await compiler.ensure_frame(run.services, media_id, "last")
+    except AppError as e:
+        raise JobFailed(e.code, e.detail or str(e)) from None
 
-    def store() -> int:
-        prepared = media.prepare(out, kind="image", media_dir=settings.media_dir, origin="derived",
-                                 meta={"last_frame_of_take": video_take_id}, data_dir=settings.data_dir)
+    def remember() -> None:
         with run.services.db.session(immediate=True) as s:
-            m = media.record(s, prepared)
             t = s.get(Take, video_take_id)
-            t.inputs = {**dict(t.inputs or {}), "last_frame_media_id": m.id}
-        media.reconcile(prepared, m)
-        return m.id
+            if t is not None:
+                t.inputs = {**dict(t.inputs or {}), "last_frame_media_id": frame_id}
 
-    return await anyio.to_thread.run_sync(store)
+    await anyio.to_thread.run_sync(remember)
+    return frame_id
 
 
 async def _source_image(run, clip: dict) -> tuple[int, str]:
@@ -302,7 +299,7 @@ async def generate_image(run) -> dict:
         ref_ids = [int(i) for i in ov["refs"]] if ov.get("refs") is not None else [r["media_id"] for r in
                                                                                      compiled["refs"]]
         ref_paths = [await anyio.to_thread.run_sync(_media_file, run.services, i, "image") for i in ref_ids]
-        model = ov.get("model") or adapter.conn.default_model or None
+        model = ov.get("model") or p.get("model") or adapter.conn.default_model or None
         req = ImageRequest(prompt=prompt, refs=ref_paths, aspect=p["aspect"], resolution=p["resolution"], model=model,
                            quality=None, out_dir=run.workdir / "out")
         est = await adapter.estimate(req)

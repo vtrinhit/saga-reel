@@ -50,7 +50,7 @@ export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workfl
 
   const workflows = useQuery({
     queryKey: ['pipeline', 'workflows'],
-    queryFn: async () => (await callOp('preset.list', { kind: 'workflow' })) as unknown as WorkflowPreset[],
+    queryFn: async () => ((await callOp('preset.list', { kind: 'workflow' })) as unknown as { items: WorkflowPreset[] }).items,
     enabled: open,
     staleTime: 5 * 60_000,
   });
@@ -81,7 +81,7 @@ export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workfl
   const over =
     (b?.image?.enabled && b.image.remaining != null && (est?.images ?? 0) > b.image.remaining) ||
     (b?.video?.enabled && b.video.remaining != null && (est?.videos ?? 0) > b.video.remaining);
-  const firstGate = plan.data?.steps.find((s) => s.startsWith('gate:'));
+  const firstGate = plan.data?.step_keys?.find((s) => s.startsWith('gate:'));
   const rows = est
     ? [
         { kind: 'Ảnh', n: est.images, unit: b?.image?.enabled ? 'lượt' : 'không giới hạn' },

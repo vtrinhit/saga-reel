@@ -377,10 +377,14 @@ def test_check_with_render_measures_loudness_and_boxes(client, owner_ctx, seq_id
     w = [x["code"] for x in rep["warnings"]]
     assert "loudness_off_target" in w and "subtitle_outside_safe_zone" in w and "no_final_render" not in w
     assert rep["info"]["estimated"] is False and rep["info"]["size"] > 0
-    assert "metadata" not in rep  # kiểm tra không rò dữ liệu thừa
+    assert rep["metadata"]["title"] and isinstance(rep["metadata"]["hashtags"], list)  # Task BF: metadata đã kiểm
     bad = call(client, "export.check", {"sequence_id": seq_id, "platform": "yt-shorts",
                                         "metadata": {"title": "x" * 150, "hashtags": ["#a"] * 70}}).json()
     assert {"title_too_long", "hashtags_too_many"} <= {e["code"] for e in bad["errors"]}
+    assert bad["metadata"]["title"] == "x" * 150  # ghi đè được phản ánh
+    dry = call(client, "export.create", {"sequence_ids": [seq_id], "platforms": ["yt-shorts"], "dry_run": True,
+                                         "metadata": {"title": "Tiêu đề sửa tay"}}).json()
+    assert dry["packages"][0]["metadata"]["title"] == "Tiêu đề sửa tay"
 
 
 def test_check_unknown_platform_and_sequence(client, seq_id, fakes):

@@ -162,12 +162,11 @@ def canon(spec: m.ProjectSpec) -> Canon:
                 ld["sheet"] = {view: mr(r) for view, r in lk.sheet.items()}
                 ld["refs"] = [mr(r) for r in lk.refs]
                 out.entities[("look", f"{a.key}/{lk.key}")] = ld
-        natural = export.sound_keys((i, x.kind, mr(x.media) or "") for i, x in enumerate(lib.sounds))
-        for i, x in enumerate(lib.sounds):
-            out.sound_alias[x.key] = natural[i]
+        for x in lib.sounds:  # khoá thật (cột sound.key)
+            out.sound_alias[x.key] = x.key
             d = _fields(x, {"key"})
             d["media"] = mr(x.media)
-            out.entities[("sound", natural[i])] = d
+            out.entities[("sound", x.key)] = d
 
     if spec.groups is not None:
         for g in spec.groups:
@@ -186,10 +185,11 @@ def canon(spec: m.ProjectSpec) -> Canon:
                 d["input"] = mr(c.input)
                 out.entities[("clip", f"{q.key}/{c.key}")] = d
                 for n, ln in enumerate(c.dialogue, 1):
-                    out.entities[("dialogue", f"{q.key}/{export.dialogue_key(c.key, n)}")] = _fields(ln)
+                    out.entities[("dialogue", f"{q.key}/{export.dialogue_key(c.key, ln.key or n)}")] = \
+                        _fields(ln, {"key"})
             out.orders[f"clips:{q.key}"] = [c.key for c in q.clips]
             for key, t in timeline_keys(q.timeline):
-                d = _fields(t)
+                d = _fields(t, {"key"})
                 d["media"] = mr(t.media)
                 d["sound"] = out.sound_alias.get(t.sound, t.sound) if t.sound is not None else None
                 out.entities[("timeline", f"{q.key}/{key}")] = d
@@ -197,11 +197,15 @@ def canon(spec: m.ProjectSpec) -> Canon:
 
 
 def timeline_keys(items: list[m.TimelineSpec]) -> list[tuple[str, m.TimelineSpec]]:
-    """Khoá theo vị trí: nhóm (track, clip neo), sắp ổn định theo offset_ms."""
+    """Khoá thật (`key`, cột timeline_item.key) khi có; mục không key → theo vị trí: nhóm (track, clip neo), sắp ổn
+    định theo offset_ms."""
     groups: dict[tuple[str, str | None], list[m.TimelineSpec]] = {}
-    for t in items:
-        groups.setdefault((t.track, t.anchor), []).append(t)
     out = []
+    for t in items:
+        if t.key:
+            out.append((t.key, t))
+        else:
+            groups.setdefault((t.track, t.anchor), []).append(t)
     for (track, anchor), rows in groups.items():
         for n, t in enumerate(sorted(rows, key=lambda t: t.offset_ms), 1):
             out.append((export.timeline_key(track, anchor, n), t))
@@ -321,11 +325,13 @@ def validate_refs(s: Session, spec: m.ProjectSpec, current: m.ProjectSpec | None
             media_ok(cl + ["input"], c.input)
             for k, ln in enumerate(c.dialogue):
                 asset_ok(cl + ["dialogue", k, "speaker"], ln.speaker)
+            dup(cl + ["dialogue"], [ln.key for ln in c.dialogue if ln.key], "câu thoại")
             try:
                 clip_svc.normalize_fields(_fields(c, {"dialogue", "assets", "key"}))
             except ValidationFailed as e:
                 for x in e.extra.get("errors", []):
                     err(cl + list(x.get("loc", []))[1:], x.get("msg", ""), x.get("type", "enum"))
+        dup(loc + ["timeline"], [t.key for t in q.timeline if t.key], "mục timeline")
         for j, t in enumerate(q.timeline):
             tl = loc + ["timeline", j]
             if t.track not in TRACKS:
@@ -372,6 +378,35 @@ def _order_diff(cur: list[str], new: list[str]) -> bool:
     return [k for k in cur if k in common] != [k for k in new if k in common]
 
 
+def fill_keys(spec: m.ProjectSpec, current: m.ProjectSpec) -> None:
+    """Câu thoại / mục timeline trong spec không ghi `key` (viết tay) → nhận khoá của dòng có sẵn theo vị trí (trong
+    các dòng chưa được spec dùng khoá), để plan/apply khớp đúng dòng thay vì tạo mới. Sửa `spec` tại chỗ."""
+    cur_seq = {q.key: q for q in (current.sequences or [])}
+    for q in spec.sequences or []:
+        cq = cur_seq.get(q.key)
+        if cq is None:
+            continue
+        cur_clips = {c.key: c for c in cq.clips}
+        for c in q.clips:
+            cc = cur_clips.get(c.key)
+            if cc is None:
+                continue
+            used = {ln.key for ln in c.dialogue if ln.key}
+            free = [ln.key for ln in cc.dialogue if ln.key and ln.key not in used]
+            for ln in c.dialogue:
+                if not ln.key and free:
+                    ln.key = free.pop(0)
+        used_tl = {t.key for t in q.timeline if t.key}
+        free_tl: dict[tuple[str, str | None], list[str]] = {}
+        for t in sorted(cq.timeline, key=lambda t: t.offset_ms):
+            if t.key and t.key not in used_tl:
+                free_tl.setdefault((t.track, t.anchor), []).append(t.key)
+        for t in sorted(q.timeline, key=lambda t: t.offset_ms):
+            pool = free_tl.get((t.track, t.anchor))
+            if not t.key and pool:
+                t.key = pool.pop(0)
+
+
 def compute(s: Session, spec: m.ProjectSpec) -> dict[str, Any]:
     """Kế hoạch (không gồm ước tính/ngân sách) — dùng chung cho plan và apply."""
     project = _find_project(s, spec.project.key)
@@ -382,6 +417,8 @@ def compute(s: Session, spec: m.ProjectSpec) -> dict[str, Any]:
     if project is not None and missing:
         refs = export.build(s, project, sections + missing)
     validate_refs(s, spec, refs)
+    if current is not None:
+        fill_keys(spec, current)
     want = canon(spec)
     have = canon(current) if current is not None else Canon()
 
@@ -701,33 +738,45 @@ def _write(w: _Writer, spec: m.ProjectSpec) -> int:
                     "valid_from": lk.valid_from, "valid_to": lk.valid_to, "is_default": lk.is_default,
                 }, asset_id=row.id, key=lk.key)
                 look_ids[(a.key, lk.key)] = lrow.id
-        # Âm thanh: nhận diện theo (kind, sha256) + thứ tự trong nhóm trùng.
+        # Âm thanh: khớp theo khoá thật (cột sound.key); spec cũ (khoá tự nhiên `<kind>-<sha>`) → khớp (kind, sha256)
+        # + thứ tự trong nhóm trùng rồi đổi khoá dòng sang khoá của spec.
         existing = s.scalars(select(Sound).where(Sound.project_id == pid, Sound.deleted_at.is_(None))
                              .order_by(Sound.id)).all()
+        by_key = {r.key: r for r in existing if r.key}
         nat = export.sound_keys((r.id, r.kind, _sha(s, r.media_id)) for r in existing)
         by_natural = {nat[r.id]: r for r in existing}
         natural = export.sound_keys((i, x.kind, w.spec.media[x.media].sha256 if x.media in w.spec.media else "")
                                     for i, x in enumerate(spec.library.sounds))
+        taken: set[int] = set()
         for i, x in enumerate(spec.library.sounds):
             media_id = w.media(x.media)
             if media_id is None:
                 continue  # media thiếu (đã cảnh báo ở plan) → bỏ qua âm thanh này
             vals = {"kind": x.kind, "title": x.title, "media_id": media_id, "tags": list(x.tags),
                     "source": x.source, "license": x.license, "attribution": x.attribution}
-            row = by_natural.get(natural[i])
+            row = by_key.get(x.key)
             if row is None:
-                row = Sound(project_id=pid, **vals)
+                cand = by_natural.get(natural[i])
+                row = cand if cand is not None and cand.id not in taken and cand.key not in \
+                    {y.key for y in spec.library.sounds} else None
+                if row is not None:
+                    vals["key"] = x.key
+            if row is None:
+                row = Sound(project_id=pid, key=x.key, **vals)
                 s.add(row)
                 s.flush()
                 w.created += 1
             else:
                 w.set(row, vals)
+            taken.add(row.id)
             sound_ids[x.key] = row.id
-    # Âm thanh có sẵn (kể cả khi spec không có mục library): khoá tự nhiên → id.
+    # Âm thanh có sẵn (kể cả khi spec không có mục library): khoá thật → id (+ khoá tự nhiên cho spec cũ).
     alive_sounds = s.scalars(select(Sound).where(Sound.project_id == pid, Sound.deleted_at.is_(None))
                              .order_by(Sound.id)).all()
     natural_db = export.sound_keys((r.id, r.kind, _sha(s, r.media_id)) for r in alive_sounds)
     for r in alive_sounds:
+        if r.key:
+            sound_ids.setdefault(r.key, r.id)
         sound_ids.setdefault(natural_db[r.id], r.id)
     for row in s.scalars(select(Asset).where(Asset.project_id == pid, Asset.deleted_at.is_(None))):
         asset_ids.setdefault(row.key, row.id)
@@ -821,26 +870,36 @@ def _write_sequence(w: _Writer, pid: int, q: m.SequenceSpec, group_ids: dict[str
         cid = clip_ids[c.key]
         lines = s.scalars(select(DialogueLine).where(DialogueLine.clip_id == cid, DialogueLine.deleted_at.is_(None))
                           .order_by(DialogueLine.rank, DialogueLine.id)).all()
-        rows = list(lines[: len(c.dialogue)])
-        for i, ln in enumerate(c.dialogue):
+        # Khớp theo khoá thật (cột dialogue_line.key); câu không có key → theo vị trí trong các dòng chưa khớp.
+        by_key = {x.key: x for x in lines if x.key}
+        spec_keys = {ln.key for ln in c.dialogue if ln.key}
+        free = [x for x in lines if x.key not in spec_keys]
+        last_rank = lines[-1].rank if lines else None
+        for ln in c.dialogue:
             vals = {"speaker_asset_id": asset_ids.get(ln.speaker) if ln.speaker else None, "text": ln.text,
                     "emotion": ln.emotion, "source": ln.source, "voice_override": dict(ln.voice_override),
                     "offset_ms": ln.offset_ms, "subtitle": ln.subtitle, "translations": dict(ln.translations)}
-            if i < len(rows):
-                w.set(rows[i], vals)
-            else:  # chỉ tạo khi spec dài hơn → luôn nối vào cuối
-                row = DialogueLine(clip_id=cid, rank=rank.between(rows[-1].rank if rows else None, None), **vals)
+            row = by_key.get(ln.key) if ln.key else (free.pop(0) if free else None)
+            if row is not None:
+                w.set(row, vals)
+            else:  # câu mới → nối vào cuối (giữ key của spec nếu có)
+                extra = {"key": ln.key} if ln.key else {}
+                row = DialogueLine(clip_id=cid, rank=rank.between(last_rank, None), **extra, **vals)
                 s.add(row)
                 s.flush()
                 w.created += 1
-                rows.append(row)
+                last_rank = row.rank
 
-    # Timeline: khớp theo (track, clip neo, thứ tự offset_ms).
+    # Timeline: khớp theo khoá thật (cột timeline_item.key); mục không key → theo (track, clip neo, thứ tự offset_ms)
+    # trong các dòng chưa khớp khoá.
     existing = s.scalars(select(TimelineItem).where(TimelineItem.sequence_id == sid,
                                                     TimelineItem.deleted_at.is_(None))).all()
+    tl_by_key = {t.key: t for t in existing if t.key}
+    spec_tl_keys = {t.key for t in q.timeline if t.key}
     by_group: dict[tuple[str, int | None], list[TimelineItem]] = {}
     for t in sorted(existing, key=lambda t: (t.offset_ms, t.id)):
-        by_group.setdefault((t.track, t.anchor_clip_id), []).append(t)
+        if t.key not in spec_tl_keys:
+            by_group.setdefault((t.track, t.anchor_clip_id), []).append(t)
     used: dict[tuple[str, int | None], int] = {}
     for t in sorted(q.timeline, key=lambda t: t.offset_ms):
         anchor = clip_ids.get(t.anchor) if t.anchor else None
@@ -850,14 +909,17 @@ def _write_sequence(w: _Writer, pid: int, q: m.SequenceSpec, group_ids: dict[str
         vals = {"track": t.track, "anchor_clip_id": anchor, "offset_ms": t.offset_ms, "end_anchor": end,
                 "duration_ms": t.duration_ms, "media_id": w.media(t.media),
                 "sound_id": sound_ids.get(t.sound) if t.sound else None, "params": dict(t.params)}
+        if t.key and t.key in tl_by_key:
+            w.set(tl_by_key[t.key], vals)
+            continue
         g = (t.track, anchor)
-        n = used.get(g, 0)
-        used[g] = n + 1
         rows = by_group.get(g, [])
-        if n < len(rows):
+        n = used.get(g, 0)
+        if not t.key and n < len(rows):
+            used[g] = n + 1
             w.set(rows[n], vals)
         else:
-            s.add(TimelineItem(sequence_id=sid, **vals))
+            s.add(TimelineItem(sequence_id=sid, **({"key": t.key} if t.key else {}), **vals))
             s.flush()
             w.created += 1
 

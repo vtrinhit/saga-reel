@@ -76,8 +76,8 @@ class PresetResetParams(BaseModel):
 
 @op("preset.list", summary="Liệt kê preset (nền tảng, thể loại, phụ đề…), lọc theo loại; có `modified` cho preset cài sẵn đã sửa",
     params=PresetListParams, read_only=True, idempotent=True, mcp="tool")
-def preset_list(ctx: OpContext, p: PresetListParams) -> list[dict]:
-    return presets.list_presets(ctx, p.kind, p.project_id)
+def preset_list(ctx: OpContext, p: PresetListParams) -> dict:
+    return {"items": presets.list_presets(ctx, p.kind, p.project_id)}
 
 
 @op("preset.get", summary="Đọc một preset theo id hoặc (kind, key)", params=PresetRef, read_only=True,
@@ -140,6 +140,8 @@ class ExportCreateParams(BaseModel):
     platforms: list[str] = Field(default_factory=list, description="Trống = nền tảng đích của tập/dự án")
     langs: list[Annotated[str, Field(pattern=r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$")]] = Field(default_factory=list, description="Trống = ngôn ngữ của dự án")
     options: package.ExportOptions = Field(default_factory=package.ExportOptions)
+    metadata: dict[str, Any] | None = Field(
+        default=None, description="Ghi đè metadata (title, description, hashtags…) cho mọi gói; = options.metadata")
     dry_run: bool = Field(default=False, description="Chỉ trả danh sách gói sẽ tạo + kiểm tra ước tính, không dựng/ghi gì")
 
 
@@ -167,11 +169,14 @@ async def export_check(ctx: OpContext, p: ExportCheckParams) -> dict:
     params=ExportCreateParams, long_running=True, mcp="tool")
 async def export_create(ctx: OpContext, p: ExportCreateParams) -> dict:
     services = ctx.services
+    if p.metadata:
+        p.options.metadata = {**(p.options.metadata or {}), **p.metadata}
     project, units = await anyio.to_thread.run_sync(package.load_targets, services, p.sequence_ids, p.platforms, p.langs)
     if p.dry_run or ctx.dry_run:
         out = []
         for u in units:
-            rep = await package.precheck(services, u["sequence_id"], u["platform"], u["lang"], split_parts=p.options.split_parts)
+            rep = await package.precheck(services, u["sequence_id"], u["platform"], u["lang"],
+                                         split_parts=p.options.split_parts, metadata_override=p.options.metadata)
             out.append({**u, "folder": package.rel_path(services, package.package_folder(
                 services, project["key"], u["seq_key"], u["platform"], u["lang"])), **rep})
         return {"dry_run": True, "packages": out}

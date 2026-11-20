@@ -23,8 +23,9 @@ class Sequence(Tracked, Base):
     script: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(default="draft")
     workflow_key: Mapped[str] = mapped_column(default="")
-    gates: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)
-    pipeline: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)  # trạng thái từng bước quy trình
+    # Trạng thái chạy (gate + quy trình/bộ nhớ truyện): cột sổ sách — hoàn tác/làm lại không ghi lùi (Task BF).
+    gates: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict, info={"bookkeeping": True})
+    pipeline: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict, info={"bookkeeping": True})
     target_platforms: Mapped[list[Any]] = mapped_column(JSONList, default=list)
     settings: Mapped[dict[str, Any]] = mapped_column(JSONDict, default=dict)
 

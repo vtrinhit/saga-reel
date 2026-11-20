@@ -121,6 +121,16 @@ def _role_allowed(role: str, cfg: AccessConfig) -> bool:
     return role == "owner" or (role == "viewer" and cfg.viewer_enabled)
 
 
+def token_suspended(name: str) -> AppError:
+    return AppError(
+        "token_suspended",
+        f"Agent '{name}' đang bị tạm dừng: token API này tạm thời không được dùng.",
+        hint="Chủ sở hữu bật lại trong giao diện (Cài đặt → Agent) hoặc gọi token.resume / agents.resume_all từ máy "
+             "cục bộ. Agent hãy dừng việc và chờ, đừng thử lại liên tục.",
+        status=403,
+    )
+
+
 def authenticate_token(services: Services, raw: str, cfg: AccessConfig, local: bool = False) -> Principal | None:
     """Token API (`Authorization: Bearer`) hợp lệ → Principal `agent:<tên>`; sai/hết hạn/thu hồi → None.
 
@@ -136,6 +146,8 @@ def authenticate_token(services: Services, raw: str, cfg: AccessConfig, local: b
             return None
         if not _role_allowed(row.role, cfg):
             return None
+        if row.suspended:
+            raise token_suspended(row.name)
         if row.last_used_at is None or now - row.last_used_at >= LAST_USED_RESOLUTION:
             row.last_used_at = now
         return Principal(role=row.role, actor=f"agent:{row.name}", via="token", token_id=row.id)
@@ -169,6 +181,7 @@ def principal_still_valid(services: Services, principal: Principal | None) -> bo
         return (
             row is not None
             and row.revoked_at is None
+            and not getattr(row, "suspended", False)
             and not _expired(row.expires_at, utcnow())
             and row.role == principal.role
             and _role_allowed(row.role, cfg)
@@ -377,7 +390,48 @@ def _token_dict(t: ApiToken, now: datetime) -> dict:
         "last_used_at": t.last_used_at,
         "revoked_at": t.revoked_at,
         "active": t.revoked_at is None and not _expired(t.expires_at, now),
+        "suspended": bool(t.suspended),
+        "local_only": bool(t.local_only),
     }
+
+
+def _live_tokens(s: Session, name: str | None = None) -> list[ApiToken]:
+    q = select(ApiToken).where(ApiToken.revoked_at.is_(None))
+    if name is not None:
+        q = q.where(ApiToken.name == name)
+    return list(s.scalars(q.order_by(ApiToken.id)))
+
+
+def set_suspended(ctx: OpContext, name: str, suspended: bool) -> list[dict]:
+    """Tạm dừng / bật lại mọi token chưa thu hồi mang tên `name` (agent `agent:<name>`). Token API không được tự bật
+    lại (một agent không gỡ được lệnh dừng của chủ)."""
+    if not suspended:
+        _no_token(ctx, "bật lại agent")
+    now = utcnow()
+    with ctx.services.db.session(immediate=True) as s:
+        rows = _live_tokens(s, name)
+        if not rows:
+            raise NotFound(f"Không có token API nào tên '{name}' còn hiệu lực.", code="token_not_found",
+                           hint="Xem token.list.")
+        for r in rows:
+            r.suspended = suspended
+        s.flush()
+        return [_token_dict(r, now) for r in rows]
+
+
+def set_all_suspended(ctx: OpContext, suspended: bool) -> dict:
+    """Tạm dừng / bật lại MỌI agent: mọi token API chưa thu hồi (kể cả token agent cục bộ `local-agent`)."""
+    if not suspended:
+        _no_token(ctx, "bật lại agent")
+    now = utcnow()
+    with ctx.services.db.session(immediate=True) as s:
+        rows = _live_tokens(s)
+        changed = [r for r in rows if bool(r.suspended) != suspended]
+        for r in changed:
+            r.suspended = suspended
+        s.flush()
+        return {"suspended": suspended, "changed": len(changed),
+                "tokens": [_token_dict(r, now) for r in rows]}
 
 
 def create_token(ctx: OpContext, name: str, role: str, expires_days: int | None) -> dict:
@@ -513,9 +567,13 @@ def _ensure_local_agent_token(services: Services) -> str:
             _revoke_local_agent_rows(s, utcnow())
         return "failed"
     with services.db.session(immediate=True) as s:
+        # Agent cục bộ đang tạm dừng (agents.pause_all) → token mới vẫn tạm dừng (khởi động lại không gỡ lệnh dừng).
+        # Xét dòng local-agent mới nhất (kể cả vừa bị thu hồi do đổi mật khẩu chủ).
+        paused = bool(s.scalar(select(ApiToken.suspended).where(ApiToken.name == local_agent.TOKEN_NAME)
+                               .order_by(ApiToken.id.desc()).limit(1)))
         _revoke_local_agent_rows(s, utcnow())
         s.add(ApiToken(name=local_agent.TOKEN_NAME, token_hash=digest, role="owner", expires_at=None,
-                       local_only=True))
+                       local_only=True, suspended=paused))
     logger.info("Đã tạo token agent cục bộ mới (file %s).", path)
     return "created"
 

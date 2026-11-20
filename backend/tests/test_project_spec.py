@@ -108,7 +108,9 @@ def test_round_trip_into_empty_db(owner_ctx, demo, ctx2):
     types = {c["type"] for c in p["creates"]}
     assert {"project", "preset", "asset", "look", "voice", "sound", "group", "sequence", "scene", "clip",
             "dialogue", "timeline"} <= types
-    assert ("dialogue", "ep1/c001#2") in {(c["type"], c["key"]) for c in p["creates"]}
+    c001_lines = yaml.safe_load(text)["sequences"][0]["clips"][0]["dialogue"]
+    assert all(ln["key"] for ln in c001_lines)  # khoá thật (dialogue_line.key), không theo vị trí
+    assert {("dialogue", f"ep1/c001#{ln['key']}") for ln in c001_lines} <= {(c["type"], c["key"]) for c in p["creates"]}
     est = p["estimate"]
     assert est["images"] == 6 and est["videos"] == 4 and est["tts_lines"] == 6 and est["renders"] == 2
     assert est["budget"]["fits"] is True and "image" in est["budget"]
@@ -141,6 +143,8 @@ def _edit(text: str, fn) -> str:
 def test_plan_diff_updates_creates_delete_candidates_and_order(owner_ctx, demo):
     text = export_text(owner_ctx, demo)
 
+    gone_tl: list[str] = []
+
     def change(d):
         ep1 = d["sequences"][0]
         ep1["clips"][0]["image_prompt"] = "Prompt mới"
@@ -148,21 +152,25 @@ def test_plan_diff_updates_creates_delete_candidates_and_order(owner_ctx, demo):
         removed = ep1["clips"].pop(2)  # c003 → ứng viên xoá
         ep1["clips"].reverse()  # đổi thứ tự c001/c002
         ep1["clips"].append({"key": "c900", "title": "Mới", "image_prompt": "mới", "dialogue": [{"text": "xin chào"}]})
-        ep1["timeline"] = [t for t in ep1["timeline"] if t.get("anchor") != removed["key"]
-                           and (t.get("end_anchor") or {}).get("clip") != removed["key"]]
+        keep = [t for t in ep1["timeline"] if t.get("anchor") != removed["key"]
+                and (t.get("end_anchor") or {}).get("clip") != removed["key"]]
+        gone_tl.extend(t["key"] for t in ep1["timeline"] if t not in keep)
+        ep1["timeline"] = keep
         d["library"]["assets"][0]["looks"][1]["lock_word"] = "LAMW2"
 
     new = _edit(text, change)
     p = sp.plan(owner_ctx, new)
     ups = {(u["type"], u["key"]): u["changes"] for u in p["updates"]}
     assert ups[("clip", "ep1/c001")]["image_prompt"]["to"] == "Prompt mới"
-    assert ups[("dialogue", "ep1/c001#1")]["text"] == {"from": "Mưa rồi…", "to": "Thoại mới"}
+    first_line = yaml.safe_load(text)["sequences"][0]["clips"][0]["dialogue"][0]["key"]
+    assert ups[("dialogue", f"ep1/c001#{first_line}")]["text"] == {"from": "Mưa rồi…", "to": "Thoại mới"}
     assert ups[("look", "hero/wounded")]["lock_word"]["to"] == "LAMW2"
     assert ups[("order", "clips:ep1")]["order"]["to"] == ["c002", "c001", "c900"]
     creates = {(c["type"], c["key"]) for c in p["creates"]}
     assert {("clip", "ep1/c900"), ("dialogue", "ep1/c900#1")} <= creates
     dels = {(c["type"], c["key"]) for c in p["delete_candidates"]}
-    assert ("clip", "ep1/c003") in dels and ("timeline", "ep1/sfx@c002#2") in dels  # khoá theo vị trí: mục cuối nhóm thành dư
+    assert ("clip", "ep1/c003") in dels and gone_tl  # khoá thật: đúng các mục timeline đã bỏ thành ứng viên xoá
+    assert {("timeline", f"ep1/{k}") for k in gone_tl} <= dels
     assert not any(k.startswith("ep1/c003#") for t, k in dels if t == "dialogue")  # con của ứng viên xoá: không lặp
     assert p["estimate"]["images"] == 2 and p["estimate"]["tts_lines"] == 2 and p["estimate"]["renders"] == 1
 

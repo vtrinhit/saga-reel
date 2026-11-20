@@ -30,6 +30,7 @@ from sagareel.services.settings import global_layer
 
 FAKE_PREFIX = "fake_"
 TOTAL_KEYS = {"image": "budget.images_total", "video": "budget.videos_total"}
+PROJECT_TOTAL_KEYS = {"image": "images_total", "video": "videos_total"}  # khoá trong `project.budget`
 _LABELS = {"image": "ảnh", "video": "video"}
 
 
@@ -64,39 +65,91 @@ def spent(session: Session, kind: str) -> float:
     return float(session.scalar(q) or 0.0)
 
 
-def status(session: Session, kind: str, *, resolver: Resolver | None = None) -> dict[str, Any]:
-    """`{"enabled", "total", "spent", "remaining"}`; `total`/`remaining` là None khi không giới hạn."""
+def project_spent(session: Session, kind: str, project_id: int) -> float:
+    """Tổng đơn vị đã dùng của `kind` trong dự án (cột `spend.project_id`), không tính kết nối giả."""
+    q = (
+        select(func.coalesce(func.sum(Spend.units), 0.0))
+        .select_from(Spend)
+        .outerjoin(ProviderConnection, ProviderConnection.id == Spend.connection_id)
+        .where(
+            Spend.kind == kind, Spend.project_id == project_id,
+            or_(ProviderConnection.adapter.is_(None), ProviderConnection.adapter.not_like("fake\\_%", escape="\\")),
+        )
+    )
+    return float(session.scalar(q) or 0.0)
+
+
+def project_status(session: Session, kind: str, project_id: int) -> dict[str, Any]:
+    """Trần riêng của dự án: `project.budget.images_total` / `videos_total` (0 hoặc thiếu = không giới hạn;
+    `project.budget.enabled = false` tắt). Áp độc lập với `budget.enabled` toàn cục."""
+    from sagareel.db.models import Project
+
+    p = session.get(Project, project_id)
+    cfg = dict(p.budget or {}) if p is not None else {}
+    key = PROJECT_TOTAL_KEYS.get(kind)
+    try:
+        total = int(cfg.get(key) or 0) if key else 0
+    except (TypeError, ValueError):
+        total = 0
+    limited = bool(cfg.get("enabled", True)) and total > 0
+    used = project_spent(session, kind, project_id)
+    return {"project_id": project_id, "total": total if limited else None, "spent": used,
+            "remaining": max(0.0, total - used) if limited else None}
+
+
+def status(session: Session, kind: str, *, resolver: Resolver | None = None,
+           project_id: int | None = None) -> dict[str, Any]:
+    """`{"enabled", "total", "spent", "remaining"}`; `total`/`remaining` là None khi không giới hạn. Có `project_id`
+    → thêm `project` (trần riêng của dự án, `project_status`)."""
     enabled = bool(_setting(session, "budget.enabled", resolver))
     key = TOTAL_KEYS.get(kind)
     total = int(_setting(session, key, resolver)) if key else 0
     used = spent(session, kind)
     limited = enabled and total > 0
-    return {
+    out: dict[str, Any] = {
         "enabled": enabled,
         "total": total if limited else None,
         "spent": used,
         "remaining": max(0.0, total - used) if limited else None,
     }
+    if project_id is not None:
+        out["project"] = project_status(session, kind, project_id)
+    return out
+
+
+def _exceeded(kind: str, spent_: float, total: int, units: float, hint: str, scope: str,
+              project_id: int | None = None) -> AppError:
+    label = _LABELS.get(kind, kind)
+    where = " của dự án" if scope == "project" else ""
+    extra: dict[str, Any] = {"kind": kind, "spent": spent_, "total": total, "requested": units, "scope": scope}
+    if project_id is not None:
+        extra["project_id"] = project_id
+    return AppError(
+        "budget_exceeded",
+        f"Vượt ngân sách {label}{where}: đã dùng {spent_:g}/{total}, cần thêm {units:g}.",
+        hint=hint, status=402, extra=extra,
+    )
 
 
 def check(
-    session: Session, kind: str, units: float, connection_id: int | None, *, resolver: Resolver | None = None
+    session: Session, kind: str, units: float, connection_id: int | None, *, resolver: Resolver | None = None,
+    project_id: int | None = None,
 ) -> None:
-    """Ném `AppError("budget_exceeded", status=402)` nếu thêm `units` sẽ vượt trần. Kết nối giả luôn qua."""
+    """Ném `AppError("budget_exceeded", status=402)` nếu thêm `units` sẽ vượt trần toàn cục hoặc trần của dự án
+    (`project_id`). Kết nối giả luôn qua."""
     if units <= 0 or is_fake(session, connection_id):
         return
     st = status(session, kind, resolver=resolver)
-    if st["total"] is None:
-        return
-    if st["spent"] + units > st["total"]:
-        label = _LABELS.get(kind, kind)
-        raise AppError(
-            "budget_exceeded",
-            f"Vượt ngân sách {label}: đã dùng {st['spent']:g}/{st['total']}, cần thêm {units:g}.",
-            hint=f"Tăng {TOTAL_KEYS[kind]} (0 = không giới hạn) hoặc tắt budget.enabled trong Cài đặt.",
-            status=402,
-            extra={"kind": kind, "spent": st["spent"], "total": st["total"], "requested": units},
-        )
+    if st["total"] is not None and st["spent"] + units > st["total"]:
+        raise _exceeded(kind, st["spent"], st["total"], units,
+                        f"Tăng {TOTAL_KEYS[kind]} (0 = không giới hạn) hoặc tắt budget.enabled trong Cài đặt.",
+                        "global")
+    if project_id is not None:
+        ps = project_status(session, kind, project_id)
+        if ps["total"] is not None and ps["spent"] + units > ps["total"]:
+            raise _exceeded(kind, ps["spent"], ps["total"], units,
+                            f"Tăng ngân sách dự án (project.budget.{PROJECT_TOTAL_KEYS[kind]}; 0 = không giới hạn).",
+                            "project", project_id)
 
 
 def record(
@@ -107,12 +160,20 @@ def record(
     connection_id: int | None,
     *,
     cost: float | None = None,
+    project_id: int | None = None,
 ) -> Spend:
-    """Ghi một dòng `spend` (flush, người gọi commit)."""
-    row = Spend(kind=kind, units=float(units), job_id=job_id, connection_id=connection_id, cost=cost)
+    """Ghi một dòng `spend` (flush, người gọi commit). `project_id` bỏ trống → lấy từ job."""
+    if project_id is None and job_id is not None:
+        project_id = _job_project(session, job_id)
+    row = Spend(kind=kind, units=float(units), job_id=job_id, connection_id=connection_id, cost=cost,
+                project_id=project_id)
     session.add(row)
     session.flush()
     return row
+
+
+def _job_project(session: Session, job_id: int) -> int | None:
+    return session.scalar(select(Job.project_id).where(Job.id == job_id))
 
 
 def release(session: Session, job_id: int) -> int:
@@ -157,8 +218,9 @@ def reserve(
         ).first()
         return row if row is not None else record(session, kind, units, job_id, connection_id)
     release(session, job_id)
-    check(session, kind, units, connection_id, resolver=resolver)
-    return record(session, kind, units, job_id, connection_id)
+    project_id = job.project_id if job is not None else None
+    check(session, kind, units, connection_id, resolver=resolver, project_id=project_id)
+    return record(session, kind, units, job_id, connection_id, project_id=project_id)
 
 
 def finalize(

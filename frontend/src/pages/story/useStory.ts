@@ -137,7 +137,8 @@ export function useCancelJob() {
 export function useGenres() {
   return useQuery({
     queryKey: storyKeys.genres,
-    queryFn: async () => (await callOp('preset.list', { kind: 'genre' })) as unknown as { key: string; name: string }[],
+    queryFn: async () =>
+      ((await callOp('preset.list', { kind: 'genre' })) as unknown as { items: { key: string; name: string }[] }).items,
     staleTime: 5 * 60_000,
   });
 }

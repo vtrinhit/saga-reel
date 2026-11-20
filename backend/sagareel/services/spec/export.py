@@ -77,7 +77,7 @@ def sound_keys(rows: Iterable[tuple[int, str, str]]) -> dict[int, str]:
     return out
 
 
-def dialogue_key(clip_key: str, n: int) -> str:
+def dialogue_key(clip_key: str, n: int | str) -> str:
     return f"{clip_key}#{n}"
 
 
@@ -164,7 +164,8 @@ def build(s: Session, project: Project, include: Iterable[str] | None = None) ->
     sounds = _alive(s, Sound, Sound.project_id == project.id)
     sound_sha = {x.id: (s.get(Media, x.media_id).sha256 if s.get(Media, x.media_id) is not None else "")
                  for x in sounds}
-    skeys = sound_keys((x.id, x.kind, sound_sha[x.id]) for x in sounds)
+    natural = sound_keys((x.id, x.kind, sound_sha[x.id]) for x in sounds)
+    skeys = {x.id: x.key or natural[x.id] for x in sounds}  # khoá thật (cột sound.key, migration 0005)
 
     spec = m.ProjectSpec(spec_version=m.SPEC_VERSION, project=block, providers=providers)
 
@@ -294,7 +295,7 @@ def _sequence(s: Session, q: Sequence, med: _Media, asset_ref, look_key: dict[in
             last_frame_desc=c.last_frame_desc or "", sfx_desc=c.sfx_desc or "", beats=_plain(c.beats),
             custom=_plain(c.custom), settings=_plain(c.settings),
             dialogue=[m.DialogueSpec(
-                speaker=asset_ref(ln.speaker_asset_id), text=ln.text, emotion=ln.emotion or "", source=ln.source,
+                key=ln.key or None, speaker=asset_ref(ln.speaker_asset_id), text=ln.text, emotion=ln.emotion or "", source=ln.source,
                 voice_override=_plain(ln.voice_override), offset_ms=ln.offset_ms, subtitle=bool(ln.subtitle),
                 translations=_plain(ln.translations),
             ) for ln in lines_of.get(c.id, [])],
@@ -312,7 +313,7 @@ def _sequence(s: Session, q: Sequence, med: _Media, asset_ref, look_key: dict[in
         else:
             end = _plain(end)
         timeline.append(m.TimelineSpec(
-            track=t.track, anchor=clip_ref(t.anchor_clip_id), offset_ms=t.offset_ms, end_anchor=end,
+            key=t.key or None, track=t.track, anchor=clip_ref(t.anchor_clip_id), offset_ms=t.offset_ms, end_anchor=end,
             duration_ms=t.duration_ms, media=med.ref(t.media_id), sound=skeys.get(t.sound_id),
             params=_plain(t.params),
         ))

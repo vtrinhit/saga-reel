@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
-from sqlalchemy import DateTime, select
+from sqlalchemy import DateTime, func, select
 from sqlalchemy.orm import Mapper, Session
 from sqlalchemy.types import TypeDecorator
 
@@ -104,13 +104,21 @@ def list(
     entity_id: int | None = None,
     cursor: int | None = None,
     limit: int = 50,
+    actor: str | None = None,
 ) -> HistoryPage:
     """Change set mới nhất trước. Lọc theo thực thể nếu có, ngược lại theo `ctx.project_id` (None = toàn cục).
 
-    `cursor` = `next_cursor` của trang trước (lấy các change set có id nhỏ hơn).
+    `cursor` = `next_cursor` của trang trước (lấy các change set có id nhỏ hơn). `actor`: khớp đúng
+    (`agent:bot`), hoặc tiền tố khi kết thúc bằng `:` (`agent:` = mọi agent, `user:` = mọi người dùng).
     """
     limit = max(1, min(limit, 200))
     q = select(ChangeSet)
+    if actor:
+        if actor.endswith(":"):
+            # So tiền tố bằng substr (không dùng LIKE: tên token có `_` là ký tự đại diện của LIKE).
+            q = q.where(func.substr(ChangeSet.actor, 1, len(actor)) == actor)
+        else:
+            q = q.where(ChangeSet.actor == actor)
     if entity_type is not None or entity_id is not None:
         sub = select(Revision.change_set_id)
         if entity_type is not None:
@@ -175,6 +183,7 @@ def undo(ctx: OpContext, change_set_id: int | None = None) -> ChangeSetOut:
         _check_conflicts(s, cs, revs, "undo")
         for rev in reversed(revs):
             _apply(s, u, _mapper_for(rev.entity_type), rev.entity_id, rev.before_json)
+        _after_apply(s, [(r.entity_type, r.entity_id) for r in revs])
         cs.undone_at = utcnow()
         u.project_id = cs.project_id
         u.summary = f"Hoàn tác #{cs.id} ({cs.op_name})"
@@ -211,6 +220,7 @@ def redo(ctx: OpContext, change_set_id: int | None = None) -> ChangeSetOut:
         _check_conflicts(s, cs, revs, "redo")
         for rev in revs:
             _apply(s, u, _mapper_for(rev.entity_type), rev.entity_id, rev.after_json)
+        _after_apply(s, [(r.entity_type, r.entity_id) for r in revs])
         cs.undone_at = None
         cs.undone_by = None
         u.project_id = cs.project_id
@@ -241,9 +251,24 @@ def restore(ctx: OpContext, entity_type: str, entity_id: int, revision_id: int) 
             u.project_id = s.get(ChangeSet, rev.change_set_id).project_id
         u.summary = f"Khôi phục {entity_type} #{entity_id} về phiên bản #{revision_id}"
         _apply(s, u, mapper, entity_id, rev.after_json)
+        _after_apply(s, [(entity_type, entity_id)])
     if u.change_set_id is None:
         raise Conflict(f"{entity_type} #{entity_id} đã ở đúng phiên bản #{revision_id}.", code="no_change")
     return get(ctx, u.change_set_id)
+
+
+def _after_apply(s: Session, keys: builtins.list[tuple[str, int]]) -> None:
+    """Dữ liệu phái sinh không nằm trong snapshot: chỉ mục FTS của Story Bible (bảng `bible_fts` content-less) được
+    dựng lại cho mục bị hoàn tác/làm lại/khôi phục."""
+    item_ids = {eid for et, eid in keys if et == "bible_item"}
+    if not item_ids:
+        return
+    from sagareel.db.models import BibleItem
+    from sagareel.services.story import bible
+
+    s.flush()
+    for item in s.scalars(select(BibleItem).where(BibleItem.id.in_(item_ids))):
+        bible.reindex(s, item)
 
 
 # --- Nội bộ -----------------------------------------------------------------------------------------------------

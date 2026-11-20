@@ -415,9 +415,11 @@ async def _dispatch(
         if budget_kind is not None:
             with ctx.services.db.session() as s:
                 if dry_run:
-                    estimate["budget"] = budget.status(s, budget_kind, resolver=ctx.services.resolver)
+                    estimate["budget"] = budget.status(s, budget_kind, resolver=ctx.services.resolver,
+                                                       project_id=ctx.project_id)
                 else:  # chặn sớm khi đã biết vượt ngân sách (job kiểm tra lại trước khi gọi provider)
-                    budget.check(s, budget_kind, estimate.get("units", 1), conn.id, resolver=ctx.services.resolver)
+                    budget.check(s, budget_kind, estimate.get("units", 1), conn.id, resolver=ctx.services.resolver,
+                                 project_id=ctx.project_id)
         if dry_run:
             return {"estimate": estimate}
         attempts = {"max_attempts": pj.MAX_ATTEMPTS[job_type]} if job_type in pj.MAX_ATTEMPTS else {}

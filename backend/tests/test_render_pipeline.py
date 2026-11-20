@@ -458,3 +458,36 @@ async def test_render_job_runs_on_ffmpeg_lane(services, owner_ctx, project, tmp_
 
 def test_media_cleanup_helper_present():
     assert shutil.which("ffmpeg")
+
+
+def test_fit_to_duration_trim_slow_hold():
+    """Task BF (spec §11): video dài → cắt theo clip.duration_ms; ngắn → chậm ≤ 0,8× rồi giữ khung cuối."""
+    from sagareel.render.normalize import ClipParams, fit_to_duration
+
+    cp, info = fit_to_duration(10_000, ClipParams(), 6_000)
+    assert cp.dur_ms == 6_000 and cp.speed == 1.0 and info["mode"] == "trim"
+    cp, info = fit_to_duration(5_000, ClipParams(), 6_000)  # 5/6 ≈ 0,83 ≥ 0,8 → chỉ làm chậm
+    assert cp.dur_ms == 6_000 and round(cp.speed, 3) == 0.833 and info["mode"] == "slow"
+    cp, info = fit_to_duration(4_000, ClipParams(), 6_000)  # 0,8× → 5 s, còn 1 s giữ khung
+    assert cp.speed == 0.8 and info["mode"] == "slow_hold" and info["hold_last_frame_ms"] == 1_000
+    cp, info = fit_to_duration(4_000, ClipParams(speed=1.5), 6_000)  # tốc độ người dùng đặt → chỉ giữ khung
+    assert cp.speed == 1.5 and info["mode"] == "hold"
+
+
+def test_render_load_uses_clip_duration_for_ai_video(world):
+    long = world.clip("a", video=world.video("red"), duration_ms=500)  # video 1 s → cắt còn 0,5 s
+    short = world.clip("b", video=world.video("green"), duration_ms=2000)  # video 1 s → chậm + giữ khung
+    loaded = pipeline.load(world.services, world.sequence_id, "draft")
+    durs = {c.id: c.dur_ms for c in loaded.seq.clips}
+    assert abs(durs[long] - 500) <= 40 and abs(durs[short] - 2000) <= 40
+    assert any(w["code"] == "video_short" and w["clip_id"] == short for w in loaded.warnings)
+
+
+def test_render_keeps_source_length_before_continue_clip(world):
+    """Clip sau `continue` bắt đầu từ khung cuối của video nguồn → không cắt đuôi clip trước."""
+    a = world.clip("a", video=world.video("red"), duration_ms=500)
+    world.clip("b", video=world.video("green"), duration_ms=1000, link="continue")
+    loaded = pipeline.load(world.services, world.sequence_id, "draft")
+    durs = {c.id: c.dur_ms for c in loaded.seq.clips}
+    assert abs(durs[a] - 1000) <= 40
+    assert any(w["code"] == "continue_untrimmed" and w["clip_id"] == a for w in loaded.warnings)

@@ -61,7 +61,20 @@ def list_lines(ctx: OpContext, clip_id: int | None = None, sequence_id: int | No
             ids = [c.id for c in clips_of_sequence(s, sequence_id)]
         else:
             raise ValidationFailed("Cần clip_id hoặc sequence_id.")
-        return [entities.to_dict(x) for x in lines_of(s, ids)]
+        rows = list(lines_of(s, ids))
+        # Độ dài âm thanh đang chọn (take audio → media.duration_ms) + media id để UI phát/so khớp thời lượng.
+        take_ids = {x.audio_take_id for x in rows if x.audio_take_id}
+        audio: dict[int, tuple[int | None, int | None]] = {}
+        if take_ids:
+            for tid, mid, dur in s.execute(select(Take.id, Media.id, Media.duration_ms)
+                                           .join(Media, Media.id == Take.media_id, isouter=True)
+                                           .where(Take.id.in_(take_ids))):
+                audio[tid] = (mid, dur)
+        out = []
+        for x in rows:
+            mid, dur = audio.get(x.audio_take_id, (None, None)) if x.audio_take_id else (None, None)
+            out.append({**entities.to_dict(x), "audio_media_id": mid, "audio_duration_ms": dur})
+        return out
 
 
 # --- Ghi ------------------------------------------------------------------------------------------------------------

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import anyio
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from sagareel.core.context import OpContext
 from sagareel.core.ops import op
@@ -35,13 +35,10 @@ class PipelineRunParams(BaseModel):
 
 class PipelineStatusParams(BaseModel):
     sequence_ids: list[int] | None = Field(default=None, max_length=500)
-    project_id: int | None = None
-
-    @model_validator(mode="after")
-    def _one(self) -> PipelineStatusParams:
-        if not self.sequence_ids and self.project_id is None:
-            raise ValueError("cần sequence_ids hoặc project_id")
-        return self
+    project_id: int | None = Field(default=None, description="Bỏ trống cả sequence_ids = mọi dự án (phân trang)")
+    active_only: bool = Field(default=False, description="Toàn cục: chỉ tập có quy trình chưa xong")
+    cursor: int | None = Field(default=None, description="Toàn cục: `next_cursor` của trang trước")
+    limit: int = Field(default=200, ge=1, le=500)
 
 
 class SequenceIdParams(BaseModel):
@@ -69,10 +66,12 @@ def pipeline_run(ctx: OpContext, p: PipelineRunParams) -> dict:
     return engine.start(ctx, p.sequence_ids, p.workflow_key, p.overrides.model_dump(), restart=p.restart)
 
 
-@op("pipeline.status", summary="Trạng thái quy trình từng tập: bước, gate, đang chờ gì, job con",
+@op("pipeline.status", summary="Trạng thái quy trình từng tập (theo tập, dự án, hoặc mọi dự án): bước, gate "
+    "(+ media xem trước), đang chờ gì, job con",
     params=PipelineStatusParams, read_only=True, idempotent=True, mcp="tool")
 def pipeline_status(ctx: OpContext, p: PipelineStatusParams) -> dict:
-    return engine.status(ctx, sequence_ids=p.sequence_ids, project_id=p.project_id)
+    return engine.status(ctx, sequence_ids=p.sequence_ids, project_id=p.project_id, cursor=p.cursor, limit=p.limit,
+                         active_only=p.active_only)
 
 
 @op("pipeline.cancel", summary="Huỷ quy trình của tập (job quy trình + job con đang chờ/chạy)", params=SequenceIdParams,

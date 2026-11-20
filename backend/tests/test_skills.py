@@ -35,18 +35,26 @@ def sctx(settings, tmp_path):
 
 def test_list_get_update_mirror_and_undo(sctx):
     ctx, d = sctx
+    assert skills.list_files(ctx)["items"] == []  # chỉ đọc DB: chưa đồng bộ thì chưa có
+    skills.sync_on_startup(ctx.services)  # khởi động app đồng bộ
     assert [i["path"] for i in skills.list_files(ctx)["items"]] == ["SKILL.md"]
+    n_cs = len(history.list(ctx).items)
     assert skills.get(ctx, "SKILL.md")["body"].endswith("Gốc\n")
+    skills.list_files(ctx)
+    assert len(history.list(ctx).items) == n_cs  # op đọc không ghi change set
     out = skills.update(ctx, "playbooks/montage.md", "# Montage\n")
     assert out["change_set_id"] and (d / "playbooks" / "montage.md").read_text(encoding="utf-8") == "# Montage\n"
     skills.update(ctx, "SKILL.md", "Mới\n")
     assert (d / "SKILL.md").read_text(encoding="utf-8") == "Mới\n"
-    # Hoàn tác trong DB → lần đọc sau ghi lại file theo DB.
+    # Hoàn tác trong DB → skill.sync ghi lại file theo DB.
     history.undo(ctx)
     assert skills.get(ctx, "SKILL.md")["body"].endswith("Gốc\n")
+    skills.sync_report(ctx)
     assert (d / "SKILL.md").read_text(encoding="utf-8").endswith("Gốc\n")
-    # File sửa ngoài app → nhập vào DB.
+    # File sửa ngoài app → skill.sync nhập vào DB.
     (d / "SKILL.md").write_text("Sửa bằng editor\n", encoding="utf-8")
+    assert skills.get(ctx, "SKILL.md")["body"].endswith("Gốc\n")
+    assert [i["path"] for i in skills.sync_report(ctx)["items"]] == ["SKILL.md", "playbooks/montage.md"]
     assert skills.get(ctx, "SKILL.md")["body"] == "Sửa bằng editor\n"
 
 

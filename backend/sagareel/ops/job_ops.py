@@ -55,7 +55,7 @@ def job_list(ctx: OpContext, p: JobListParams) -> dict:
         rows, next_cursor = jobs.list_jobs(
             s, status=p.status, type=p.type, lane=p.lane, project_id=p.project_id, cursor=p.cursor, limit=p.limit
         )
-        items = [jobs.job_dict(j) for j in rows]
+        items = jobs.with_queue_position(s, list(rows))
     return {"items": items, "next_cursor": next_cursor, "paused": _paused(ctx)}
 
 
@@ -66,7 +66,7 @@ class JobIdParams(BaseModel):
 @op("job.get", summary="Chi tiết một job", params=JobIdParams, read_only=True, idempotent=True, mcp="tool")
 def job_get(ctx: OpContext, p: JobIdParams) -> dict:
     with ctx.services.db.session() as s:
-        return jobs.job_dict(jobs.get_job(s, p.id))
+        return jobs.with_queue_position(s, [jobs.get_job(s, p.id)])[0]
 
 
 class JobLogsParams(BaseModel):
@@ -139,6 +139,9 @@ async def job_cancel(ctx: OpContext, p: JobIdsParams) -> dict:
                 jobs.get_job(s, i)
 
     await anyio.to_thread.run_sync(check)
+    # Job có việc nối tiếp hoãn (sheet anchor → các góc `follow`): đánh dấu TRƯỚC khi huỷ. Lượt đã gửi provider không
+    # huỷ được (skipped) nhưng các góc sau sẽ không được xếp hàng khi nó xong.
+    follow_cancelled = await anyio.to_thread.run_sync(_cancel_follow, ctx, ids)
     worker = ctx.services.worker
     cancelled, skipped = [], []
     for i in ids:
@@ -150,7 +153,26 @@ async def job_cancel(ctx: OpContext, p: JobIdsParams) -> dict:
             if ok:
                 jobs.notify(ctx.services, data)
         (cancelled if ok else skipped).append(i)
-    return {"cancelled": cancelled, "skipped": skipped}
+    out: dict = {"cancelled": cancelled, "skipped": skipped}
+    if follow_cancelled:
+        out["follow_cancelled"] = follow_cancelled
+        if any(i in skipped for i in follow_cancelled):
+            out["message"] = "Lượt đã gửi provider không huỷ được (vẫn tính phí); các góc sau của sheet sẽ không chạy."
+    return out
+
+
+def _cancel_follow(ctx: OpContext, ids: list[int]) -> list[int]:
+    from sagareel.db.models import Job
+
+    marked = []
+    with ctx.services.db.session(immediate=True) as s:
+        for i in ids:
+            job = s.get(Job, i)
+            if job is None or job.status in jobs.TERMINAL or not (job.params or {}).get("follow"):
+                continue
+            job.params = {**dict(job.params or {}), "follow_cancelled": True}
+            marked.append(i)
+    return marked
 
 
 def _cancel_idle(ctx: OpContext, job_id: int) -> dict | None:

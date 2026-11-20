@@ -360,3 +360,27 @@ async def test_regenerate_audio_calls_audio_generate(client, conns, owner_ctx, s
         from sagareel.db.models import DialogueLine
 
         assert s.get(DialogueLine, line["id"]).audio_take_id is not None
+
+
+async def test_clip_connection_and_model_used_by_generate(client, conns, compiler, wait_takes, owner_ctx, seq):
+    """Task BF: clip.connection (đúng loại) + clip.model được dùng khi tạo; overrides vẫn thắng; dry run tách nhóm."""
+    r = call(client, "provider.create", {"kind": "image", "adapter": "fake_image", "name": "fake-img2"})
+    assert r.status_code == 200, r.text
+    img2 = r.json()["id"]
+    assert call(client, "settings.set_global", {"values": {"image.connection": "fake-img"}}).status_code == 200
+    a = clips.create(owner_ctx, seq, {"image_prompt": "a", "connection": "fake-img2", "model": "m-rieng"})
+    b = clips.create(owner_ctx, seq, {"image_prompt": "b", "connection": "fake-vid"})  # khác loại → mặc định
+    dry = regen(client, {"ids": [a["id"], b["id"]], "part": "image", "dry_run": True})
+    part = dry["estimate"]["parts"]["image"]
+    assert part["jobs"] == 2 and len(part["connections"]) == 2
+    out = regen(client, {"ids": [a["id"], b["id"]], "part": "image"})
+    rows = await wait_takes(out["take_ids"])
+    by_clip = {t.owner_id: t for t in rows.values()}
+    assert by_clip[a["id"]].inputs["connection_id"] == img2 and by_clip[a["id"]].inputs["model"] == "m-rieng"
+    assert by_clip[b["id"]].inputs["connection_id"] == conns["image"]
+    over = regen(client, {"ids": [a["id"]], "part": "image", "overrides": {"connection": "fake-img"}})
+    t = (await wait_takes(over["take_ids"]))[over["take_ids"][0]]
+    assert t.inputs["connection_id"] == conns["image"] and t.inputs["model"] != "m-rieng"
+    clips.update(owner_ctx, a["id"], {"connection": "khong-co"})
+    r = call(client, "clip.regenerate", {"ids": [a["id"]], "part": "image", "dry_run": True})
+    assert r.status_code == 422 and r.json()["error_code"] == "clip_connection_invalid"

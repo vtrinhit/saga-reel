@@ -795,28 +795,121 @@ def plan(ctx: OpContext, sequence_ids: list[int], workflow_key: str, overrides: 
     presets.ensure_builtins(ctx.services)
     with ctx.services.db.session() as s:
         seqs = [entities.get(s, "sequence", i) for i in dict.fromkeys(sequence_ids)]
-        wf = W.load(s, workflow_key, seqs[0].project_id if seqs else None)
+        project_id = seqs[0].project_id if seqs else None
+        wf = W.load(s, workflow_key, project_id)
         steps = W.apply_overrides(wf, dict((overrides or {}).get("steps") or {}))
         enabled = [x["step"] for x in steps if x["enabled"]]
+        per_clip_est, still_genre = _genre_clips(s, project_id, dict((overrides or {}).get("genre_overrides") or {}))
+        unit_cost = {k: _unit_cost(s, k) for k in ("image", "video", "tts")}
+        step_units: dict[str, dict[str, int]] = {x: {"images": 0, "videos": 0, "tts": 0, "renders": 0, "llm": 0}
+                                                 for x in enabled}
         per = []
-        totals = {"images": 0, "videos": 0, "llm_calls": 0}
+        totals: dict[str, Any] = {"images": 0, "videos": 0, "llm_calls": 0, "tts": 0, "renders": 0}
+        estimated_any = False
         for q in seqs:
             rows = _clips(s, q.id)
-            imgs = sum(1 for c in rows if needs_image(c) and c.image_take_id is None) if "generate_images" in enabled \
-                else 0
-            vids = sum(1 for c in rows if c.engine == "ai_video" and c.video_take_id is None) \
-                if "generate_videos" in enabled else 0
-            llm_calls = sum(1 for t in ("write_script", "split_clips", "image_prompts", "motion_prompts", "dialogue",
-                                        "memory_summarize") if t in enabled and not satisfied(s, t, q.id))
-            per.append({"sequence_id": q.id, "clips": len(rows), "images": imgs, "videos": vids,
-                        "llm_calls": llm_calls, "status": state.of(q, "run").get("status") or "idle"})
+            # Tập chưa chia clip: ước tính theo số clip/tập của thể loại (preset genre `clips`).
+            estimated = not rows and "split_clips" in enabled and not satisfied(s, "split_clips", q.id)
+            estimated_any = estimated_any or estimated
+            n_est = per_clip_est if estimated else 0
+            if "generate_images" in enabled:
+                imgs = n_est or sum(1 for c in rows if needs_image(c) and c.image_take_id is None)
+            else:
+                imgs = 0
+            if "generate_videos" in enabled:
+                vids = (0 if still_genre else n_est) or sum(1 for c in rows if c.engine == "ai_video"
+                                                            and c.video_take_id is None)
+            else:
+                vids = 0
+            tts = 0
+            if "generate_audio" in enabled:
+                tts = n_est or int(s.scalar(select(func.count()).select_from(DialogueLine).join(
+                    Clip, Clip.id == DialogueLine.clip_id).where(
+                    Clip.sequence_id == q.id, Clip.deleted_at.is_(None), DialogueLine.deleted_at.is_(None),
+                    DialogueLine.audio_take_id.is_(None))) or 0)
+            llm_steps = [t for t in ("write_script", "split_clips", "image_prompts", "motion_prompts", "dialogue",
+                                     "memory_summarize") if t in enabled and not satisfied(s, t, q.id)]
+            renders = [t for t in ("render_animatic", "render_preview", "render") if t in enabled]
+            for t in llm_steps:
+                step_units[t]["llm"] += 1
+            for t in renders:
+                step_units[t]["renders"] += 1
+            if imgs:
+                step_units["generate_images"]["images"] += imgs
+            if vids:
+                step_units["generate_videos"]["videos"] += vids
+            if tts:
+                step_units["generate_audio"]["tts"] += tts
+            per.append({"sequence_id": q.id, "clips": len(rows) or n_est, "clips_estimated": estimated,
+                        "images": imgs, "videos": vids, "tts": tts, "renders": len(renders),
+                        "llm_calls": len(llm_steps), "status": state.of(q, "run").get("status") or "idle"})
             totals["images"] += imgs
             totals["videos"] += vids
-            totals["llm_calls"] += llm_calls
-        totals["budget"] = {k: budget.status(s, k, resolver=ctx.services.resolver) for k in ("image", "video")}
-    return {"dry_run": True, "workflow": workflow_key, "steps": enabled, "sequences": per, "estimate": totals,
-            "note": "Clip chưa chia (chưa có) chưa được tính ảnh/video — dùng pipeline.idea_to_video dry_run để ước "
-                    "tính theo số clip mỗi tập."}
+            totals["tts"] += tts
+            totals["renders"] += len(renders)
+            totals["llm_calls"] += len(llm_steps)
+        step_out = []
+        total_cost: float | None = 0.0
+        for x in enabled:
+            u = step_units[x]
+            cost = None
+            if u["images"] or u["videos"] or u["tts"]:
+                parts = [(u["images"], unit_cost["image"]), (u["videos"], unit_cost["video"]),
+                         (u["tts"], unit_cost["tts"])]
+                cost = None if any(n and c is None for n, c in parts) else sum(n * (c or 0) for n, c in parts)
+            elif not W.is_gate(x):
+                cost = 0.0
+            if cost is None and (u["images"] or u["videos"] or u["tts"]):
+                total_cost = None
+            elif total_cost is not None and cost:
+                total_cost += cost
+            step_out.append({"key": x, "label": W.label(x), "gate": W.is_gate(x),
+                             "units": {k: u[k] for k in ("images", "videos", "tts", "renders")}, "llm_calls": u["llm"],
+                             "cost": cost})
+        totals["cost"] = total_cost
+        totals["clips_estimated"] = estimated_any
+        totals["budget"] = {k: budget.status(s, k, resolver=ctx.services.resolver, project_id=project_id)
+                            for k in ("image", "video")}
+    out = {"dry_run": True, "workflow": workflow_key, "steps": step_out, "step_keys": enabled, "sequences": per,
+           "estimate": totals}
+    if estimated_any:
+        out["note"] = (f"Tập chưa chia clip được ước tính theo thể loại (~{per_clip_est} clip/tập); số thật biết sau "
+                       "bước Chia clip.")
+    return out
+
+
+def _genre_clips(s: Session, project_id: int | None, genre_overrides: dict[str, Any]) -> tuple[int, bool]:
+    """(số clip/tập ước tính, thể loại chỉ dùng still_motion) theo preset thể loại của dự án."""
+    from sagareel.db.models import Project
+    from sagareel.services import presets
+
+    p = s.get(Project, project_id) if project_id is not None else None
+    genre = p.genre_key if p is not None else "series"
+    row = presets.find_row(s, "genre", genre, project_id)
+    data = {**(dict(row.data) if row is not None else {}), **genre_overrides}
+    lo, hi = writer._span(data.get("clips"), (12, 16))
+    return max(1, round((lo + hi) / 2)), genre in writer.STILL_GENRES
+
+
+def _unit_cost(s: Session, kind: str) -> float | None:
+    """Giá một lượt theo kết nối mặc định của loại (`options.cost_per_unit`); kết nối giả = 0; chưa biết = None."""
+    from sagareel.db.models import ProviderConnection
+
+    ref = writer.setting(s, f"{kind}.connection")
+    q = select(ProviderConnection).where(ProviderConnection.kind == kind, ProviderConnection.deleted_at.is_(None))
+    if ref:
+        q = q.where(ProviderConnection.name == str(ref)) if not str(ref).isdigit() else \
+            q.where(ProviderConnection.id == int(ref))
+    conn = s.scalars(q.order_by(ProviderConnection.id).limit(1)).first()
+    if conn is None:
+        return None
+    if conn.adapter.startswith("fake_"):
+        return 0.0
+    v = (conn.options or {}).get("cost_per_unit")
+    try:
+        return float(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _get_run(s: Session, sequence_id: int) -> tuple[Sequence, dict[str, Any]]:
@@ -952,8 +1045,12 @@ async def cancel(ctx: OpContext, sequence_id: int) -> dict[str, Any]:
             "cancelled_followers": followers}
 
 
-def status(ctx: OpContext, *, sequence_ids: list[int] | None = None, project_id: int | None = None) -> dict:
+def status(ctx: OpContext, *, sequence_ids: list[int] | None = None, project_id: int | None = None,
+           cursor: int | None = None, limit: int = 200, active_only: bool = False) -> dict:
+    """Trạng thái quy trình: theo `sequence_ids`, theo `project_id`, hoặc toàn cục (mọi dự án, phân trang theo id
+    tập; `active_only` = chỉ tập có quy trình chưa xong). Gate đang chờ kèm `preview` (media dựng gần nhất)."""
     with ctx.services.db.session() as s:
+        next_cursor = None
         if sequence_ids:
             rows = [entities.get(s, "sequence", i) for i in dict.fromkeys(sequence_ids)]
         elif project_id is not None:
@@ -962,8 +1059,41 @@ def status(ctx: OpContext, *, sequence_ids: list[int] | None = None, project_id:
                                                          Sequence.deleted_at.is_(None))
                                   .order_by(Sequence.number, Sequence.id)))
         else:
-            raise ValidationFailed("Cần sequence_ids hoặc project_id.")
-        return {"items": [_summary(s, q) for q in rows]}
+            from sagareel.db.models import Project
+
+            limit = max(1, min(int(limit), 500))
+            q = (select(Sequence).join(Project, Project.id == Sequence.project_id)
+                 .where(Sequence.deleted_at.is_(None), Project.deleted_at.is_(None)))
+            if active_only:
+                q = q.where(text("json_extract(sequence.pipeline, '$.run.status') IN "
+                                 "('queued','running','waiting_review','waiting_input','pending_release','failed')"))
+            if cursor is not None:
+                q = q.where(Sequence.id > cursor)
+            rows = list(s.scalars(q.order_by(Sequence.id).limit(limit + 1)))
+            if len(rows) > limit:
+                rows = rows[:limit]
+                next_cursor = rows[-1].id
+        items = []
+        for q in rows:
+            d = _summary(s, q)
+            d["project_id"] = q.project_id
+            if d.get("status") == "waiting_review":
+                d["preview"] = gate_preview(s, q.id)
+            items.append(d)
+        return {"items": items, "next_cursor": next_cursor}
+
+
+def gate_preview(s: Session, sequence_id: int) -> dict[str, Any] | None:
+    """Media xem trước cho gate đang chờ: bản dựng (animatic/final) mới nhất của tập, hoặc None."""
+    from sagareel.db.models import Render
+
+    r = s.scalars(select(Render).where(Render.sequence_id == sequence_id, Render.media_id.is_not(None),
+                                       Render.status == "succeeded")
+                  .order_by(Render.id.desc()).limit(1)).first()
+    if r is None:
+        return None
+    return {"render_id": r.id, "variant": r.variant, "media_id": r.media_id,
+            "url": f"/media/{r.media_id}"}
 
 
 def sequence_status(ctx: OpContext, sequence_id: int) -> dict[str, Any]:

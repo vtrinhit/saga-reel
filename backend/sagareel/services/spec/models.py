@@ -161,6 +161,8 @@ class ClipAssetRef(BaseModel):
 
 
 class DialogueSpec(_Strict):
+    key: str | None = Field(default=None, min_length=1, max_length=128,
+                            description="Khoá ổn định của câu (cột dialogue_line.key); bỏ trống = theo vị trí")
     speaker: str | None = Field(default=None, description="Key tài sản người nói; null = người kể")
     text: str
     emotion: str = ""
@@ -211,6 +213,8 @@ class ClipSpec(_Strict):
 
 
 class TimelineSpec(_Strict):
+    key: str | None = Field(default=None, min_length=1, max_length=128,
+                            description="Khoá ổn định của mục (cột timeline_item.key); bỏ trống = theo vị trí")
     track: str = Field(description="music/sfx/title")
     anchor: str | None = Field(default=None, description="Key clip neo (null = đầu tập)")
     offset_ms: int = 0

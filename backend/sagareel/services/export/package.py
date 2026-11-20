@@ -64,6 +64,8 @@ class ExportOptions(BaseModel):
     cover_title: bool = Field(default=True, description="Vẽ tiêu đề lên bìa (trong vùng an toàn)")
     cover_marks_ms: list[int] = Field(default_factory=list, description="Khung người dùng đánh dấu làm bìa (ms)")
     use_llm: bool = Field(default=True, description="Dùng công việc LLM `caption` viết metadata (không có thì dùng mẫu)")
+    metadata: dict[str, Any] | None = Field(
+        default=None, description="Ghi đè metadata sinh ra (title, description, hashtags, keywords…); khoá null = giữ")
 
 
 # --- Đường dẫn ------------------------------------------------------------------------------------------------------
@@ -499,6 +501,9 @@ async def run_unit(services: Any, run: Any, export_id: int, step: Any = None) ->
         md = await metadata.build(services, spec=spec, project=proj, sequence=seq, lang=lang, chapters=chapters,
                                   music=seq["music"], use_llm=opt.use_llm,
                                   cover_timestamp_ms=cover_info[0]["timestamp_ms"] if cover_info else None)
+        if opt.metadata:  # người dùng sửa metadata ở bước kiểm tra → ghi đè bản sinh ra
+            md.update({k: v for k, v in opt.metadata.items() if v is not None})
+            md["overridden"] = sorted(k for k, v in opt.metadata.items() if v is not None)
         md["covers"] = cover_info
         md["subtitle_files"] = sub_files
         if n > 1:
@@ -711,4 +716,5 @@ async def precheck(services: Any, sequence_id: int, platform: str, lang: str | N
                                       "hint": "Chạy render.start variant=final trước khi kiểm tra lại."})
     report["info"] = {"sequence_id": sequence_id, "platform": platform, "lang": lang, "duration_ms": duration_ms,
                       "size": size, "estimated": estimated}
+    report["metadata"] = md  # metadata (mẫu + ghi đè) đã kiểm — UI sửa rồi gửi lại qua export.create metadata
     return report

@@ -1207,9 +1207,9 @@ def test_budget_status_op_reports_totals_and_spend_excluding_fakes(client):
     r = call(client, "budget.status")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["image"] == {"enabled": True, "total": 10, "spent": 3.0, "remaining": 7.0}
+    assert body["image"] == {"enabled": True, "total": 10, "spent": 3.0, "remaining": 7.0, "project": None}
     # 0 = không giới hạn → total/remaining null
-    assert body["video"] == {"enabled": True, "total": None, "spent": 0.0, "remaining": None}
+    assert body["video"] == {"enabled": True, "total": None, "spent": 0.0, "remaining": None, "project": None}
 
     call(client, "settings.set_global", {"values": {"budget.enabled": False}})
     body = call(client, "budget.status").json()
