@@ -82,6 +82,18 @@ BEATS = frozenset({"hook", "establishing", "master", "shot", "reverse", "insert"
                    "cliffhanger"})
 HOOK_BEATS = frozenset({"hook", "reaction", "action", "insert", "cliffhanger"})
 END_BEATS = frozenset({"cliffhanger", "button"})
+_EMPTY_TOKENS = frozenset({"none", "null", "n_a", "na", "nil", "khong", "-"})
+_MODIFIERS = ("slow", "slowly", "fast", "quick", "gentle", "subtle", "smooth", "very", "slight", "soft")
+
+
+def enums_text() -> str:
+    """Danh sách giá trị hợp lệ cho prompt LLM (cùng nguồn với validator)."""
+    out = []
+    for field, values in {**clip_svc.SHOT_ENUMS, **clip_svc.CUSTOM_ENUMS}.items():
+        out.append(f"- {field}: {', '.join(values)}")
+    return "\n".join(out)
+
+
 ALIASES: dict[str, dict[str, str]] = {
     "shot_size": {"extreme_wide": "ews", "extreme_wide_shot": "ews", "wide": "ws", "wide_shot": "ws",
                   "establishing": "ws", "full": "fs", "full_shot": "fs", "medium_wide": "mws", "medium": "ms",
@@ -469,6 +481,10 @@ def script_variables(s: Session, sequence_id: int, feedback: str = "", run: dict
     return {**base, "context": packed.text or "(đây là tập đầu, chưa có bộ nhớ)", "_packed": packed.to_dict()}
 
 
+def _iso(v: Any) -> Any:
+    return v.isoformat() if hasattr(v, "isoformat") else v
+
+
 async def write_script(ctx: OpContext, sequence_id: int, *, feedback: str = "", run: dict[str, Any] | None = None,
                        genre_overrides: dict[str, Any] | None = None, on_delta: Delta = None,
                        log: Log = None) -> dict[str, Any]:
@@ -484,7 +500,7 @@ async def write_script(ctx: OpContext, sequence_id: int, *, feedback: str = "", 
     script = out.data
     res = await _thread(seq_svc.update, llm_ctx(ctx, out.model), sequence_id, {"script": script})
     return {"sequence_id": sequence_id, "chars": len(script), "model": out.model, "context_tokens": packed["tokens"],
-            "context_sections": packed["sections"], "updated_at": res.get("updated_at")}
+            "context_sections": packed["sections"], "updated_at": _iso(res.get("updated_at"))}
 
 
 # --- split_clips -----------------------------------------------------------------------------------------------------
@@ -522,6 +538,16 @@ def coerce_enum(field: str, value: str, warnings: list[dict], clip_no: int) -> s
         alias = ALIASES.get(field, {}).get(tok)
         if alias in allowed:
             return alias
+        if tok in _EMPTY_TOKENS:
+            return ""
+        # "slow_push_in", "gentle_pan_left" → bỏ trạng từ tốc độ/cường độ rồi thử lại
+        stripped = re.sub(rf"^(?:{'|'.join(_MODIFIERS)})_", "", tok)
+        if stripped != tok:
+            if stripped in allowed:
+                return stripped
+            alias = ALIASES.get(field, {}).get(stripped)
+            if alias in allowed:
+                return alias
     _warn(warnings, "enum_unknown", f"Clip {clip_no}: giá trị '{raw}' của {field} không hợp lệ; để trống.",
           field=field, clip=clip_no)
     return ""
@@ -655,7 +681,7 @@ async def split_clips(ctx: OpContext, sequence_id: int, *, feedback: str = "", r
         raise AppError("clips_exist", f"Tập đã có {v['existing']} clip.",
                        hint="Truyền replace=true để xoá (mềm) và chia lại.", status=409)
     out = await llmio.run(ctx.services, "story_split_clips",
-                          {"genre": v["genre"], "rules": COVERAGE_RULES, "cast": v["cast"].text,
+                          {"genre": v["genre"], "rules": COVERAGE_RULES, "cast": v["cast"].text, "enums": enums_text(),
                            "episode": v["episode"], "script": v["script"], "feedback": feedback},
                           S.SplitOut, on_delta=on_delta, log=log)
     scenes, planned, warnings = plan_clips(out.data, v["cast"], v["genre_key"], v["g"])

@@ -1363,3 +1363,21 @@ def test_lifespan_recovers_then_starts_worker(settings, test_job_handlers, make_
         items = {j["id"]: j["status"] for j in r.json()["items"]}
         assert items == {stuck.id: "interrupted", resumable.id: "succeeded"}
     assert not services.worker.started
+
+
+async def test_datetime_in_result_is_serialized_iso(svc):
+    from datetime import datetime, timezone
+
+    from sagareel.services import jobs as jobs_mod
+
+    async def dt_handler(run):
+        return {"at": datetime(2026, 11, 20, 1, 2, 3, tzinfo=timezone.utc)}
+
+    jobs_mod.job_handler("test.dt_result")(dt_handler)
+    try:
+        a = enqueue_job(svc, "test.dt_result", {})
+        await run_until_idle(svc)
+        job = load(svc, a)
+        assert job.status == "succeeded" and job.result == {"at": "2026-11-20T01:02:03+00:00"}
+    finally:
+        jobs_mod.unregister_handler("test.dt_result") if hasattr(jobs_mod, "unregister_handler") else jobs_mod.HANDLERS.pop("test.dt_result", None)

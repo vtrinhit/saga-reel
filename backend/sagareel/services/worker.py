@@ -24,7 +24,7 @@ import time
 import traceback
 from collections import Counter
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import anyio
@@ -90,6 +90,12 @@ def _interrupt_values(
         "warning",
         "Job bị gián đoạn vì ứng dụng dừng khi đang chạy.",
     )
+
+
+def _iso_datetime(o: Any) -> str:
+    if isinstance(o, (datetime, date)):
+        return o.isoformat()
+    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
 
 
 class JobRun:
@@ -653,7 +659,8 @@ class Worker:
                 result = {}
             if isinstance(result, dict):
                 try:
-                    json.dumps(result, ensure_ascii=False)
+                    # Chỉ datetime/date → chuỗi ISO 8601; kiểu lạ khác vẫn báo lỗi rõ ràng.
+                    result = json.loads(json.dumps(result, ensure_ascii=False, default=_iso_datetime))
                 except (TypeError, ValueError) as e:
                     outcome = ("error", TypeError(f"Kết quả job không chuyển được sang JSON: {e}"))
             if outcome[0] == "ok" and isinstance(result, dict):
