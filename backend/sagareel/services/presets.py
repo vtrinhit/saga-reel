@@ -344,7 +344,7 @@ _LOCK = threading.Lock()
 def seed_builtins(db: Database) -> int:
     """Chèn/nâng mẫu cài sẵn (idempotent). Trả số dòng đã thêm/sửa."""
     defs = builtin_definitions()
-    u = UnitOfWork(db, actor=SEED_ACTOR, op_name="preset.seed", project_id=None, summary="Seed preset cài sẵn")
+    u = UnitOfWork(db, actor=SEED_ACTOR, op_name="preset.seed", project_id=None, summary="Nạp preset cài sẵn")
     with u as s:
         rows = {(r.kind, r.key): r for r in s.scalars(select(Preset).where(Preset.project_id.is_(None))).all()}
         for d in defs:

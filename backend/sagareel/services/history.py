@@ -249,7 +249,9 @@ def restore(ctx: OpContext, entity_type: str, entity_id: int, revision_id: int) 
             )
         if u.project_id is None:
             u.project_id = s.get(ChangeSet, rev.change_set_id).project_id
-        u.summary = f"Khôi phục {entity_type} #{entity_id} về phiên bản #{revision_id}"
+        from sagareel.services.entities import label_of
+
+        u.summary = f"Khôi phục {label_of(entity_type)} #{entity_id} về phiên bản #{revision_id}"
         _apply(s, u, mapper, entity_id, rev.after_json)
         _after_apply(s, [(entity_type, entity_id)])
     if u.change_set_id is None:

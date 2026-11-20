@@ -336,7 +336,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Dịch lời thoại của tập sang ngôn ngữ khác (LLM translate → translations, hoàn tác được) rồi lồng tiếng TTS theo giọng từng ngôn ngữ; dry_run ước tính */
+        /** Dịch lời thoại của tập sang ngôn ngữ khác (LLM translate → translations, hoàn tác được) rồi lồng tiếng TTS theo giọng từng ngôn ngữ; chạy dạng job (trả job_id, kết quả job có tts.job_ids); dry_run ước tính (đếm cả câu chưa dịch) */
         post: operations["audio.translate_dub"];
         delete?: never;
         options?: never;
@@ -4073,17 +4073,17 @@ export interface components {
              * @description Độ dài mục tiêu mỗi tập (giây)
              * @default 75
              */
-            target_episode_s: number;
+            target_episode_s?: number;
             /**
              * Max Episodes
              * @default 200
              */
-            max_episodes: number;
+            max_episodes?: number;
             /**
              * Feedback
              * @default
              */
-            feedback: string;
+            feedback?: string;
         };
         /** AddRefsParams */
         AddRefsParams: {
@@ -4113,19 +4113,19 @@ export interface components {
              * @description Ngưỡng đổi cảnh ffmpeg (0-1)
              * @default 0.3
              */
-            scene_threshold: number;
+            scene_threshold?: number;
             /**
              * Min Scene S
              * @description Cảnh ngắn hơn bị gộp vào cảnh trước
              * @default 0.5
              */
-            min_scene_s: number;
+            min_scene_s?: number;
             /**
              * Max Frames
              * @description Số keyframe tối đa mỗi video trên lưới
              * @default 16
              */
-            max_frames: number;
+            max_frames?: number;
         };
         /** ApplyOut */
         ApplyOut: {
@@ -4168,7 +4168,7 @@ export interface components {
              * @description Mô tả khoá — dán nguyên văn vào mọi prompt synced
              * @default
              */
-            description: string;
+            description?: string;
             /** Tags */
             tags?: string[] | null;
         };
@@ -4199,12 +4199,12 @@ export interface components {
              * Icon
              * @default
              */
-            icon: string;
+            icon?: string;
             /**
              * Ref Priority
              * @default 0
              */
-            ref_priority: number;
+            ref_priority?: number;
         };
         /** AssetKindListParams */
         AssetKindListParams: {
@@ -4231,7 +4231,7 @@ export interface components {
              * Limit
              * @default 100
              */
-            limit: number;
+            limit?: number;
         };
         /** AudioGenerateParams */
         AudioGenerateParams: {
@@ -4252,12 +4252,12 @@ export interface components {
              * @description Bỏ qua cache, đọc lại
              * @default false
              */
-            force: boolean;
+            force?: boolean;
             /**
              * Dry Run
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** AuthIdParams */
         AuthIdParams: {
@@ -4294,13 +4294,13 @@ export interface components {
              * @default confirmed
              * @enum {string}
              */
-            status: "pending" | "confirmed" | "rejected";
+            status?: "pending" | "confirmed" | "rejected";
             /**
              * Locked
              * @description Khoá: LLM không được sửa (nhãn nhân thiết)
              * @default false
              */
-            locked: boolean;
+            locked?: boolean;
             /**
              * Story Order
              * @description Số tập/cảnh nơi sự việc xảy ra
@@ -4355,7 +4355,7 @@ export interface components {
              * Limit
              * @default 200
              */
-            limit: number;
+            limit?: number;
         };
         /** BibleSearchParams */
         BibleSearchParams: {
@@ -4377,7 +4377,7 @@ export interface components {
              * Limit
              * @default 20
              */
-            limit: number;
+            limit?: number;
         };
         /** BibleUpdateParams */
         BibleUpdateParams: {
@@ -4440,7 +4440,7 @@ export interface components {
              * @description Không hỏi xác nhận lại với thao tác tốn tiền dưới số lượt này
              * @default 5
              */
-            confirm_below_units: number;
+            confirm_below_units?: number;
         };
         /** BudgetStatusParams */
         BudgetStatusParams: {
@@ -4458,7 +4458,7 @@ export interface components {
              * @default all
              * @enum {string}
              */
-            scope: "segments" | "chunks" | "work" | "all";
+            scope?: "segments" | "chunks" | "work" | "all";
             /**
              * Confirm Token
              * @description Lấy từ render.cache_clear_preview
@@ -4473,7 +4473,7 @@ export interface components {
              * @default all
              * @enum {string}
              */
-            scope: "segments" | "chunks" | "work" | "all";
+            scope?: "segments" | "chunks" | "work" | "all";
         };
         /** CacheStatsParams */
         CacheStatsParams: Record<string, never>;
@@ -4504,7 +4504,7 @@ export interface components {
              * @description Chỉ take (không được chọn) tạo cách đây ≥ số ngày này
              * @default 30
              */
-            unselected_takes_older_than_days: number;
+            unselected_takes_older_than_days?: number;
             /**
              * Kinds
              * @description Mặc định cả ba
@@ -4599,7 +4599,7 @@ export interface components {
              * No Scene
              * @default false
              */
-            no_scene: boolean;
+            no_scene?: boolean;
             /**
              * Asset Id
              * @description Clip dùng tài sản này
@@ -4611,11 +4611,16 @@ export interface components {
              */
             variant_id?: number | null;
             /**
+             * Ids
+             * @description Chỉ các clip có id này
+             */
+            ids?: number[] | null;
+            /**
              * Has Take
              * @description Chỉ clip đã có take ảnh/video đang chọn (review=pending + has_take = đúng số `takes_pending`)
              * @default false
              */
-            has_take: boolean;
+            has_take?: boolean;
         };
         /** ClipIdParams */
         ClipIdParams: {
@@ -4635,7 +4640,7 @@ export interface components {
              * Limit
              * @default 100
              */
-            limit: number;
+            limit?: number;
             filter?: components["schemas"]["ClipFilter"] | null;
         };
         /** ClipMoveParams */
@@ -4662,7 +4667,7 @@ export interface components {
              * @default image
              * @enum {string}
              */
-            part: "image" | "video";
+            part?: "image" | "video";
             /**
              * Connection
              * @description Kết nối ảnh để lấy max_refs (chỉ part=image)
@@ -4680,13 +4685,13 @@ export interface components {
              * @default image
              * @enum {string}
              */
-            part: "image" | "video" | "audio" | "subtitle" | "all";
+            part?: "image" | "video" | "audio" | "subtitle" | "all";
             overrides?: components["schemas"]["RegenerateOverrides"];
             /**
              * Dry Run
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** ClipRewriteParams */
         ClipRewriteParams: {
@@ -4697,7 +4702,7 @@ export interface components {
              * @default image
              * @enum {string}
              */
-            part: "image" | "video";
+            part?: "image" | "video";
             /** Feedback */
             feedback: string;
             /** Expected Updated At */
@@ -4741,12 +4746,12 @@ export interface components {
              * @description Viết lại cả clip đã có (trừ prompt người dùng tự viết)
              * @default false
              */
-            overwrite: boolean;
+            overwrite?: boolean;
             /**
              * Feedback
              * @default
              */
-            feedback: string;
+            feedback?: string;
         };
         /** CloneParams */
         CloneParams: {
@@ -4771,13 +4776,13 @@ export interface components {
              * Scene Threshold
              * @default 0.3
              */
-            scene_threshold: number;
+            scene_threshold?: number;
             /**
              * Min Scene S
              * @description Cảnh ngắn hơn bị gộp vào cảnh trước
              * @default 1
              */
-            min_scene_s: number;
+            min_scene_s?: number;
             /**
              * Transcript
              * @description Lời dán tay (chưa có STT); chia theo thời lượng cảnh
@@ -4789,13 +4794,13 @@ export interface components {
              * @default auto
              * @enum {string}
              */
-            engine: "auto" | "ai_video" | "still_motion";
+            engine?: "auto" | "ai_video" | "still_motion";
             /**
              * Dry Run
              * @description Chỉ tách cảnh và trả kế hoạch (không gọi LLM, không tạo job)
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** ContextPackParams */
         ContextPackParams: {
@@ -4832,7 +4837,7 @@ export interface components {
              * Expires In S
              * @default 600
              */
-            expires_in_s: number;
+            expires_in_s?: number;
         };
         /** DescribeParams */
         DescribeParams: {
@@ -4843,13 +4848,13 @@ export interface components {
              * @description character/location/prop
              * @default character
              */
-            kind: string;
+            kind?: string;
             /**
              * Hint
              * @description Tên/ghi chú gợi ý cho LLM
              * @default
              */
-            hint: string;
+            hint?: string;
             /** Project Id */
             project_id?: number | null;
         };
@@ -5025,7 +5030,7 @@ export interface components {
              * Limit
              * @default 100
              */
-            limit: number;
+            limit?: number;
         };
         /** EntityPage */
         EntityPage: {
@@ -5078,7 +5083,7 @@ export interface components {
              * @default false
              * @constant
              */
-            ok: false;
+            ok?: false;
             /** Error Code */
             error_code: string;
             /** Detail */
@@ -5091,7 +5096,7 @@ export interface components {
              * Extra
              * @default {}
              */
-            extra: {
+            extra?: {
                 [key: string]: unknown;
             };
         };
@@ -5107,7 +5112,7 @@ export interface components {
              * @default manual
              * @enum {string}
              */
-            source: "script" | "novel" | "manual" | "llm";
+            source?: "script" | "novel" | "manual" | "llm";
             /** Sequence Id */
             sequence_id?: number | null;
             /**
@@ -5132,7 +5137,7 @@ export interface components {
              * @default manual
              * @enum {string}
              */
-            source: "script" | "novel" | "manual" | "llm";
+            source?: "script" | "novel" | "manual" | "llm";
             /** Sequence Id */
             sequence_id?: number | null;
             /**
@@ -5162,7 +5167,7 @@ export interface components {
              * @description Quá dài thì sẽ cắt phần → chỉ cảnh báo thay vì lỗi
              * @default false
              */
-            split_parts: boolean;
+            split_parts?: boolean;
             /**
              * Cue Boxes
              * @description Hộp chữ phụ đề theo px `{x, y, w, h, start_ms?}` trên khung bản dựng; có thì kiểm vùng an toàn
@@ -5205,7 +5210,7 @@ export interface components {
              * @description Chỉ trả danh sách gói sẽ tạo + kiểm tra ước tính, không dựng/ghi gì
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** ExportIdParams */
         ExportIdParams: {
@@ -5227,7 +5232,7 @@ export interface components {
              * Limit
              * @default 100
              */
-            limit: number;
+            limit?: number;
         };
         /** ExportOptions */
         ExportOptions: {
@@ -5237,37 +5242,37 @@ export interface components {
              * @default blur_pad
              * @enum {string}
              */
-            reframe: "blur_pad" | "crop";
+            reframe?: "blur_pad" | "crop";
             /**
              * Focus X
              * @description Tâm crop theo chiều ngang (0 trái - 1 phải)
              * @default 0.5
              */
-            focus_x: number;
+            focus_x?: number;
             /**
              * Focus Y
              * @description Tâm crop theo chiều dọc (0 trên - 1 dưới)
              * @default 0.5
              */
-            focus_y: number;
+            focus_y?: number;
             /**
              * Split Parts
              * @description Cắt nhiều phần khi vượt độ dài tối đa của nền tảng
              * @default true
              */
-            split_parts: boolean;
+            split_parts?: boolean;
             /**
              * Covers
              * @description Số ảnh bìa
              * @default 3
              */
-            covers: number;
+            covers?: number;
             /**
              * Cover Title
              * @description Vẽ tiêu đề lên bìa (trong vùng an toàn)
              * @default true
              */
-            cover_title: boolean;
+            cover_title?: boolean;
             /**
              * Cover Marks Ms
              * @description Khung người dùng đánh dấu làm bìa (ms)
@@ -5278,7 +5283,7 @@ export interface components {
              * @description Dùng công việc LLM `caption` viết metadata (không có thì dùng mẫu)
              * @default true
              */
-            use_llm: boolean;
+            use_llm?: boolean;
             /**
              * Metadata
              * @description Ghi đè metadata sinh ra (title, description, hashtags, keywords…); khoá null = giữ
@@ -5317,7 +5322,7 @@ export interface components {
              * @description Ghi thêm file vào outputs/specs/
              * @default true
              */
-            save: boolean;
+            save?: boolean;
         };
         /** GateApproveParams */
         GateApproveParams: {
@@ -5332,7 +5337,7 @@ export interface components {
              * Note
              * @default
              */
-            note: string;
+            note?: string;
         };
         /** GateRejectParams */
         GateRejectParams: {
@@ -5377,7 +5382,7 @@ export interface components {
              * Limit
              * @default 50
              */
-            limit: number;
+            limit?: number;
         };
         /** HistoryPage */
         HistoryPage: {
@@ -5449,17 +5454,17 @@ export interface components {
              * @description Key preset thể loại: storyboard, montage, series, serial, narration
              * @default serial
              */
-            genre: string;
+            genre?: string;
             /**
              * Episodes
              * @default 1
              */
-            episodes: number;
+            episodes?: number;
             /**
              * Clips Per Episode
              * @default 14
              */
-            clips_per_episode: number;
+            clips_per_episode?: number;
             /**
              * Project Id
              * @description Bỏ trống = tạo dự án mới
@@ -5474,7 +5479,7 @@ export interface components {
              * Workflow Key
              * @default full_auto
              */
-            workflow_key: string;
+            workflow_key?: string;
             /**
              * Steps
              * @description Bật/tắt bước của quy trình
@@ -5489,7 +5494,7 @@ export interface components {
              * @description Chỉ ước tính (số ảnh/video/LLM, giây phim, ngân sách)
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** IdsParams */
         IdsParams: {
@@ -5515,7 +5520,7 @@ export interface components {
              * @description Tạo asset nhân vật còn thiếu theo mã; false = bỏ qua mã đó (cảnh báo)
              * @default false
              */
-            create_assets: boolean;
+            create_assets?: boolean;
             /**
              * After Clip Id
              * @description Chèn ngay sau clip này; bỏ trống = nối cuối tập
@@ -5531,7 +5536,7 @@ export interface components {
              * @description true = bỏ qua hàng còn lỗi; false = còn hàng lỗi thì từ chối cả lô
              * @default false
              */
-            skip_errors: boolean;
+            skip_errors?: boolean;
         };
         /** ImportApplyResult */
         ImportApplyResult: {
@@ -5561,7 +5566,7 @@ export interface components {
              * @description false = chỉ xem trước những gì sẽ được tạo (không ghi)
              * @default false
              */
-            confirm: boolean;
+            confirm?: boolean;
         };
         /** ImportPreviewParams */
         ImportPreviewParams: {
@@ -5675,6 +5680,11 @@ export interface components {
             /** Project Id */
             project_id?: number | null;
             /**
+             * Sequence Id
+             * @description Chỉ job của tập này
+             */
+            sequence_id?: number | null;
+            /**
              * Cursor
              * @description `next_cursor` của trang trước
              */
@@ -5683,7 +5693,7 @@ export interface components {
              * Limit
              * @default 50
              */
-            limit: number;
+            limit?: number;
         };
         /** JobLogsParams */
         JobLogsParams: {
@@ -5698,7 +5708,7 @@ export interface components {
              * Limit
              * @default 200
              */
-            limit: number;
+            limit?: number;
         };
         /** JobPrioritizeParams */
         JobPrioritizeParams: {
@@ -5723,7 +5733,7 @@ export interface components {
              * @description Job đã được provider nhận (có external_id): mặc định chạy lại nối tiếp đúng job đó (không tốn thêm); true = xoá external_id/external_state để tạo job trả phí mới
              * @default false
              */
-            force_new: boolean;
+            force_new?: boolean;
         };
         /** JobWaitParams */
         JobWaitParams: {
@@ -5733,7 +5743,7 @@ export interface components {
              * Timeout S
              * @default 60
              */
-            timeout_s: number;
+            timeout_s?: number;
         };
         /** LoginBody */
         LoginBody: {
@@ -5743,7 +5753,7 @@ export interface components {
              * Remember
              * @default false
              */
-            remember: boolean;
+            remember?: boolean;
         };
         /** LookCreateParams */
         LookCreateParams: {
@@ -5759,7 +5769,7 @@ export interface components {
              * @description Khác biệt so với mô tả gốc — chèn nguyên văn
              * @default
              */
-            description_delta: string;
+            description_delta?: string;
             /**
              * Keep Features
              * @description Nét phải giữ
@@ -5770,7 +5780,7 @@ export interface components {
              * @description Cụm "màu + chất liệu + vật" chèn nguyên văn mọi prompt
              * @default
              */
-            lock_word: string;
+            lock_word?: string;
             /**
              * Valid From
              * @description Từ tập số
@@ -5785,7 +5795,7 @@ export interface components {
              * Is Default
              * @default false
              */
-            is_default: boolean;
+            is_default?: boolean;
             /** Key */
             key?: string | null;
         };
@@ -5802,7 +5812,7 @@ export interface components {
              * View
              * @default anchor
              */
-            view: string;
+            view?: string;
             /**
              * Connection
              * @description Tên hoặc id kết nối ảnh; bỏ trống = cài đặt image.connection
@@ -5815,17 +5825,17 @@ export interface components {
              * Genre Preset
              * @default true
              */
-            genre_preset: boolean;
+            genre_preset?: boolean;
             /**
              * Style Pack
              * @default true
              */
-            style_pack: boolean;
+            style_pack?: boolean;
             /**
              * Library Suggestions
              * @default true
              */
-            library_suggestions: boolean;
+            library_suggestions?: boolean;
         };
         /** MatrixParams */
         MatrixParams: {
@@ -5846,14 +5856,14 @@ export interface components {
              * @description Gửi luôn sheet (anchor trước) cho mỗi look mới
              * @default false
              */
-            generate_sheets: boolean;
+            generate_sheets?: boolean;
             /** Views */
             views?: string[] | null;
             /**
              * Takes
              * @default 1
              */
-            takes: number;
+            takes?: number;
             /**
              * Connection
              * @description Tên hoặc id kết nối ảnh; bỏ trống = cài đặt image.connection
@@ -5863,7 +5873,7 @@ export interface components {
              * Dry Run
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** MediaGetParams */
         MediaGetParams: {
@@ -5894,7 +5904,7 @@ export interface components {
              * Limit
              * @default 50
              */
-            limit: number;
+            limit?: number;
         };
         /** MediaOut */
         MediaOut: {
@@ -5968,7 +5978,7 @@ export interface components {
              * @description Định hướng arc (tuỳ chọn)
              * @default
              */
-            arc: string;
+            arc?: string;
             /**
              * Group Id
              * @description Nhóm arc: gán tập + ghi tóm tắt arc
@@ -5978,7 +5988,7 @@ export interface components {
              * Feedback
              * @default
              */
-            feedback: string;
+            feedback?: string;
         };
         /** PipelineOverrides */
         PipelineOverrides: {
@@ -6028,20 +6038,20 @@ export interface components {
              * @description full_auto / storyboard_first / serial_batch …
              * @default full_auto
              */
-            workflow_key: string;
+            workflow_key?: string;
             overrides?: components["schemas"]["PipelineOverrides"];
             /**
              * Restart
              * @description Chạy lại từ đầu (bỏ trạng thái + quyết định duyệt cũ)
              * @default false
              */
-            restart: boolean;
+            restart?: boolean;
             /**
              * Dry Run
              * @description Chỉ trả các bước + ước tính, không chạy
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** PipelineStatusParams */
         PipelineStatusParams: {
@@ -6057,7 +6067,13 @@ export interface components {
              * @description Toàn cục: chỉ tập có quy trình chưa xong
              * @default false
              */
-            active_only: boolean;
+            active_only?: boolean;
+            /**
+             * Include Failed
+             * @description Kèm `active_only`: thêm cả quy trình đã lỗi (hộp thư)
+             * @default false
+             */
+            include_failed?: boolean;
             /**
              * Cursor
              * @description Toàn cục: `next_cursor` của trang trước
@@ -6067,7 +6083,7 @@ export interface components {
              * Limit
              * @default 200
              */
-            limit: number;
+            limit?: number;
         };
         /** PlanEntry */
         PlanEntry: {
@@ -6158,7 +6174,7 @@ export interface components {
              * @description Chép sang `project_id` thay vì cùng phạm vi bản gốc
              * @default false
              */
-            to_project: boolean;
+            to_project?: boolean;
             /** Project Id */
             project_id?: number | null;
         };
@@ -6257,13 +6273,13 @@ export interface components {
              * @description Clip chờ duyệt đã có take (= review.queue review=pending + has_take)
              * @default 0
              */
-            takes_pending: number;
+            takes_pending?: number;
             /**
              * Drift
              * @description Clip mang cờ drift
              * @default 0
              */
-            drift: number;
+            drift?: number;
         };
         /** ProjectCreateParams */
         ProjectCreateParams: {
@@ -6337,7 +6353,7 @@ export interface components {
              * Limit
              * @default 50
              */
-            limit: number;
+            limit?: number;
         };
         /** ProjectOut */
         ProjectOut: {
@@ -6427,7 +6443,7 @@ export interface components {
              * @default agent
              * @enum {string}
              */
-            source: "agent" | "user" | "import";
+            source?: "agent" | "user" | "import";
             /**
              * Name
              * @description Tên agent/người viết (mặc định = actor)
@@ -6462,18 +6478,18 @@ export interface components {
              * Base Url
              * @default
              */
-            base_url: string;
+            base_url?: string;
             /**
              * Api Key
              * @description Bí mật: lưu nguyên, không bao giờ trả lại (chỉ dạng che)
              * @default
              */
-            api_key: string;
+            api_key?: string;
             /**
              * Default Model
              * @default
              */
-            default_model: string;
+            default_model?: string;
             /** Options */
             options?: {
                 [key: string]: unknown;
@@ -6482,12 +6498,12 @@ export interface components {
              * Concurrency
              * @default 2
              */
-            concurrency: number;
+            concurrency?: number;
             /**
              * Enabled
              * @default true
              */
-            enabled: boolean;
+            enabled?: boolean;
         };
         /** ProviderDeleteParams */
         ProviderDeleteParams: {
@@ -6512,7 +6528,7 @@ export interface components {
              * Include Disabled
              * @default true
              */
-            include_disabled: boolean;
+            include_disabled?: boolean;
         };
         /** ProviderUpdateFields */
         ProviderUpdateFields: {
@@ -6552,7 +6568,7 @@ export interface components {
              * @description Chỉ file đã vào thùng rác ≥ số ngày này
              * @default 0
              */
-            older_than_days: number;
+            older_than_days?: number;
             /** Project Id */
             project_id?: number | null;
         };
@@ -6601,13 +6617,13 @@ export interface components {
              * Takes
              * @default 1
              */
-            takes: number;
+            takes?: number;
             /**
              * Select
              * @description Tự chọn take mới khi xong (áp bảng làm-cũ)
              * @default true
              */
-            select: boolean;
+            select?: boolean;
         };
         /** RenderEstimateOut */
         RenderEstimateOut: {
@@ -6656,7 +6672,7 @@ export interface components {
              * @default draft
              * @enum {string}
              */
-            variant: "draft" | "animatic" | "final";
+            variant?: "draft" | "animatic" | "final";
             /**
              * Platform
              * @description Preset nền tảng (yt-long dùng hồ sơ mã hoá riêng)
@@ -6686,7 +6702,7 @@ export interface components {
              * Limit
              * @default 20
              */
-            limit: number;
+            limit?: number;
         };
         /** RenderOut */
         RenderOut: {
@@ -6729,7 +6745,7 @@ export interface components {
              * @default draft
              * @enum {string}
              */
-            variant: "draft" | "animatic" | "final";
+            variant?: "draft" | "animatic" | "final";
             /**
              * Platform
              * @description Preset nền tảng (yt-long dùng hồ sơ mã hoá riêng)
@@ -6750,7 +6766,7 @@ export interface components {
              * @description Ưu tiên job (cao chạy trước)
              * @default 0
              */
-            priority: number;
+            priority?: number;
         };
         /** Resolved */
         Resolved: {
@@ -6785,7 +6801,7 @@ export interface components {
              * Limit
              * @default 50
              */
-            limit: number;
+            limit?: number;
         };
         /** RouteSpec */
         RouteSpec: {
@@ -6852,7 +6868,7 @@ export interface components {
              * Title
              * @default
              */
-            title: string;
+            title?: string;
             /**
              * Key
              * @description Mã cảnh trong tập; bỏ trống = s<NN>
@@ -6869,7 +6885,7 @@ export interface components {
              * Summary
              * @default
              */
-            summary: string;
+            summary?: string;
             /**
              * State
              * @description time_of_day, era, weather, lighting, char_states
@@ -6936,7 +6952,7 @@ export interface components {
              * @description Kèm chi phí từng clip (sắp giảm dần)
              * @default false
              */
-            per_clip: boolean;
+            per_clip?: boolean;
         };
         /** SequenceCreateParams */
         SequenceCreateParams: {
@@ -6966,12 +6982,12 @@ export interface components {
              * Synopsis
              * @default
              */
-            synopsis: string;
+            synopsis?: string;
             /**
              * Script
              * @default
              */
-            script: string;
+            script?: string;
             /** Target Platforms */
             target_platforms?: string[] | null;
         };
@@ -7005,7 +7021,7 @@ export interface components {
              * @default final
              * @enum {string}
              */
-            variant: "draft" | "animatic" | "final";
+            variant?: "draft" | "animatic" | "final";
             /**
              * Platform
              * @description Preset nền tảng (ảnh hưởng mã hoá bản cuối)
@@ -7021,7 +7037,7 @@ export interface components {
              * @description Kèm ước tính tạo ảnh/video/âm thanh cho clip còn thiếu
              * @default true
              */
-            generation: boolean;
+            generation?: boolean;
             /**
              * Overrides
              * @description Như clip.regenerate.overrides (connection, video_connection…) cho phần tạo
@@ -7045,7 +7061,7 @@ export interface components {
              * Limit
              * @default 100
              */
-            limit: number;
+            limit?: number;
         };
         /** SequenceReorderParams */
         SequenceReorderParams: {
@@ -7066,7 +7082,7 @@ export interface components {
              * @default csv
              * @enum {string}
              */
-            format: "csv" | "xlsx";
+            format?: "csv" | "xlsx";
         };
         /** SequenceTaskParams */
         SequenceTaskParams: {
@@ -7077,7 +7093,7 @@ export interface components {
              * @description Góp ý để viết lại
              * @default
              */
-            feedback: string;
+            feedback?: string;
         };
         /** SequenceUpdateParams */
         SequenceUpdateParams: {
@@ -7188,7 +7204,7 @@ export interface components {
              * Secret
              * @default false
              */
-            secret: boolean;
+            secret?: boolean;
         };
         /** SettingDefList */
         SettingDefList: components["schemas"]["SettingDef"][];
@@ -7227,7 +7243,7 @@ export interface components {
              * Takes
              * @default 1
              */
-            takes: number;
+            takes?: number;
             /**
              * Connection
              * @description Tên hoặc id kết nối ảnh; bỏ trống = cài đặt image.connection
@@ -7237,7 +7253,7 @@ export interface components {
              * Dry Run
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** SheetSelectParams */
         SheetSelectParams: {
@@ -7336,7 +7352,7 @@ export interface components {
              * Attribution
              * @default
              */
-            attribution: string;
+            attribution?: string;
             /**
              * Project Id
              * @description Trống = kho toàn cục
@@ -7360,7 +7376,7 @@ export interface components {
              * Include Global
              * @default true
              */
-            include_global: boolean;
+            include_global?: boolean;
         };
         /** SpecInputParams */
         SpecInputParams: {
@@ -7384,13 +7400,13 @@ export interface components {
              * @description Góp ý để viết lại
              * @default
              */
-            feedback: string;
+            feedback?: string;
             /**
              * Replace
              * @description Tập đã có clip → xoá mềm (hoàn tác được) rồi chia lại
              * @default true
              */
-            replace: boolean;
+            replace?: boolean;
         };
         /** StudyCreateParams */
         StudyCreateParams: {
@@ -7409,7 +7425,7 @@ export interface components {
              * @description Tiêu đề/ghi chú của các video (dán tay) cho LLM
              * @default
              */
-            captions: string;
+            captions?: string;
             /** Project Id */
             project_id?: number | null;
         };
@@ -7423,7 +7439,7 @@ export interface components {
              * Limit
              * @default 100
              */
-            limit: number;
+            limit?: number;
         };
         /** SubmitItem */
         SubmitItem: {
@@ -7450,13 +7466,13 @@ export interface components {
              * Duration Ms
              * @default 3000
              */
-            duration_ms: number;
+            duration_ms?: number;
             /**
              * Style
              * @description Preset subtitle_style: 9x16 / 9x16_box / 16x9
              * @default 9x16
              */
-            style: string;
+            style?: string;
             /** Mode */
             mode?: ("outline" | "karaoke_fill" | "word_pop") | null;
             /** Safe Zone */
@@ -7494,7 +7510,7 @@ export interface components {
              * @default clip
              * @enum {string}
              */
-            owner_type: "clip" | "variant" | "dialogue";
+            owner_type?: "clip" | "variant" | "dialogue";
             /** Owner Id */
             owner_id: number;
             /** Part */
@@ -7532,7 +7548,7 @@ export interface components {
              * Dry Run
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** TakeVerdictParams */
         TakeVerdictParams: {
@@ -7562,19 +7578,19 @@ export interface components {
              * Description
              * @default
              */
-            description: string;
+            description?: string;
             /** Template Key */
             template_key: string;
             /**
              * Needs Vision
              * @default false
              */
-            needs_vision: boolean;
+            needs_vision?: boolean;
             /**
              * Json Mode
              * @default false
              */
-            json_mode: boolean;
+            json_mode?: boolean;
             route?: components["schemas"]["RouteSpec"] | null;
             /** Fallbacks */
             fallbacks?: components["schemas"]["RouteSpec"][];
@@ -7626,13 +7642,13 @@ export interface components {
              * @description Tạo template mới nếu chưa có key này
              * @default false
              */
-            create_if_missing: boolean;
+            create_if_missing?: boolean;
             /**
              * Kind
              * @description Loại (chỉ dùng khi tạo mới)
              * @default llm
              */
-            kind: string;
+            kind?: string;
         };
         /** TemplatesParams */
         TemplatesParams: Record<string, never>;
@@ -7655,7 +7671,7 @@ export interface components {
              * @description Bắt đầu sau đầu clip neo (ms)
              * @default 0
              */
-            offset_ms: number;
+            offset_ms?: number;
             /**
              * End Anchor
              * @description {clip_id} | {sequence_end: true} | trống
@@ -7720,7 +7736,7 @@ export interface components {
              * @default owner
              * @enum {string}
              */
-            role: "owner" | "viewer";
+            role?: "owner" | "viewer";
             /**
              * Expires Days
              * @description Hết hạn sau số ngày này; bỏ trống = không hạn
@@ -7756,13 +7772,13 @@ export interface components {
              * @description Agent đang tạm dừng (request nhận 403 token_suspended)
              * @default false
              */
-            suspended: boolean;
+            suspended?: boolean;
             /**
              * Local Only
              * @description Token agent cục bộ của app (chỉ dùng trên máy này)
              * @default false
              */
-            local_only: boolean;
+            local_only?: boolean;
             /**
              * Token
              * @description Token thô — chỉ hiện MỘT lần, hãy lưu lại ngay
@@ -7798,13 +7814,13 @@ export interface components {
              * @description Agent đang tạm dừng (request nhận 403 token_suspended)
              * @default false
              */
-            suspended: boolean;
+            suspended?: boolean;
             /**
              * Local Only
              * @description Token agent cục bộ của app (chỉ dùng trên máy này)
              * @default false
              */
-            local_only: boolean;
+            local_only?: boolean;
         };
         /** TokenList */
         TokenList: components["schemas"]["TokenInfo"][];
@@ -7830,18 +7846,18 @@ export interface components {
              * @description Dịch lại cả câu đã có bản dịch
              * @default false
              */
-            force: boolean;
+            force?: boolean;
             /**
              * Tts
              * @description Đọc TTS bản dịch (giọng theo voice_profile.per_lang)
              * @default true
              */
-            tts: boolean;
+            tts?: boolean;
             /**
              * Dry Run
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** TrashListParams */
         TrashListParams: {
@@ -7853,7 +7869,7 @@ export interface components {
              * Limit
              * @default 100
              */
-            limit: number;
+            limit?: number;
         };
         /** TrashRestoreParams */
         TrashRestoreParams: {
@@ -7882,7 +7898,7 @@ export interface components {
              * Dry Run
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** TryLLMParams */
         TryLLMParams: {
@@ -7931,7 +7947,7 @@ export interface components {
              * Dry Run
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** TryVideoParams */
         TryVideoParams: {
@@ -7958,7 +7974,7 @@ export interface components {
              * Dry Run
              * @default false
              */
-            dry_run: boolean;
+            dry_run?: boolean;
         };
         /** UpdateParams */
         UpdateParams: {
@@ -8109,7 +8125,7 @@ export interface components {
              * Include Global
              * @default true
              */
-            include_global: boolean;
+            include_global?: boolean;
         };
         /** VoicePreviewParams */
         VoicePreviewParams: {
@@ -8162,7 +8178,7 @@ export interface components {
              * Feedback
              * @default
              */
-            feedback: string;
+            feedback?: string;
         };
         /** ApplyParams */
         sagareel__ops__channel_ops__ApplyParams: {

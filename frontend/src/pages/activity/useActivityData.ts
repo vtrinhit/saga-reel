@@ -73,7 +73,7 @@ export function usePipelines(projectId: number | null) {
       const out: PipelineSummary[] = [];
       let cursor: number | undefined;
       for (let page = 0; page < 4; page++) {
-        const r = (await callOp('pipeline.status', { active_only: true, limit: 500, ...(cursor != null ? { cursor } : {}) })) as unknown as {
+        const r = (await callOp('pipeline.status', { active_only: true, include_failed: true, limit: 500, ...(cursor != null ? { cursor } : {}) })) as unknown as {
           items: PipelineSummary[];
           next_cursor: number | null;
         };

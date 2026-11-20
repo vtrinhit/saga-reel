@@ -38,6 +38,7 @@ class JobListParams(BaseModel):
     type: str | None = None
     lane: str | None = None
     project_id: int | None = None
+    sequence_id: int | None = Field(default=None, description="Chỉ job của tập này")
     cursor: int | None = Field(default=None, description="`next_cursor` của trang trước")
     limit: int = Field(default=50, ge=1, le=500)
 
@@ -53,7 +54,7 @@ class JobListParams(BaseModel):
 def job_list(ctx: OpContext, p: JobListParams) -> dict:
     with ctx.services.db.session() as s:
         rows, next_cursor = jobs.list_jobs(
-            s, status=p.status, type=p.type, lane=p.lane, project_id=p.project_id, cursor=p.cursor, limit=p.limit
+            s, status=p.status, type=p.type, lane=p.lane, project_id=p.project_id, sequence_id=p.sequence_id, cursor=p.cursor, limit=p.limit
         )
         items = jobs.with_queue_position(s, list(rows))
     return {"items": items, "next_cursor": next_cursor, "paused": _paused(ctx)}

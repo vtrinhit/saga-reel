@@ -29,6 +29,7 @@ class ClipFilter(BaseModel):
     no_scene: bool = False
     asset_id: int | None = Field(default=None, description="Clip dùng tài sản này")
     variant_id: int | None = Field(default=None, description="… với look này (kèm asset_id)")
+    ids: list[int] | None = Field(default=None, max_length=500, description="Chỉ các clip có id này")
     has_take: bool = Field(default=False, description="Chỉ clip đã có take ảnh/video đang chọn (review=pending + "
                            "has_take = đúng số `takes_pending`)")
 
@@ -36,6 +37,8 @@ class ClipFilter(BaseModel):
         out: dict[str, Any] = {}
         if self.has_take:
             out["has_take"] = True
+        if self.ids:
+            out["ids"] = self.ids
         if self.flags:
             out["flags"] = self.flags
         if self.review:

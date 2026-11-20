@@ -349,7 +349,8 @@ export function useAssets(pid: number | null) {
 export function useExports(pid: number | null) {
   return useQuery({
     queryKey: sk.exports(pid ?? -1),
-    queryFn: async () => (await callOp('export.list', { project_id: pid, limit: 100 })) as unknown as ExportRow[],
+    queryFn: async () =>
+      ((await callOp('export.list', { project_id: pid, limit: 100 })) as unknown as { items: ExportRow[] }).items,
     enabled: pid != null,
   });
 }

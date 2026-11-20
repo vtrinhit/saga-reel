@@ -53,10 +53,10 @@ def test_create_defaults_and_slug(ctx):
     assert (a["aspect"], a["language"], a["languages"], a["genre_key"], a["target_platforms"]) == (
         "9:16", "vi", ["vi"], "series", [])
     b = call("project.create", {"name": "Truyện đêm khuya", "aspect": "16:9", "language": "en",
-                                "target_platforms": ["youtube_shorts"]}, ctx)
+                                "target_platforms": ["yt-shorts"]}, ctx)
     assert b["key"] == "truyen-dem-khuya-2"
     assert (b["aspect"], b["language"], b["languages"], b["target_platforms"]) == (
-        "16:9", "en", ["en"], ["youtube_shorts"])
+        "16:9", "en", ["en"], ["yt-shorts"])
     c = call("project.create", {"name": "!!!"}, ctx)
     assert c["key"] == "project"
     with pytest.raises(AppError) as ei:
@@ -190,3 +190,15 @@ def test_make_clip_tiny_fixture(ctx, project, make_clip_tiny):
         m = s.get(Media, a)
         assert (m.kind, m.width, m.height, m.project_id) == ("video", 64, 112, project)
         assert 900 <= m.duration_ms <= 1100
+
+
+def test_project_rejects_unknown_platform(ctx):
+    with pytest.raises(AppError) as e:
+        call("project.create", {"name": "Sai nền tảng", "target_platforms": ["tiktok", "nope"]}, ctx)
+    assert e.value.code == "unknown_platform" and e.value.status == 422
+    pid = call("project.create", {"name": "Đúng", "target_platforms": ["tiktok"]}, ctx)["id"]
+    with pytest.raises(AppError) as e2:
+        call("project.update", {"id": pid, "values": {"target_platforms": ["fb"]}}, ctx)
+    assert e2.value.code == "unknown_platform"
+    out = call("project.update", {"id": pid, "values": {"target_platforms": ["yt-shorts"]}}, ctx)
+    assert out["target_platforms"] == ["yt-shorts"]

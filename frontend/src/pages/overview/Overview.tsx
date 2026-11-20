@@ -107,11 +107,10 @@ export function Overview() {
   const exports = useQuery({
     queryKey: ['overview', pid, 'exports'],
     queryFn: async () => {
-      // `export.list` trả mảng trần (chưa phải `{items}`) — đọc cả hai dạng.
-      const r = (await callOp('export.list', { project_id: pid, status: 'done', limit: 500 })) as unknown as
-        | { sequence_id: number | null }[]
-        | { items: { sequence_id: number | null }[] };
-      return Array.isArray(r) ? r : (r.items ?? []);
+      const r = (await callOp('export.list', { project_id: pid, status: 'done', limit: 500 })) as unknown as {
+        items: { sequence_id: number | null }[];
+      };
+      return r.items ?? [];
     },
     staleTime: 60_000,
     retry: false,

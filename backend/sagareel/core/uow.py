@@ -79,6 +79,24 @@ def meaningful(snap: dict[str, Any] | None, mapper: Mapper | None = None) -> dic
     return {k: v for k, v in snap.items() if k not in skip}
 
 
+MOVE_COLUMNS = frozenset({"rank", "scene_id", "sequence_id", "clip_id", "parent_id"})
+
+
+def change_kind(before: dict[str, Any] | None, after: dict[str, Any] | None, mapper: Mapper | None = None) -> str:
+    """Loại thay đổi của một thực thể trong change set: created / deleted / moved (chỉ đổi vị trí) / updated."""
+    if before is None:
+        return "created"
+    if after is None:
+        return "deleted"
+    was, now = before.get("deleted_at"), after.get("deleted_at")
+    if was is None and now is not None:
+        return "deleted"
+    if was is not None and now is None:
+        return "created"  # khôi phục
+    changed = {k for k, v in (meaningful(after, mapper) or {}).items() if before.get(k) != v}
+    return "moved" if changed and changed <= MOVE_COLUMNS else "updated"
+
+
 def db_busy() -> AppError:
     return AppError(
         "db_busy",
@@ -128,6 +146,7 @@ class UnitOfWork(AbstractContextManager):
         self.summary = summary
         self.change_set_id: int | None = None
         self.changed: list[EntityKey] = []
+        self.kinds: list[tuple[str, int, str]] = []
         self._records: dict[EntityKey, _Record] = {}
         self._forced: dict[int, Any] = {}  # id(obj) → obj (giữ tham chiếu mạnh để id không bị tái dùng)
         self._hooks: list[CommitHook] = []
@@ -250,13 +269,17 @@ class UnitOfWork(AbstractContextManager):
         s.flush()
         self.change_set_id = cs.id if cs is not None else None
         self.changed = [key for key, _, _ in diffs]
+        self.kinds = [(et, eid, change_kind(before, after, self._records[(et, eid)].mapper))
+                      for (et, eid), before, after in diffs]
 
     def _report_committed(self) -> None:
         """Báo change set vừa commit cho op đang chạy (để `ops.execute` phát `entity.changed`)."""
         collector = committed_changes.get()
         if collector is not None and self.change_set_id is not None:
-            collector.append(CommittedChange(self.change_set_id, self.project_id, tuple(self.changed)))
+            collector.append(CommittedChange(self.change_set_id, self.project_id, tuple(self.changed),
+                                             tuple(self.kinds)))
 
     def _reset_result(self) -> None:
         self.change_set_id = None
         self.changed = []
+        self.kinds = []

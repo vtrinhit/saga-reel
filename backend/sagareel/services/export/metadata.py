@@ -137,7 +137,7 @@ def template_metadata(*, project: Mapping[str, Any], sequence: Mapping[str, Any]
     description = synopsis or nfc(project.get("description")) or title
     tags = [project.get("name") or "", project.get("genre_key") or ""]
     keywords = [w for w in {nfc(project.get("name")), nfc(sequence.get("title")), nfc(project.get("genre_key"))} if w]
-    return {"title": title, "description": description, "hashtags": [t for t in tags if t],
+    return {"title": title, "description": description, "hashtags": clean_hashtags(tags, len(tags)),
             "keywords": sorted(keywords), "pinned_comment": _PINNED.get(lang, _PINNED["en"]), "source": "template"}
 
 

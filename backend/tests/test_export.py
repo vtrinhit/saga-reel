@@ -295,7 +295,7 @@ def test_batch_platform_x_lang_and_supersede(client, settings, seq_id, fakes):
     old = call(client, "export.get", {"id": out["export_ids"][0]}).json()
     new = call(client, "export.get", {"id": again["export_ids"][0]}).json()
     assert old["status"] == "superseded" and new["status"] == "done"
-    listed = call(client, "export.list", {"project_id": new["project_id"]}).json()
+    listed = call(client, "export.list", {"project_id": new["project_id"]}).json()["items"]
     assert [r["id"] for r in listed].count(old["id"]) == 0 and len(listed) == 4
     assert not list(outdir(settings, "exports/demo/ep1").glob("*.part"))  # thư mục tạm đã đổi tên
 
@@ -341,7 +341,7 @@ def test_create_dry_run_lists_packages_without_side_effects(client, settings, se
     body = r.json()
     assert r.status_code == 200 and body["dry_run"] is True and len(body["packages"]) == 2
     assert body["packages"][0]["folder"] == "exports/demo/ep1/tiktok-vi" and "errors" in body["packages"][0]
-    assert call(client, "export.list", {}).json() == [] and fakes.renders == []
+    assert call(client, "export.list", {}).json() == {"items": []} and fakes.renders == []
     assert not (settings.outputs_dir / "exports").exists()
 
 

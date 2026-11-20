@@ -832,7 +832,7 @@ def sheet_job_done(services, job_id: int, take_id: int, look_id: int, view: str,
     """Tự chọn take đầu tiên của mỗi góc (mỏ neo/sheet còn trống). Job anchor đặt mỏ neo → gửi các góc trong `follow`."""
     set_anchor = False
     project_id = None
-    u = UnitOfWork(services.db, actor=SYSTEM_ACTOR, op_name=SHEET_JOB, summary=f"Sheet look #{look_id}: {view}")
+    u = UnitOfWork(services.db, actor=SYSTEM_ACTOR, op_name=SHEET_JOB, summary=f"Tạo sheet look #{look_id}: {view}")
     with u as s:
         lk = s.get(AssetVariant, look_id)
         if lk is None or lk.deleted_at is not None:
@@ -1032,7 +1032,7 @@ def save_drift(services, take_id: int, clip_id: int | None, result: dict[str, An
         project = s.get(Project, seq.project_id)
         threshold = int(compiler.setting(s, "library.drift_threshold", project, seq, clip))
     u = UnitOfWork(services.db, actor=SYSTEM_ACTOR, op_name=DRIFT_JOB, project_id=project.id,
-                   summary=f"Drift check clip #{clip_id}")
+                   summary=f"Kiểm tra lệch nhân vật clip #{clip_id}")
     with u as s:
         clip = s.get(Clip, clip_id)
         flags = dict(clip.flags or {})

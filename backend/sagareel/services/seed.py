@@ -245,7 +245,7 @@ def import_env(
             return _apply_env(s, None, plan)
 
     u = UnitOfWork(db, actor=actor, op_name=current_op.get() or OP_SEED_ENV, project_id=None,
-                   summary="Seed kết nối provider và cài đặt từ .env.local")
+                   summary="Nạp kết nối provider và cài đặt từ .env.local")
     with u as s:
         if not force and system_state.get(s, SEEDED_ENV_KEY) is not None:
             return EnvResult()
@@ -287,7 +287,7 @@ def seed_defaults(db: Database) -> None:
     templates = _builtin_templates()
 
     u = UnitOfWork(db, actor=SEED_ACTOR, op_name=OP_SEED_DEFAULTS, project_id=None,
-                   summary="Seed công việc LLM và template mặc định")
+                   summary="Nạp công việc LLM và template mặc định")
     with u as s:
         task_keys = set(s.scalars(select(LlmTask.key)).all())  # gồm cả dòng đã xoá mềm
         for t in tasks:
