@@ -78,6 +78,10 @@ LABELS: dict[str, str] = {
 
 # Cột không sửa được qua `patch`: khoá, dấu thời gian sổ sách, và project sở hữu (không chuyển thực thể giữa project).
 READONLY_FIELDS = frozenset({"id", "created_at", "updated_at", "deleted_at", "project_id"})
+# Thêm theo loại: `skill_file.path` quyết định file nào được ghi ra đĩa → chỉ đổi qua `skill.update` (kiểm đường dẫn).
+READONLY_BY_TYPE: dict[str, frozenset[str]] = {"skill_file": frozenset({"path"})}
+# Kiểm giá trị theo loại sau khi kiểm kiểu: `fn(session, obj, clean_values) -> clean_values` (vd. preset → validate_data).
+PATCH_VALIDATORS: dict[str, Callable[[Session, Any, dict[str, Any]], dict[str, Any]]] = {}
 
 # Cha để lần ra project_id: bảng → (cột trỏ cha, bảng cha).
 _PARENT: dict[str, tuple[str, str]] = {
@@ -214,7 +218,8 @@ def check_values(type_: str, values: dict[str, Any]) -> dict[str, Any]:
         raise AppError("unknown_field", f"{label_of(type_).capitalize()} không có trường: {', '.join(unknown)}.",
                        hint=f"Trường hợp lệ: {', '.join(sorted(set(cols) - READONLY_FIELDS))}.", status=422,
                        extra={"fields": unknown})
-    readonly = sorted(k for k in values if k in READONLY_FIELDS or secrets.is_secret(cols[k]))
+    extra_ro = READONLY_BY_TYPE.get(type_, frozenset())
+    readonly = sorted(k for k in values if k in READONLY_FIELDS or k in extra_ro or secrets.is_secret(cols[k]))
     if readonly:
         raise AppError("readonly_field", f"Không sửa được trường: {', '.join(readonly)}.", status=422,
                        extra={"fields": readonly})
@@ -290,6 +295,9 @@ def patch(
             obj = get(s, type_, id_)
             check_fresh(type_, obj, expected_updated_at)
             u.project_id = project_id_of(s, obj)
+            validator = PATCH_VALIDATORS.get(type_)
+            if validator is not None:
+                clean = validator(s, obj, clean)
             for k, v in clean.items():
                 setattr(obj, k, v)
             s.flush()

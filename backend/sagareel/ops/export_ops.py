@@ -178,7 +178,7 @@ async def export_create(ctx: OpContext, p: ExportCreateParams) -> dict:
             rep = await package.precheck(services, u["sequence_id"], u["platform"], u["lang"],
                                          split_parts=p.options.split_parts, metadata_override=p.options.metadata)
             out.append({**u, "folder": package.rel_path(services, package.package_folder(
-                services, project["key"], u["seq_key"], u["platform"], u["lang"])), **rep})
+                services, project["key"], u["seq_key"], u["platform"], u["lang"], project_id=project["id"])), **rep})
         return {"dry_run": True, "packages": out}
     batch = uuid.uuid4().hex[:12]
 
