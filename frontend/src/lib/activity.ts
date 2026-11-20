@@ -57,6 +57,22 @@ export interface PlanStep {
   cost: number | null;
 }
 
+/** Cộng lượt của các bước dry_run tới (không gồm) gate bật đầu tiên — phần sẽ chạy ngay khi bấm "Chạy". */
+export function untilFirstGate(steps: PlanStep[] | undefined): { gate: string | null; images: number; videos: number; tts: number; llm: number } {
+  const out = { gate: null as string | null, images: 0, videos: 0, tts: 0, llm: 0 };
+  for (const s of steps ?? []) {
+    if (s.gate) {
+      out.gate = s.key;
+      break;
+    }
+    out.images += s.units?.images ?? 0;
+    out.videos += s.units?.videos ?? 0;
+    out.tts += s.units?.tts ?? 0;
+    out.llm += s.llm_calls ?? 0;
+  }
+  return out;
+}
+
 /** `pipeline.run` dry_run (`engine.plan`). */
 export interface PipelinePlan {
   dry_run: true;

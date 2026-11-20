@@ -3,7 +3,6 @@ import { CircleCheck, Copy, Download, LayoutDashboard, MoreHorizontal, Trash2, U
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { callOp } from '../../api/ops';
-import { callOpLoose } from '../../api/opsLoose';
 import type { BudgetStatus, ProjectInfo, SequenceInfo, SequencePage } from '../../api/types';
 import { errText } from '../../components/clip/useRegenerate';
 import { EpisodeList, ProductionMatrix } from '../../components/pipeline/ProductionMatrix';
@@ -49,7 +48,7 @@ export function Overview() {
 
   const project = useQuery({
     queryKey: ['shell', 'project', pid],
-    queryFn: () => callOpLoose<ProjectInfo>('project.get', { id: pid }),
+    queryFn: async () => (await callOp('project.get', { id: pid })) as unknown as ProjectInfo,
     staleTime: 60_000,
     retry: false,
   });
@@ -59,7 +58,7 @@ export function Overview() {
       const out: SequenceInfo[] = [];
       let cursor: string | null = null;
       for (let g = 0; g < 20; g++) {
-        const page: SequencePage = await callOpLoose<SequencePage>('sequence.list', { project_id: pid, limit: 500, cursor });
+        const page = (await callOp('sequence.list', { project_id: pid, limit: 500, ...(cursor ? { cursor } : {}) })) as unknown as SequencePage;
         out.push(...page.items);
         if (!page.next_cursor) break;
         cursor = page.next_cursor;
@@ -94,8 +93,13 @@ export function Overview() {
   });
   const exports = useQuery({
     queryKey: ['overview', pid, 'exports'],
-    queryFn: async () =>
-      ((await callOpLoose<{ items: { sequence_id: number | null }[] }>('export.list', { project_id: pid, status: 'done', limit: 500 })).items ?? []),
+    queryFn: async () => {
+      // `export.list` trả mảng trần (chưa phải `{items}`) — đọc cả hai dạng.
+      const r = (await callOp('export.list', { project_id: pid, status: 'done', limit: 500 })) as unknown as
+        | { sequence_id: number | null }[]
+        | { items: { sequence_id: number | null }[] };
+      return Array.isArray(r) ? r : (r.items ?? []);
+    },
     staleTime: 60_000,
     retry: false,
   });

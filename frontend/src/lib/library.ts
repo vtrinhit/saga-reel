@@ -73,6 +73,8 @@ export interface Look {
   image_count: number;
   warnings: string[];
   updated_at: string;
+  /** Số clip lệch nhất quán đang dùng look này (server đếm). */
+  counts?: { drift?: number };
 }
 
 /** Tài sản ← `library.asset_out`. */
@@ -90,6 +92,8 @@ export interface Asset {
   cover_media_id: number | null;
   updated_at: string;
   looks: Look[];
+  /** Đếm phía server (`asset.list`/`asset.get`): số look, số clip lệch nhất quán đang dùng tài sản. */
+  counts?: { looks?: number; drift?: number };
 }
 
 export interface AssetPage {
