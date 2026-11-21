@@ -7,7 +7,7 @@
   sinh), mẫu chưa bị người dùng sửa được nâng lên bản mới, mẫu đã sửa giữ nguyên `data` (chỉ cập nhật
   `builtin_hash`). Chạy lười một lần mỗi tiến trình/DB (op `preset.list/get/...` và `services.export.*` gọi nó) —
   không có tác dụng phụ lúc import.
-- Kiểm tra: `platform` và `genre` chặt chẽ (pydantic); các loại khác chỉ cần là object JSON.
+- Kiểm tra: `platform` chặt chẽ (pydantic); transition/motion/subtitle_style theo bộ kiểm riêng.
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationError,
-    field_validator,
     model_validator,
 )
 from sqlalchemy import select
@@ -51,8 +50,9 @@ from sagareel.services.llm import DEFAULTS_DIR
 
 logger = logging.getLogger("sagareel.presets")
 
-KINDS = ("platform", "genre", "subtitle_style", "voice", "transition", "workflow", "channel_brand", "style_pack",
-         "motion")
+# Chỉ preset KỸ THUẬT của tool. Thể loại, phong cách, quy trình là dữ liệu của project (`project.genre`,
+# `style_block`, `workflows`), nhân bản theo project mẫu — không còn preset genre/workflow/style_pack.
+KINDS = ("platform", "subtitle_style", "transition", "motion")
 PRESETS_DIR = DEFAULTS_DIR / "presets"
 SEED_ACTOR = "system:seed"
 KEY_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -215,61 +215,7 @@ class PlatformData(_Strict):
         return self
 
 
-TRANSITIONS = Literal["cut", "crossfade", "fade", "fadeblack", "fadewhite", "dissolve"]
-
-
-def _span(v: Any) -> tuple[float, float]:
-    if not isinstance(v, (list, tuple)) or len(v) != 2:
-        raise ValueError("cần dạng [thấp, cao]")
-    lo, hi = v
-    if isinstance(lo, bool) or isinstance(hi, bool) or not all(isinstance(x, (int, float)) for x in (lo, hi)):
-        raise ValueError("cần hai số")
-    if not (0 < lo <= hi):
-        raise ValueError("cần 0 < thấp <= cao")
-    return float(lo), float(hi)
-
-
-class _Hook(_Strict):
-    window_s: float = Field(gt=0)
-    visual_in_s: float = Field(gt=0)
-
-    @model_validator(mode="after")
-    def _order(self) -> _Hook:
-        if self.visual_in_s > self.window_s:
-            raise ValueError("visual_in_s phải <= window_s")
-        return self
-
-
-class _Structure(_Strict):
-    groups: bool
-    scenes: bool
-
-
-class GenreData(BaseModel):
-    """Preset thể loại — số liệu từ craft-and-prompts.md §7.4. Khoá lạ được giữ (kênh mẫu/agent thêm được)."""
-
-    model_config = ConfigDict(extra="allow")
-
-    episode_s: tuple[float, float]
-    clip_s: tuple[float, float]
-    clips: tuple[int, int]
-    transition: TRANSITIONS
-    scene_transition: TRANSITIONS | None = None
-    scene_transition_s: float | None = Field(default=None, gt=0)
-    end: Literal["cliffhanger", "loop", "loop_or_cta", "cta", "resolve", "none"] | None = None
-    hook: _Hook | None = None
-    structure: _Structure | None = None
-    dialogue_style: Literal["narration", "dialogue", "mixed", "none"] | None = None
-    default_platforms: list[str] = Field(default_factory=list)
-
-    @field_validator("episode_s", "clip_s", "clips", mode="before")
-    @classmethod
-    def _spans(cls, v: Any) -> Any:
-        _span(v)
-        return v
-
-
-_STRICT: dict[str, type[BaseModel]] = {"platform": PlatformData, "genre": GenreData}
+_STRICT: dict[str, type[BaseModel]] = {"platform": PlatformData}
 _DOC_KEYS = frozenset({"description", "label", "note"})
 _MOTION_TYPES = frozenset({"zoom", "pan", "zoom_pan", "shake", "post"})
 _ASS_COLOUR_RE = re.compile(r"^&H[0-9A-Fa-f]{6,8}$")
@@ -631,14 +577,12 @@ def duplicate(ctx: OpContext, preset_id: int, key: str | None = None, name: str 
 
 
 def _impact_extra(s: Session, rows: list[Any]) -> dict[str, Any]:
-    """Preset đang được dùng bởi bao nhiêu project/tập (thể loại, nền tảng đích)."""
+    """Preset đang được dùng bởi bao nhiêu project/tập (nền tảng đích)."""
     used = {"projects": 0, "sequences": 0}
     projects = s.scalars(select(Project).where(Project.deleted_at.is_(None))).all()
     sequences = s.scalars(select(Sequence).where(Sequence.deleted_at.is_(None))).all()
     for r in rows:
-        if r.kind == "genre":
-            used["projects"] += sum(1 for p in projects if p.genre_key == r.key)
-        elif r.kind == "platform":
+        if r.kind == "platform":
             used["projects"] += sum(1 for p in projects if r.key in (p.target_platforms or []))
             used["sequences"] += sum(1 for q in sequences if r.key in (q.target_platforms or []))
     return {"used_by": used}

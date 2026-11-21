@@ -27,6 +27,7 @@ import {
 } from '../../lib/library';
 import { toast } from '../../stores/toast';
 import { PageHeader } from '../PageHeader';
+import { ProjectPrompts } from './ProjectPrompts';
 
 function Section({ id, title, children, note }: { id: string; title: string; note?: ReactNode; children: ReactNode }) {
   return (
@@ -130,7 +131,12 @@ function SettingsForm({ project }: { project: Project }) {
             description: typeof g.data?.description === 'string' ? g.data.description : undefined,
           }))}
           onChange={(v) => set('genre_key', v)}
-          hint="Quyết định độ dài tập, nhịp cắt và kết tập khi AI viết kịch bản."
+          hint="Nhãn thể loại của dự án. Số liệu (độ dài tập, nhịp cắt, kết tập) đi theo dự án khi tạo/nhân bản."
+        />
+        <Checkbox
+          label="Dự án mẫu — hiện trong mục Dự án mẫu để nhân bản ra dự án mới"
+          checked={form.is_sample}
+          onChange={(e) => set('is_sample', e.target.checked)}
         />
         <div className="grid gap-1.5">
           <span className="text-sm font-medium">Tỉ lệ khung</span>
@@ -166,6 +172,17 @@ function SettingsForm({ project }: { project: Project }) {
           showCount
           placeholder="vd. text, watermark, extra fingers, modern clothing"
           hint="Provider không hỗ trợ negative thì phần này bị bỏ qua (Prompt cuối có cảnh báo)."
+          className="font-mono text-sm md:text-sm"
+        />
+        <Textarea
+          id="ps-narrator"
+          label="Giọng người kể"
+          value={form.narrator_voice}
+          onChange={(e) => set('narrator_voice', e.target.value)}
+          minRows={1}
+          maxRows={4}
+          placeholder="vd. a calm, warm adult Vietnamese man's voice, speaking slowly"
+          hint="Biến narrator_voice của prompt video: giữ giọng voice-over đồng nhất giữa các clip."
           className="font-mono text-sm md:text-sm"
         />
       </Section>
@@ -256,7 +273,7 @@ function SettingsForm({ project }: { project: Project }) {
   );
 }
 
-/** `/p/:pid/settings` — cài đặt dự án: chung, phong cách, ngôn ngữ + nền tảng, giọng. */
+/** `/p/:pid/settings` — cài đặt dự án: chung, phong cách, ngôn ngữ + nền tảng, giọng; bộ prompt của dự án. */
 export function ProjectSettingsPage() {
   const { projectId } = useParams();
   const pid = pidOf(projectId);
@@ -267,7 +284,10 @@ export function ProjectSettingsPage() {
       {project.isError ? (
         <ErrorState what="Không tải được cài đặt dự án" error={project.error} onRetry={() => void project.refetch()} />
       ) : project.data ? (
-        <SettingsForm key={project.data.id} project={project.data} />
+        <>
+          <SettingsForm key={project.data.id} project={project.data} />
+          <ProjectPrompts projectId={project.data.id} />
+        </>
       ) : (
         <SkeletonRows count={8} />
       )}

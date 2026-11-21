@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sagareel.core.context import OpContext
 from sagareel.core.errors import ValidationFailed
 from sagareel.db.models import Sequence
-from sagareel.services import entities, presets, projects
+from sagareel.services import entities, genres, projects, samples
 from sagareel.services import sequences as seq_svc
 from sagareel.services.pipeline import engine
 from sagareel.services.pipeline import workflow as W
@@ -18,22 +18,48 @@ from sagareel.services.story import text as T
 from sagareel.services.story import writer
 
 
-def _genre(ctx: OpContext, genre: str, project_id: int | None) -> dict[str, Any]:
-    presets.ensure_builtins(ctx.services)
+def _genre(ctx: OpContext, genre: str, project_id: int | None, from_project_id: int | None = None) -> dict[str, Any]:
+    """Số liệu thể loại: của dự án đích (hoặc dự án nguồn sẽ nhân bản) nếu cùng thể loại, không thì số liệu tham khảo."""
     with ctx.services.db.session() as s:
-        row = presets.find_row(s, "genre", genre, project_id)
-        if row is None:
-            raise ValidationFailed(f"Không có preset thể loại '{genre}'.", code="genre_unknown",
-                                   hint="Gọi preset.list kind=genre (storyboard, montage, series, serial, narration).")
-        return dict(row.data)
+        for pid in (project_id, from_project_id):
+            if pid is not None:
+                p = entities.get(s, "project", pid)
+                if p.genre and p.genre_key == genre:
+                    return dict(p.genre)
+    ref = genres.reference(genre)
+    if ref is None:
+        raise ValidationFailed(f"Không có số liệu thể loại '{genre}'.", code="genre_unknown",
+                               hint="Thể loại tham khảo: " + ", ".join(x["key"] for x in genres.references()) + ".")
+    return ref
+
+
+def _prompt_warnings(ctx: OpContext, project_id: int | None) -> list[dict[str, Any]]:
+    """Cảnh báo prompt (tĩnh, không chặn) của dự án sẽ chạy; chưa có dự án nguồn → mọi bước AI viết sẽ chờ nhập."""
+    from sagareel.services import prompts
+
+    if project_id is None:
+        return [{"key": "", "code": "prompt_missing", "message": "Không có dự án mẫu cùng thể loại: dự án mới trống, các "
+                 "bước AI viết sẽ dừng chờ nhập (viết prompt bằng prompt.set hoặc gửi kết quả bằng story.submit)."}]
+    with ctx.services.db.session() as s:
+        return prompts.check_session(s, project_id)["warnings"]
+
+
+def _source(ctx: OpContext, genre: str, from_project_id: int | None) -> int | None:
+    """Dự án nguồn để nhân bản (prompt + phong cách): chỉ định rõ, hoặc dự án mẫu ứng với thể loại."""
+    if from_project_id is not None:
+        return from_project_id
+    with ctx.services.db.session() as s:
+        row = samples.find_sample(s, genre)
+        return row.id if row is not None else None
 
 
 def estimate(ctx: OpContext, *, idea: str, genre: str, episodes: int, clips_per_episode: int,
              workflow_key: str = W.DEFAULT_WORKFLOW, project_id: int | None = None,
-             steps: dict[str, bool] | None = None) -> dict[str, Any]:
-    g = _genre(ctx, genre, project_id)
+             steps: dict[str, bool] | None = None, from_project_id: int | None = None) -> dict[str, Any]:
+    src = None if project_id is not None else _source(ctx, genre, from_project_id)
+    g = _genre(ctx, genre, project_id, src)
     with ctx.services.db.session() as s:
-        wf = W.load(s, workflow_key, project_id)
+        wf = W.load(s, workflow_key, project_id if project_id is not None else src)
         enabled = [x["step"] for x in W.apply_overrides(wf, dict(steps or {})) if x["enabled"]]
         conns = {k: writer.setting(s, f"{k}.connection") for k in ("image", "video")}
     warnings: list[dict[str, Any]] = []
@@ -59,18 +85,21 @@ def estimate(ctx: OpContext, *, idea: str, genre: str, episodes: int, clips_per_
     return {"dry_run": True, "idea": T.clip_text(idea, 200), "genre": genre, "workflow": workflow_key,
             "steps": enabled, "episodes": episodes, "clips": clips, "images": images, "videos": videos,
             "still_motion_clips": clips if still else 0, "llm_calls": int(llm_calls), "seconds": seconds,
-            "connections": conns,
-            "gates": [x for x in enabled if W.is_gate(x)], "warnings": warnings}
+            "connections": conns, "from_project_id": src,
+            "gates": [x for x in enabled if W.is_gate(x)], "warnings": warnings,
+            "prompt_warnings": _prompt_warnings(ctx, project_id if project_id is not None else src)}
 
 
 def create(ctx: OpContext, *, idea: str, genre: str, episodes: int, clips_per_episode: int,
            workflow_key: str = W.DEFAULT_WORKFLOW, project_id: int | None = None, name: str | None = None,
-           steps: dict[str, bool] | None = None, platforms: list[str] | None = None) -> dict[str, Any]:
+           steps: dict[str, bool] | None = None, platforms: list[str] | None = None,
+           from_project_id: int | None = None) -> dict[str, Any]:
     est = estimate(ctx, idea=idea, genre=genre, episodes=episodes, clips_per_episode=clips_per_episode,
-                   workflow_key=workflow_key, project_id=project_id, steps=steps)
+                   workflow_key=workflow_key, project_id=project_id, steps=steps, from_project_id=from_project_id)
     if project_id is None:
         title = (name or T.clip_text(idea.strip().splitlines()[0], 60)).strip() or "Dự án mới"
-        project_id = projects.create(ctx, name=title, genre_key=genre,
+        project_id = projects.create(ctx, name=title, genre_key=genre, from_project_id=est["from_project_id"],
+                                     include={"library": False},
                                      target_platforms=list(platforms) if platforms else None)["id"]
     else:
         with ctx.services.db.session() as s:

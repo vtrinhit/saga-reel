@@ -1,4 +1,4 @@
-"""Cài đặt toàn cục và template prompt."""
+"""Cài đặt toàn cục và trạng thái nội bộ."""
 
 from __future__ import annotations
 
@@ -6,10 +6,9 @@ from typing import Any
 
 from datetime import datetime
 
-from sqlalchemy import Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from sagareel.db.base import Base, JSONDict, JSONValueType, Plain, Tracked, utcnow
+from sagareel.db.base import Base, JSONDict, JSONValueType, Plain, utcnow
 
 
 class GlobalSettings(Plain, Base):
@@ -32,13 +31,3 @@ class SystemState(Plain, Base):
     key: Mapped[str] = mapped_column(unique=True)
     value: Mapped[Any] = mapped_column(JSONValueType(), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
-
-
-class Template(Tracked, Base):
-    __tablename__ = "template"
-
-    key: Mapped[str] = mapped_column(unique=True)
-    kind: Mapped[str]
-    body: Mapped[str] = mapped_column(Text)
-    locked: Mapped[bool] = mapped_column(default=False)
-    builtin_hash: Mapped[str] = mapped_column(default="")

@@ -469,7 +469,7 @@ export function AppShell() {
   const sequenceList = useSequenceList(ready ? projectId : null);
   const sequence = useSequence(ready ? seqId : null);
   const seqStatus = useSequenceStatus(ready ? seqId : null);
-  const workflows = useWorkflowPresets(ready && !!seqId);
+  const workflows = useWorkflowPresets(projectId ?? null, ready && !!seqId);
   const history = useHistory(ready ? projectId : null);
   const jobs = useProjectJobs(projectId, ready);
   const pipelines = useShellPipelines(projectId, ready);

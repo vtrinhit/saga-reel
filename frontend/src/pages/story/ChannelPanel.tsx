@@ -180,8 +180,8 @@ function Facts({ rows }: { rows: [string, string | null | undefined][] }) {
 function StudyDetail({ id, projectId, viewer }: { id: number; projectId: number; viewer: boolean }) {
   const qc = useQueryClient();
   const [jobId, setJobId] = useState<number | null>(null);
-  const [make, setMake] = useState({ genre_preset: true, style_pack: true, library_suggestions: true });
-  const [applied, setApplied] = useState<{ presets?: { kind: string; key: string; name: string }[]; library_suggestions?: unknown[] } | null>(null);
+  const [make, setMake] = useState({ genre: true, style: true, library_suggestions: true });
+  const [applied, setApplied] = useState<{ project_id?: number; applied?: string[]; library_suggestions?: unknown[] } | null>(null);
   const study = useQuery({
     queryKey: ['story', 'study', id],
     queryFn: async () => (await callOp('channel.study_get', { id })) as unknown as Study,
@@ -203,7 +203,8 @@ function StudyDetail({ id, projectId, viewer }: { id: number; projectId: number;
     mutationFn: async () => (await callOp('channel.apply', { study_id: id, project_id: projectId, make })) as unknown as typeof applied,
     onSuccess: (r) => {
       setApplied(r);
-      toast({ message: 'Đã tạo preset từ kênh mẫu — xem ở Mẫu.', tone: 'success' });
+      void qc.invalidateQueries({ queryKey: ['projects'] });
+      toast({ message: 'Đã ghi kết quả phân tích vào dự án — xem ở Cài đặt dự án.', tone: 'success' });
     },
     onError: (e) => toast({ message: errorMessage(e, 'Không áp dụng được kết quả phân tích.'), tone: 'error' }),
   });
@@ -265,23 +266,21 @@ function StudyDetail({ id, projectId, viewer }: { id: number; projectId: number;
           {!viewer ? (
             <div className="grid gap-1 border-t border-line-1 pt-3">
               <p className="text-sm font-medium">Áp dụng cho dự án</p>
-              <Checkbox label="Tạo preset thể loại (độ dài tập, nhịp, hook)" checked={make.genre_preset} onChange={(e) => setMake({ ...make, genre_preset: e.target.checked })} />
-              <Checkbox label="Tạo style pack (khối phong cách + negative)" checked={make.style_pack} onChange={(e) => setMake({ ...make, style_pack: e.target.checked })} />
+              <Checkbox label="Số liệu thể loại của dự án (độ dài tập, nhịp, hook)" checked={make.genre} onChange={(e) => setMake({ ...make, genre: e.target.checked })} />
+              <Checkbox label="Khối phong cách và negative của dự án" checked={make.style} onChange={(e) => setMake({ ...make, style: e.target.checked })} />
               <Checkbox label="Gợi ý nhân vật/bối cảnh cho Thư viện (không tự tạo)" checked={make.library_suggestions} onChange={(e) => setMake({ ...make, library_suggestions: e.target.checked })} />
               <Button
                 variant="primary"
                 icon={PackagePlus}
                 className="mt-1 justify-self-start"
                 loading={apply.isPending}
-                disabled={!make.genre_preset && !make.style_pack && !make.library_suggestions}
+                disabled={!make.genre && !make.style && !make.library_suggestions}
                 onClick={() => apply.mutate()}
               >
                 Áp dụng
               </Button>
-              {applied?.presets?.length ? (
-                <p className="text-xs text-fg-2">
-                  Đã tạo: {applied.presets.map((p) => `${p.name} (${p.kind}/${p.key})`).join(', ')}.
-                </p>
+              {applied?.applied?.length ? (
+                <p className="text-xs text-fg-2">Đã ghi vào dự án: {applied.applied.join(', ')}.</p>
               ) : null}
             </div>
           ) : null}

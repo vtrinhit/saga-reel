@@ -10,7 +10,7 @@ from sagareel.container import Services
 from sagareel.core import ops
 from sagareel.core.context import OpContext
 from sagareel.core.events import Event, EventBus
-from sagareel.db.models import Template
+from sagareel.db.models import SkillFile
 
 
 async def take(sub, n):
@@ -306,7 +306,7 @@ def tpl_ops():
             return {"ids": ids}
         for i in range(2):
             with ctx.uow("Tạo template") as s:
-                t = Template(key=f"tpl.{p.body}.{i}", kind="prompt", body=p.body)
+                t = SkillFile(path=f"tpl.{p.body}.{i}", body=p.body)
                 s.add(t)
                 s.flush()
                 ids.append(t.id)
@@ -319,7 +319,7 @@ def tpl_ops():
         def work():
             u = ctx.uow("Tạo template")
             with u as s:
-                t = Template(key=f"tpl.a.{p.body}", kind="prompt", body=p.body)
+                t = SkillFile(path=f"tpl.a.{p.body}", body=p.body)
                 s.add(t)
                 s.flush()
                 return t.id
@@ -347,7 +347,7 @@ async def test_invoke_publishes_entity_changed_once_per_op(ctx, tpl_ops):
     evs = [e async for e in take(sub, 1)]
     ev = evs[0]
     assert ev.type == "entity.changed" and ev.project_id == 7
-    assert ev.data["entities"] == [["template", out["ids"][0]], ["template", out["ids"][1]]]
+    assert ev.data["entities"] == [["skill_file", out["ids"][0]], ["skill_file", out["ids"][1]]]
     assert isinstance(ev.data["change_set"], list) and len(ev.data["change_set"]) == 2
     assert bus.last_seq == 1  # đúng một sự kiện cho cả op
 
@@ -359,7 +359,7 @@ async def test_execute_async_op_publishes_single_change_set(ctx, tpl_ops):
     out = await ops.execute(ops.get_spec("test.tpl_create_async"), _TplParams(body="z"), ctx)
     ev = [e async for e in take(sub, 1)][0]
     assert ev.type == "entity.changed" and isinstance(ev.data["change_set"], int)
-    assert ev.data["entities"] == [["template", out["id"]]]
+    assert ev.data["entities"] == [["skill_file", out["id"]]]
 
 
 async def test_no_change_publishes_nothing(ctx, tpl_ops):
@@ -389,7 +389,7 @@ async def test_history_op_publishes_with_uow_project(ctx, tpl_ops):
     await ops.invoke("history.undo", {"project_id": 7}, ctx0)
     ev = [e async for e in take(sub, 1)][0]
     assert ev.type == "entity.changed" and ev.project_id == 7
-    assert ev.data["entities"] == [["template", out["id"]]]
+    assert ev.data["entities"] == [["skill_file", out["id"]]]
 
 
 class _BrokenBus:
@@ -411,5 +411,5 @@ async def test_entity_changed_failure_never_masks_op_result_or_error(ctx, tpl_op
 def test_uow_outside_op_does_not_collect(ctx):
     # UoW chạy ngoài op: không có collector, không lỗi, không phát gì
     with ctx.uow(op_name="test.direct") as s:
-        s.add(Template(key="tpl.direct", kind="prompt", body="d"))
+        s.add(SkillFile(path="tpl.direct", body="d"))
     assert ctx.services.bus.last_seq == 0

@@ -1,7 +1,7 @@
 """Định tuyến LLM theo công việc (spec §7.3) và chạy một công việc LLM có chuỗi dự phòng.
 
-- Công việc (`llm_task`) và template (`template`) là dữ liệu có lịch sử; bản mặc định nằm ở
-  `defaults/llm_tasks.yaml` + `defaults/templates/<key>.md` (seed vào DB ở Task 15).
+- Công việc (`llm_task`) là dữ liệu có lịch sử (bản mặc định `defaults/llm_tasks.yaml`). Nội dung prompt thuộc
+  project (`services/prompts.body`, bảng `project_prompt`); thiếu → `prompt_missing` (không có bộ prompt chung).
 - `routes(session, task_key, override)` → danh sách `Route` theo thứ tự thử: route chính = override của lần chạy
   (nếu có kết nối) → `llm_task.route` → kết nối LLM đang bật đầu tiên; sau đó `fallbacks`. Công việc cần ảnh bỏ các
   kết nối không có vision. Không còn route nào → `AppError("llm_not_configured")` (409) kèm gợi ý hai cách viết khác.
@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from sagareel.core import templating
 from sagareel.core.errors import AppError, NotFound
-from sagareel.db.models import LlmTask, ProviderConnection, Template
+from sagareel.db.models import LlmTask, ProviderConnection
 from sagareel.providers import registry
 from sagareel.providers.base import (
     CapabilityError,
@@ -54,8 +54,6 @@ if TYPE_CHECKING:
 
 DEFAULTS_DIR = Path(__file__).resolve().parent.parent / "defaults"
 TASKS_PATH = DEFAULTS_DIR / "llm_tasks.yaml"
-TEMPLATES_DIR = DEFAULTS_DIR / "templates"
-TEMPLATE_KIND = "llm"
 JOB_TYPE = "llm.run"
 DELTA_EVENT = "llm.delta"
 DELTA_INTERVAL_S = 0.1  # ≤ 10 sự kiện llm.delta mỗi giây cho một job
@@ -73,7 +71,7 @@ INPUT_ERRORS = frozenset({"llm_image_unreadable"})
 
 
 def default_tasks() -> list[dict[str, Any]]:
-    """14 công việc mặc định từ `llm_tasks.yaml` (bản sao mới mỗi lần gọi)."""
+    """Công việc mặc định từ `llm_tasks.yaml` (bản sao mới mỗi lần gọi)."""
     raw = yaml.safe_load(TASKS_PATH.read_text(encoding="utf-8")) or []
     tasks = []
     for item in raw:
@@ -82,20 +80,6 @@ def default_tasks() -> list[dict[str, Any]]:
             raise ValueError(f"llm_tasks.yaml: công việc {item.get('key')!r} thiếu {missing}")
         tasks.append({f: item[f] for f in _TASK_FIELDS})
     return tasks
-
-
-def builtin_template(key: str) -> str | None:
-    """Nội dung template cài sẵn `templates/<key>.md` (xuống dòng chuẩn hoá `\\n`), `None` nếu không có."""
-    from sagareel.compile import compiler  # import muộn: compiler phụ thuộc services
-
-    if key in compiler.TEMPLATE_KINDS:  # template prompt compiler (`*.j2`): image.synced, motion.synced, sheet.*
-        return compiler.builtin_body(key)
-    if not KEY_RE.match(key or ""):
-        return None
-    path = TEMPLATES_DIR / f"{key}.md"
-    if not path.is_file():
-        return None
-    return path.read_bytes().decode("utf-8").replace("\r\n", "\n")
 
 
 def body_hash(body: str) -> str:
@@ -153,12 +137,27 @@ def get_task(session: Session, key: str) -> LlmTask:
     return row
 
 
-def get_template(session: Session, key: str) -> Template:
-    row = session.scalars(select(Template).where(Template.key == key, Template.deleted_at.is_(None))).first()
-    if row is None:
-        raise NotFound(f"Không có template '{key}'.", code="template_not_found",
-                       hint="Gọi template.list để xem các template.")
-    return row
+def with_output_format(messages: list[dict], key: str) -> list[dict]:
+    """Nối khối định dạng đầu ra của tool (prompt_contracts.output_format) vào tin nhắn system đầu tiên (không có thì
+    thêm một tin nhắn system ở đầu). Prompt của dự án chỉ giữ phần sáng tạo."""
+    from sagareel.compile import prompt_contracts
+
+    fmt = prompt_contracts.output_format(key)
+    if not fmt:
+        return messages
+    out = [dict(m) for m in messages]
+    if out and out[0].get("role") == "system":
+        out[0]["content"] = out[0]["content"].rstrip() + "\n\n" + fmt
+    else:
+        out.insert(0, {"role": "system", "content": fmt})
+    return out
+
+
+def template_body(session: Session, key: str, project_id: int | None = None) -> str:
+    """Nội dung prompt `key` của project (bảng `project_prompt`); thiếu → `prompt_missing`. Không có bộ chung."""
+    from sagareel.services import prompts
+
+    return prompts.body(session, key, project_id)
 
 
 def normalize_route(raw: Any) -> dict[str, Any]:
@@ -278,6 +277,12 @@ def _candidates(
     return out
 
 
+def first_connection(session: Session, task_key: str, *, images: bool = False) -> tuple[Route, ProviderConnection]:
+    """Route + kết nối đầu tiên sẽ dùng (chọn lane/ước tính trước khi tạo job; không render prompt)."""
+    task = get_task(session, task_key)
+    return _candidates(session, task, None, bool(task.needs_vision or images))[0]
+
+
 def routes(session: Session, task_key: str, override: dict | None = None, *, images: bool = False) -> list[Route]:
     """Các route sẽ thử cho `task_key`, theo thứ tự. Không có → `llm_not_configured`."""
     task = get_task(session, task_key)
@@ -285,13 +290,14 @@ def routes(session: Session, task_key: str, override: dict | None = None, *, ima
 
 
 def plan(session: Session, task_key: str, variables: dict, override: dict | None = None, *,
-         images: bool = False) -> Plan:
-    """Đọc công việc + template + route, render tin nhắn. Lỗi cấu hình/biến thiếu ném `AppError` ngay."""
+         images: bool = False, project_id: int | None = None) -> Plan:
+    """Đọc công việc + prompt của project `project_id` + route, render tin nhắn. Lỗi cấu hình/biến/prompt thiếu ném
+    `AppError` ngay."""
     task = get_task(session, task_key)
     need_vision = bool(task.needs_vision or images)
     candidates = _candidates(session, task, override, need_vision)
-    template = get_template(session, task.template_key)
-    messages = templating.render_messages(template.body, variables)
+    messages = with_output_format(templating.render_messages(template_body(session, task.template_key, project_id),
+                                                             variables), task.template_key)
     return Plan(task_key=task.key, template_key=task.template_key, json_mode=bool(task.json_mode),
                 needs_vision=need_vision, messages=messages,
                 candidates=[(route, to_connection(row)) for route, row in candidates])
@@ -322,9 +328,10 @@ def parse_json(text: str) -> dict | list:
 # --- Chạy -----------------------------------------------------------------------------------------------------------
 
 
-def _plan_sync(services: Services, task_key: str, variables: dict, override: dict | None, images: bool) -> Plan:
+def _plan_sync(services: Services, task_key: str, variables: dict, override: dict | None, images: bool,
+               project_id: int | None = None) -> Plan:
     with services.db.session() as s:
-        return plan(s, task_key, variables, override, images=images)
+        return plan(s, task_key, variables, override, images=images, project_id=project_id)
 
 
 def _attempt(route: Route, *, ok: bool, started: float, result: LLMResult | None = None,
@@ -367,15 +374,18 @@ async def run_task(
     on_delta: Callable[[str], None] | None = None,
     on_attempt: Callable[[int, Route], None] | None = None,
     log: Callable[[str, str], None] | None = None,
+    project_id: int | None = None,
 ) -> LLMOutcome:
     """Chạy công việc LLM `task_key` với `variables`; thử lần lượt các route. Cấu hình đọc lại ở mỗi lần gọi.
+    Prompt lấy từ project `project_id` (`project_prompt`); thiếu → `prompt_missing`.
 
     `on_attempt(i, route)` được gọi trước mỗi lần thử (i > 0 = chuyển sang dự phòng: chữ đã stream của lần trước bỏ
     đi). `log(level, msg)` nhận một dòng `llm_call` cho mỗi lần gọi. Mọi route thất bại → `TransientError` (nếu có
     lỗi tạm thời, job thử lại sau) hoặc `JobFailed`.
     """
     images = list(images)
-    p = await anyio.to_thread.run_sync(_plan_sync, services, task_key, dict(variables), override, bool(images))
+    p = await anyio.to_thread.run_sync(_plan_sync, services, task_key, dict(variables), override, bool(images),
+                                       project_id)
     attempts: list[dict] = []
 
     def record(a: dict) -> None:
@@ -529,7 +539,8 @@ async def llm_run_job(run: JobRun) -> dict:
 
     try:
         outcome = await run_task(services, p["task"], dict(p.get("variables") or {}), images=images,
-                                 override=p.get("override"), on_delta=on_delta, on_attempt=on_attempt, log=run.log)
+                                 override=p.get("override"), on_delta=on_delta, on_attempt=on_attempt, log=run.log,
+                                 project_id=project_id)
     finally:
         throttle.flush()
     return json.loads(json.dumps(outcome.to_dict(), default=str))
@@ -543,7 +554,7 @@ def submit_run(services: Services, task_key: str, variables: dict, *, override: 
             m = media.get(s, mid)
             if m.kind != "image":
                 raise AppError("media_kind_mismatch", f"Media #{mid} là {m.kind}, LLM chỉ nhận ảnh.", status=422)
-        p = plan(s, task_key, variables, override, images=bool(images_media_ids))
+        p = plan(s, task_key, variables, override, images=bool(images_media_ids), project_id=project_id)
     route, conn = p.candidates[0]
     params = {"task": task_key, "variables": variables, "override": override, "images_media_ids": images_media_ids}
     estimate = {"kind": "llm", "units": 1, "task": task_key, "route": route.to_dict(), "connection_id": conn.id,
@@ -554,6 +565,6 @@ def submit_run(services: Services, task_key: str, variables: dict, *, override: 
 
 __all__ = [
     "DELTA_EVENT", "JOB_TYPE", "NOT_CONFIGURED_HINT", "DeltaThrottle", "LLMOutcome", "Plan", "Route", "body_hash",
-    "builtin_template", "default_tasks", "find_connection", "get_task", "get_template", "normalize_route",
-    "parse_json", "plan", "routes", "run_task", "submit_run", "supports_vision",
+    "default_tasks", "find_connection", "first_connection", "get_task", "normalize_route",
+    "parse_json", "plan", "routes", "run_task", "submit_run", "supports_vision", "template_body",
 ]

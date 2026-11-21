@@ -26,6 +26,7 @@ class AppSettings:
     host: str = "127.0.0.1"
     port: int = 8990
     public_hosts: tuple[str, ...] = ()
+    seed_samples: bool = True  # khởi động: tạo dự án mẫu + chép prompt mẫu cho dự án cũ (test tắt)
 
 
 def _under(root: Path, value: Path | str) -> Path:

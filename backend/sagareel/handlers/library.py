@@ -87,7 +87,8 @@ async def _llm_check(run: JobRun, task_key: str, build) -> tuple[dict[str, Any],
         raise JobFailed("media_kind_mismatch", f"Take #{p['take_id']} không phải ảnh/video.")
     images = [path for _r, path in info["refs"]] + [frame_path]
     run.progress(None, stage="Đang hỏi LLM vision")
-    outcome = await llm.run_task(services, task_key, {"input": build(info)}, images=images, log=run.log)
+    outcome = await llm.run_task(services, task_key, {"input": build(info)}, images=images, log=run.log,
+                                 project_id=run.project_id)
     data = outcome.data if isinstance(outcome.data, dict) else {}
     return data, outcome
 

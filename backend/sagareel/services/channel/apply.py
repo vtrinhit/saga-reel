@@ -1,4 +1,6 @@
-"""`channel.apply`: biến kết quả phân tích thành preset genre/style_pack (không builtin) + gợi ý Library (không tự tạo)."""
+"""`channel.apply`: ghi kết quả phân tích kênh mẫu vào MỘT dự án (số liệu thể loại → `project.genre`, phong cách →
+`style_block`/`negative_block`) + gợi ý Library (không tự tạo). Không có dự án đích → tạo dự án mẫu mới (nhân bản prompt
+từ dự án mẫu cài sẵn gần nhất) để nhân bản cho các dự án sau."""
 
 from __future__ import annotations
 
@@ -9,21 +11,12 @@ from typing import Any
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError
 from sagareel.db.models import ChannelStudy
-from sagareel.services import entities, presets
+from sagareel.services import entities
 
 
 def _slug(text: str) -> str:
     t = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
     return re.sub(r"[^a-z0-9]+", "-", t).strip("-")[:30] or "kenh"
-
-
-def _free_key(ctx: OpContext, kind: str, base: str, project_id: int | None) -> str:
-    with ctx.services.db.session() as s:
-        for i in range(1, 100):
-            key = base if i == 1 else f"{base}-{i}"
-            if not presets._key_taken(s, kind, key, project_id):
-                return key
-    raise AppError("preset_key_taken", "Không tìm được key preset trống.", status=409)
 
 
 def genre_data(agg: dict[str, Any], title: str, study_id: int) -> dict[str, Any]:
@@ -36,23 +29,17 @@ def genre_data(agg: dict[str, Any], title: str, study_id: int) -> dict[str, Any]
         "transition": g["transition"], "end": g["end"], "hook": g["hook"],
         "structure": {"groups": False, "scenes": False},
         "dialogue_style": g["dialogue_style"],
-        "script_template": "write_script", "default_platforms": [],
+        "default_platforms": [],
         "source": {"channel_study_id": study_id, "hook_patterns": agg["hook"]["patterns"],
                    "beats": agg["structure"]["beats"]},
     }
 
 
-def style_pack_data(agg: dict[str, Any], title: str, study_id: int) -> dict[str, Any]:
+def style_data(agg: dict[str, Any]) -> dict[str, str]:
     st = agg["style"]
     block = agg["style_block"] or ", ".join(
         x for x in (st["rendering"], st["lighting"], st["lens"], *st["palette"], *st["look_words"]) if x)
-    return {
-        "label": f"{title} - phong cách", "description": f"Phong cách rút từ kênh mẫu '{title}'.",
-        "style_block": block, "negative_block": agg["negative_block"], "palette": st["palette"],
-        "look_words": st["look_words"], "lighting": st["lighting"], "lens": st["lens"],
-        "rendering": st["rendering"], "subtitles": agg["subtitles"],
-        "source": {"channel_study_id": study_id},
-    }
+    return {"style_block": block, "negative_block": agg["negative_block"] or ""}
 
 
 def library_suggestions(agg: dict[str, Any]) -> list[dict[str, Any]]:
@@ -64,8 +51,10 @@ def library_suggestions(agg: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def apply(ctx: OpContext, study_id: int, project_id: int | None, genre_preset: bool, style_pack: bool,
+def apply(ctx: OpContext, study_id: int, project_id: int | None, genre: bool, style: bool,
           library: bool) -> dict[str, Any]:
+    from sagareel.services import genres, projects, samples
+
     with ctx.services.db.session() as s:
         st = entities.get(s, "channel_study", study_id)
         if not isinstance(st, ChannelStudy) or st.status != "done" or not (st.result or {}).get("aggregate"):
@@ -73,22 +62,25 @@ def apply(ctx: OpContext, study_id: int, project_id: int | None, genre_preset: b
                            hint="Chạy channel.analyze và đợi job xong trước.")
         agg = st.result["aggregate"]
         title = st.title
-        scope = project_id if project_id is not None else st.project_id
-    out: dict[str, Any] = {"study_id": study_id, "genre_preset": None, "style_pack": None, "library_suggestions": []}
-    base = _slug(title)
-    if genre_preset:
-        key = _free_key(ctx, "genre", f"{base}-{study_id}", scope)
-        out["genre_preset"] = _brief(presets.create(ctx, "genre", key, f"{title} - thể loại",
-                                                    genre_data(agg, title, study_id), scope))
-    if style_pack:
-        key = _free_key(ctx, "style_pack", f"{base}-{study_id}", scope)
-        out["style_pack"] = _brief(presets.create(ctx, "style_pack", key, f"{title} - phong cách",
-                                                  style_pack_data(agg, title, study_id), scope))
-    if library:
-        out["library_suggestions"] = library_suggestions(agg)
-    return out
-
-
-def _brief(p: dict[str, Any]) -> dict[str, Any]:
-    return {k: p.get(k) for k in ("id", "kind", "key", "name", "project_id", "builtin")}
-
+        target = project_id if project_id is not None else st.project_id
+        created = target is None
+        if created:
+            style_kind = agg["genre_suggestion"].get("dialogue_style")
+            src = samples.find_sample(s, "narration" if style_kind == "narration" else "series")
+            src_id = src.id if src is not None else None
+    if created:
+        p = projects.create(ctx, f"Mẫu · {title}"[:200], from_project_id=src_id, include={"library": False})
+        projects.update(ctx, p["id"], {"is_sample": True,
+                                       "description": f"Dự án mẫu rút từ kênh '{title}' (phân tích #{study_id})."})
+        target = p["id"]
+    values: dict[str, Any] = {}
+    if genre:
+        with ctx.services.db.session() as s:
+            current = dict(entities.get(s, "project", target).genre or {})
+        values["genre"] = genres.validate({**current, **genre_data(agg, title, study_id)})
+    if style:
+        values.update(style_data(agg))
+    if values:
+        projects.update(ctx, target, values)
+    return {"study_id": study_id, "project_id": target, "created_project": created,
+            "applied": sorted(values), "library_suggestions": library_suggestions(agg) if library else []}

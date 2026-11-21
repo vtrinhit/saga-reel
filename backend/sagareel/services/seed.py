@@ -1,10 +1,9 @@
 """Seed dữ liệu mặc định và kết nối provider từ `.env.local` (lần chạy đầu).
 
-- `seed_defaults(db)` — chạy mỗi lần khởi động, idempotent: chèn `llm_task` / `template` (LLM `*.md` + compiler
-  `*.j2`: `image.synced`, `motion.synced`, `sheet.*`) còn thiếu theo `key` (kể cả
-  key thuộc dòng đã xoá mềm thì coi là "đã có" — không hồi sinh, không vướng unique). Template **chưa sửa**
-  (`sha256(body) == builtin_hash`) được nâng lên bản cài sẵn mới; template người dùng đã sửa giữ nguyên `body`, chỉ cập
-  nhật `builtin_hash` (nên vẫn hiện "đã sửa" so với bản cài sẵn hiện tại). Công việc LLM đã có không bị đổi.
+- `seed_defaults(db)` — chạy mỗi lần khởi động, idempotent: chèn `llm_task` còn thiếu theo `key` (kể cả key thuộc
+  dòng đã xoá mềm thì coi là "đã có" — không hồi sinh, không vướng unique). Công việc LLM đã có không bị đổi.
+- `seed_samples(db)` — dự án mẫu còn thiếu (`services/samples.seed`) + chép prompt mẫu một lần cho dự án cũ chưa có
+  prompt (`samples.backfill_once`). Prompt là dữ liệu của project, không có bộ template chung.
 - `seed_from_env(db, env_file)` — chỉ chạy khi `system_state["seeded_env_at"]` chưa có (`force=True` bỏ qua cờ, dùng
   cho op `provider.import_env`). Không có file → không làm gì, không đặt cờ (file thêm sau thì lần khởi động sau seed).
   Tạo kết nối chưa có theo tên (tên đã có — kể cả đã xoá mềm — thì bỏ qua):
@@ -41,7 +40,7 @@ from sagareel.core.ops import current_op
 from sagareel.core.resolver import Resolver, default_resolver
 from sagareel.core.uow import UnitOfWork
 from sagareel.db.base import utcnow
-from sagareel.db.models import GlobalSettings, LlmTask, ProviderConnection, Template
+from sagareel.db.models import GlobalSettings, LlmTask, ProviderConnection
 from sagareel.db.session import Database
 from sagareel.services import llm, system_state
 from sagareel.services.settings import GLOBAL_ID
@@ -261,47 +260,25 @@ def seed_from_env(db: Database, env_file: Path, *, force: bool = False, resolver
 # --- Dữ liệu mặc định -------------------------------------------------------------------------------------------------
 
 
-def _builtin_templates() -> dict[str, tuple[str, str]]:
-    """key → (kind, body): template LLM (`defaults/templates/*.md`, kind `llm`) + template của prompt compiler
-    (`image.synced`, `motion.synced`, `sheet.<kind>` từ `*.j2`, kind `image`/`motion`/`sheet`)."""
-    from sagareel.compile import compiler
-
-    out: dict[str, tuple[str, str]] = {}
-    for path in sorted(Path(llm.TEMPLATES_DIR).glob("*.md")):
-        body = llm.builtin_template(path.stem)
-        if body is not None:
-            out[path.stem] = (llm.TEMPLATE_KIND, body)
-    for key, kind in compiler.TEMPLATE_KINDS.items():
-        body = compiler.builtin_body(key)
-        if body is not None:
-            out[key] = (kind, body)
-    return out
-
-
 def seed_defaults(db: Database) -> None:
-    """Chèn công việc LLM / template mặc định còn thiếu; nâng template chưa sửa lên bản cài sẵn mới. Idempotent."""
+    """Chèn công việc LLM mặc định còn thiếu. Idempotent. (Prompt là dữ liệu của project — xem `seed_samples`.)"""
     tasks = llm.default_tasks()
-    templates = _builtin_templates()
 
     u = UnitOfWork(db, actor=SEED_ACTOR, op_name=OP_SEED_DEFAULTS, project_id=None,
-                   summary="Nạp công việc LLM và template mặc định")
+                   summary="Nạp công việc LLM mặc định")
     with u as s:
         task_keys = set(s.scalars(select(LlmTask.key)).all())  # gồm cả dòng đã xoá mềm
         for t in tasks:
             if t["key"] not in task_keys:
                 s.add(LlmTask(**t))
 
-        rows = {r.key: r for r in s.scalars(select(Template)).all()}
-        for key, (kind, body) in templates.items():
-            new_hash = llm.body_hash(body)
-            row = rows.get(key)
-            if row is None:
-                s.add(Template(key=key, kind=kind, body=body, locked=False, builtin_hash=new_hash))
-                continue
-            if row.deleted_at is not None or row.builtin_hash == new_hash:
-                continue
-            if row.builtin_hash and llm.body_hash(row.body) == row.builtin_hash:
-                row.body = body  # chưa sửa → nâng lên bản cài sẵn mới
-            row.builtin_hash = new_hash
     if u.change_set_id is not None:
-        logger.info("Seed: đã cập nhật %d công việc/template mặc định", len(u.changed))
+        logger.info("Seed: đã thêm %d công việc LLM mặc định", len(u.changed))
+
+
+def seed_samples(db: Database) -> None:
+    """Dự án mẫu còn thiếu + chép prompt mẫu (một lần) cho dự án cũ chưa có prompt. Idempotent."""
+    from sagareel.services import samples
+
+    samples.seed(db)
+    samples.backfill_once(db)

@@ -1,0 +1,16 @@
+# Dự án mẫu (dữ liệu seed): phim truyện người thật — điện ảnh, phim bộ nhiều tập kết treo, thoại + lời dẫn khi cần.
+key: mau-phim-truyen-nguoi-that
+name: "Mẫu · Phim truyện người thật"
+description: >-
+  Phim bộ người thật phong cách điện ảnh: nhân vật thoại trong khung hình, lời dẫn dùng khi cần, mỗi tập kết bằng
+  điểm treo. Nhân bản để làm phim bộ/drama mới.
+genre_key: serial
+aspect: "9:16"
+language: vi
+style_block: >-
+  Cinematic vertical live-action drama, natural light, 35mm film look, realistic skin and textures, restrained color
+  grade, intimate close-ups, expressive faces, subtle film grain
+negative_block: >-
+  cartoon, anime, illustration, 3D render, plastic skin, text, watermark, logo, extra fingers, deformed hands
+narrator_voice: >-
+  a deep, calm adult Vietnamese voice, measured pace, cinematic trailer tone

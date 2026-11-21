@@ -249,16 +249,16 @@ async def clip_regenerate(ctx: OpContext, p: ClipRegenerateParams) -> dict:
 async def clip_rewrite_prompt(ctx: OpContext, p: ClipRewriteParams) -> dict:
     field = "image_prompt" if p.part == "image" else "motion_prompt"
 
-    def current() -> str:
+    def current() -> tuple[str, int]:
         with ctx.services.db.session() as s:
             c = clips.get_clip(s, p.id)
             entities.check_fresh("clip", c, p.expected_updated_at)
-            return getattr(c, field)
+            return getattr(c, field), entities.project_id_of(s, c)
 
-    old = await anyio.to_thread.run_sync(current)
+    old, project_id = await anyio.to_thread.run_sync(current)
     label = "image" if p.part == "image" else "video (motion)"
     variables = {"input": f"Current {label} prompt:\n{old}\n\nFeedback:\n{p.feedback}"}
-    outcome = await llm.run_task(ctx.services, "rewrite_prompt", variables)
+    outcome = await llm.run_task(ctx.services, "rewrite_prompt", variables, project_id=project_id)
     new = outcome.text.strip()
     if not new:
         raise AppError("llm_empty", "LLM trả prompt rỗng.", hint="Thử lại hoặc đổi model cho công việc rewrite_prompt.",

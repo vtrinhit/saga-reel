@@ -1,7 +1,7 @@
 """CRUD chung cho thực thể ★ M1–M7: đọc, liệt kê phân trang cursor, sửa có kiểm `stale_write`, xoá mềm hai bước.
 
 Chỉ phục vụ các bảng trong `ENTITIES` (thực thể ★ mới từ M1). Bảng M0 (kết nối provider có khoá API, công việc LLM,
-template…) có op riêng và không đi qua đây. `to_dict` vẫn che mọi cột `info={"secret": True}` cho an toàn.
+…) có op riêng và không đi qua đây. `to_dict` vẫn che mọi cột `info={"secret": True}` cho an toàn.
 
 Mọi ghi đi qua `ctx.uow()` → có change set/revision, hoàn tác/làm lại được; change set gắn `project_id` của thực thể
 (tự lần theo cha: clip → sequence → project) để Ctrl+Z trong project tìm thấy.
@@ -40,6 +40,7 @@ from sagareel.db.models import (
     GroupNode,
     Preset,
     Project,
+    ProjectPrompt,
     Scene,
     Sequence,
     SkillFile,
@@ -53,7 +54,7 @@ ENTITIES: dict[str, type[Base]] = {
     cls.__tablename__: cls
     for cls in (
         Project, GroupNode, Sequence, Scene, AssetKind, Asset, AssetVariant, Clip, DialogueLine, VoiceProfile,
-        TimelineItem, Sound, Preset, BibleItem, ChannelStudy, SkillFile,
+        TimelineItem, Sound, Preset, BibleItem, ChannelStudy, SkillFile, ProjectPrompt,
     )
 }
 
@@ -74,6 +75,7 @@ LABELS: dict[str, str] = {
     "bible_item": "mục Story Bible",
     "channel_study": "phân tích kênh",
     "skill_file": "file skill",
+    "project_prompt": "prompt",
 }
 
 # Cột không sửa được qua `patch`: khoá, dấu thời gian sổ sách, và project sở hữu (không chuyển thực thể giữa project).

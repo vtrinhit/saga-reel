@@ -21,7 +21,7 @@ from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, ValidationFailed
 from sagareel.db.models import Asset, AssetVariant, Clip, DialogueLine, Scene
 from sagareel.services import clips as clip_svc
-from sagareel.services import entities, llm, presets
+from sagareel.services import entities, presets, prompts
 from sagareel.services import sequences as seq_svc
 from sagareel.services.story import memory, state, writer
 from sagareel.services.story import schemas as S
@@ -118,14 +118,11 @@ def pack(ctx: OpContext, *, sequence_id: int | None = None, clip_ids: list[int] 
                 caps[kind] = {**c, "warnings": warns}
             except Exception as e:  # noqa: BLE001 — thiếu kết nối không được chặn việc lấy ngữ cảnh
                 caps[kind] = {"error": str(e)}
-        templates = {}
+        templates = {}  # prompt của chính project (bảng project_prompt); khoá chưa có thì bỏ qua
+        own = prompts.bodies(s, p.id)
         for t in ([task] if task else AUTHOR_TASKS):
-            try:
-                templates[TASK_TEMPLATE[t]] = llm.get_template(s, TASK_TEMPLATE[t]).body
-            except Exception:  # noqa: BLE001 — template chưa seed (DB test) → bản cài sẵn
-                body = llm.builtin_template(TASK_TEMPLATE[t])
-                if body:
-                    templates[TASK_TEMPLATE[t]] = body
+            if TASK_TEMPLATE[t] in own:
+                templates[TASK_TEMPLATE[t]] = own[TASK_TEMPLATE[t]]
         run_state = state.of(seq, "run")
         out = {
             "project": {"id": p.id, "key": p.key, "name": p.name, "description": p.description,

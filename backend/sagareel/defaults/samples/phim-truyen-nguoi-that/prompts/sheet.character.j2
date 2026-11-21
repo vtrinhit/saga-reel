@@ -1,0 +1,19 @@
+{#- sheet.character — một góc sheet nhân vật (craft-and-prompts §7.3). anchor: chỉ từ chữ; góc khác: chỉ ref mỏ neo. -#}
+{%- if view == "anchor" -%}
+Character reference image of {{ name }}. {{ view_text }}. Plain neutral gray background, soft even studio light, no props, no other people.
+{%- else -%}
+Image 1 is the anchor reference of {{ name }} (identity reference). Same person, same outfit, same proportions. Do not redesign the character.
+{{ view_text }}. Plain neutral gray background, soft even studio light, no other people.
+{%- endif %}
+{{ description }}
+{%- if description_delta %}
+{{ description_delta }}
+{%- endif %}
+Keep exactly: {% if lock_word %}{{ lock_word }}; {% endif %}face, hair, skin tone, body shape.
+{%- if keep_features %}
+Must keep: {{ keep_features | join(", ") }}.
+{%- endif %}
+{%- if style_block %}
+{{ style_block }}
+{%- endif %}
+Single view only, not a collage, not a character sheet grid. Avoid: {{ negative }}.

@@ -20,6 +20,7 @@ from sagareel.db.models import (
     Clip,
     Preset,
     Project,
+    ProjectPrompt,
     Sequence,
     Sound,
     VoiceProfile,
@@ -163,11 +164,27 @@ def create(
     aspect: str | None = None,
     language: str | None = None,
     target_platforms: list[str] | None = None,
+    from_project_id: int | None = None,
+    include: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
+    """Project mới. `from_project_id` = nhân bản từ một dự án (thường là dự án mẫu) — xem `duplicate`. Không có →
+    project trống: KHÔNG có prompt nào (viết bằng prompt.set hoặc để AI viết qua MCP); số liệu thể loại chép từ số
+    liệu tham khảo của `genre_key`, quy trình chép từ quy trình mặc định của tool."""
+    from sagareel.services import genres
+    from sagareel.services.pipeline import workflow as W
+
+    if from_project_id is not None:
+        dup = duplicate(ctx, from_project_id, name, key=key, include=include)
+        extra = {k: v for k, v in (("aspect", aspect), ("language", language), ("target_platforms", target_platforms),
+                                    ("genre_key", genre_key)) if v is not None}
+        if language is not None:
+            extra["languages"] = [language]
+        return update(ctx, dup["id"], extra) if extra else dup
     _check_name(name)
     if key is not None:
         _check_key(key)
-    values: dict[str, Any] = {"name": name}
+    values: dict[str, Any] = {"name": name, "workflows": W.defaults(),
+                              "genre": genres.reference(genre_key or "series") or {}}
     if genre_key is not None:
         values["genre_key"] = genre_key
     if aspect is not None:
@@ -210,6 +227,15 @@ def check_platforms(ctx: OpContext, keys: Any, project_id: int | None = None) ->
 
 def update(ctx: OpContext, project_id: int, values: dict[str, Any],
            expected_updated_at: datetime | None = None) -> dict[str, Any]:
+    from sagareel.services import genres
+    from sagareel.services.pipeline import workflow as W
+
+    if "genre" in values:
+        values = {**values, "genre": genres.validate(values["genre"])}
+    if "workflows" in values:
+        values = {**values, "workflows": W.validate_all(values["workflows"])}
+    if "is_sample" in values and not isinstance(values["is_sample"], bool):
+        raise ValidationFailed("is_sample phải là true/false.")
     if "name" in values and isinstance(values["name"], str):
         _check_name(values["name"])
     if "key" in values and isinstance(values["key"], str):
@@ -246,9 +272,26 @@ def _clone(obj: Any, **overrides: Any) -> Any:
     return mapper.class_(**values)
 
 
-def duplicate(ctx: OpContext, project_id: int, name: str, key: str | None = None) -> dict[str, Any]:
-    """Project mới chép cài đặt + Library (loại tài sản riêng, hồ sơ giọng, tài sản + look, âm thanh) + preset của
-    project. Không chép tập/clip/take. Một change set (hoàn tác được trọn gói)."""
+DUPLICATE_PARTS = {
+    "prompts": "Bộ prompt (project_prompt)",
+    "style": "Khối phong cách, khối tránh, giọng người kể",
+    "settings": "Cài đặt, số liệu thể loại, quy trình, khung hình/ngôn ngữ/nền tảng",
+    "library": "Library: loại tài sản riêng, hồ sơ giọng, tài sản + look, âm thanh, preset của project",
+}
+_STYLE_FIELDS = {"style_block": "", "negative_block": "", "narrator_voice": ""}
+_SETTINGS_FIELDS = {"settings": {}, "genre": {}, "workflows": {}, "target_platforms": []}
+
+
+def duplicate(ctx: OpContext, project_id: int, name: str, key: str | None = None,
+              include: dict[str, bool] | None = None) -> dict[str, Any]:
+    """Project mới nhân bản từ `project_id` (thường là dự án mẫu). `include` chọn phần chép (mặc định tất cả):
+    prompts, style, settings, library (xem `DUPLICATE_PARTS`). Không chép tập/clip/take; bản sao không phải mẫu.
+    Một change set (hoàn tác được trọn gói)."""
+    unknown = sorted(set(include or {}) - set(DUPLICATE_PARTS))
+    if unknown:
+        raise ValidationFailed(f"Phần nhân bản không có: {', '.join(unknown)}.", code="duplicate_part_unknown",
+                               hint=f"Chọn trong: {', '.join(DUPLICATE_PARTS)}.")
+    inc = {k: bool((include or {}).get(k, True)) for k in DUPLICATE_PARTS}
     _check_name(name)
     if key is not None:
         _check_key(key)
@@ -258,10 +301,24 @@ def duplicate(ctx: OpContext, project_id: int, name: str, key: str | None = None
             src = entities.get(s, "project", project_id)
             if key is not None and _key_taken(s, key, alive_only=True):
                 raise _taken(key)
-            new = _clone(src, key=key or _free_key(s, slugify(name)), name=name)
+            reset: dict[str, Any] = {"is_sample": False}
+            if not inc["style"]:
+                reset.update(_STYLE_FIELDS)
+            if not inc["settings"]:
+                reset.update({k: (dict(v) if isinstance(v, dict) else list(v)) for k, v in _SETTINGS_FIELDS.items()})
+            new = _clone(src, key=key or _free_key(s, slugify(name)), name=name, **reset)
             s.add(new)
             s.flush()
             u.project_id = new.id
+            if inc["prompts"]:
+                for row in s.scalars(select(ProjectPrompt).where(ProjectPrompt.project_id == src.id,
+                                                                 ProjectPrompt.deleted_at.is_(None))
+                                     .order_by(ProjectPrompt.id)).all():
+                    s.add(_clone(row, project_id=new.id))
+            if not inc["library"]:
+                s.flush()
+                result = out(s, new)
+                return result
 
             def alive(model):
                 return s.scalars(select(model).where(model.project_id == src.id, model.deleted_at.is_(None))

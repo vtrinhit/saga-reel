@@ -1,0 +1,28 @@
+# Quy trình mặc định của tool (chép vào project.workflows khi tạo project): phim bộ dài theo lô — viết lần lượt từng tập (tập sau đọc bộ nhớ của tập trước), thử một tập đầu
+# (gate:pilot) rồi mới chạy cả lô. Spec §15 (bộ nhớ truyện), phụ lục film-craft §5 ("thử một tập đầu"),
+# craft-and-prompts §4 (dàn ý theo lô 10 tập).
+key: serial_batch
+name: Phim bộ theo lô (thử tập đầu)
+data:
+  label: Phim bộ theo lô — tập đầu làm thử, các tập sau viết nối tiếp
+  description: Tập dẫn chạy hết và dừng ở gate pilot; duyệt xong các tập sau chạy lần lượt, mỗi tập ghi bộ nhớ trước khi tập kế viết.
+  batch: {mode: sequential, release_after: memory_summarize}
+  steps:
+    - {step: write_bible}
+    - {step: outline}
+    - {step: write_script}
+    - {step: memory_summarize}
+    - {step: split_clips}
+    - {step: image_prompts}
+    - {step: motion_prompts}
+    - {step: dialogue}
+    - {step: generate_images}
+    - {step: auto_select}
+    - {step: generate_audio}
+    - {step: subtitles}
+    - {step: render_animatic}
+    - {step: "gate:animatic", rerun: [image_prompts, generate_images, render_animatic]}
+    - {step: generate_videos}
+    - {step: render}
+    - {step: "gate:pilot"}
+    - {step: export, enabled: false}

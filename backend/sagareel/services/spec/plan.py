@@ -37,6 +37,7 @@ from sagareel.db.models import (
     Media,
     Preset,
     Project,
+    ProjectPrompt,
     ProviderConnection,
     Scene,
     Sequence,
@@ -50,6 +51,7 @@ from sagareel.services.spec import models as m
 
 MAX_SPEC_BYTES = 10 << 20
 SECTION_OF = {
+    "prompt": "prompts",
     "preset": "presets",
     "asset_kind": "library", "voice": "library", "asset": "library", "look": "library", "sound": "library",
     "group": "groups",
@@ -143,6 +145,10 @@ def canon(spec: m.ProjectSpec) -> Canon:
     proj["cover"] = mr(spec.project.cover)
     proj["providers"] = dict(sorted(spec.providers.items()))
     out.entities[("project", spec.project.key)] = proj
+
+    if spec.prompts is not None:
+        for k, body in spec.prompts.items():
+            out.entities[("prompt", k)] = {"body": body}
 
     if spec.presets is not None:
         for p in spec.presets:
@@ -251,16 +257,22 @@ def validate_refs(s: Session, spec: m.ProjectSpec, current: m.ProjectSpec | None
     sound_keys = {x.key for x in (lib.sounds if lib else [])}
     groups = spec.groups if spec.groups is not None else (current.groups if current else None) or []
     group_keys = {g.key for g in groups}
-    presets = spec.presets if spec.presets is not None else (current.presets if current else None) or []
-
     media_ok(["project", "cover"], spec.project.cover)
-    if spec.project.style_pack is not None:
-        local = {p.key for p in presets if p.kind == "style_pack"}
-        if spec.project.style_pack not in local and s.scalar(
-            select(Preset.id).where(Preset.kind == "style_pack", Preset.key == spec.project.style_pack,
-                                    Preset.project_id.is_(None), Preset.deleted_at.is_(None))
-        ) is None:
-            err(["project", "style_pack"], f"Không có preset style_pack '{spec.project.style_pack}'.")
+    from sagareel.services import genres
+    from sagareel.services import prompts as prompt_svc
+    from sagareel.services.pipeline import workflow as W
+
+    for field_, fn in (("genre", genres.validate), ("workflows", W.validate_all)):
+        try:
+            fn(getattr(spec.project, field_))
+        except ValidationFailed as e:
+            for x in e.extra.get("errors") or [{"loc": [], "msg": e.detail, "type": "value_error"}]:
+                err(["project", field_, *x.get("loc", [])], x.get("msg", ""), x.get("type", "value_error"))
+    for k, body in (spec.prompts or {}).items():
+        try:
+            prompt_svc.analyze(k, body)
+        except AppError as e:
+            err(["prompts", k], e.detail, e.code)
 
     def voice_ok(loc: list[Any], key: str | None) -> None:
         if key is None or key in project_voices:
@@ -708,7 +720,8 @@ def _write(w: _Writer, spec: m.ProjectSpec) -> int:
         "resolution": pb.resolution, "fps": pb.fps, "language": pb.language, "languages": list(pb.languages),
         "target_platforms": list(pb.target_platforms), "style_block": pb.style_block,
         "negative_block": pb.negative_block, "settings": export.join_settings(pb.settings, spec.providers),
-        "cover_media_id": w.media(pb.cover),
+        "cover_media_id": w.media(pb.cover), "genre": dict(pb.genre), "workflows": dict(pb.workflows),
+        "narrator_voice": pb.narrator_voice, "is_sample": pb.is_sample,
     }
     project = w.upsert(Project, [Project.key == pb.key], pvals, key=pb.key)
     pid = project.id
@@ -718,13 +731,11 @@ def _write(w: _Writer, spec: m.ProjectSpec) -> int:
             w.upsert(Preset, [Preset.project_id == pid, Preset.kind == p.kind, Preset.key == p.key],
                      {"name": p.name, "data": dict(p.data)}, project_id=pid, kind=p.kind, key=p.key)
         s.flush()
-    style_pack_id = None
-    if pb.style_pack is not None:
-        style_pack_id = s.scalar(select(Preset.id).where(
-            Preset.kind == "style_pack", Preset.key == pb.style_pack, Preset.deleted_at.is_(None),
-            (Preset.project_id == pid) | Preset.project_id.is_(None)).order_by(Preset.project_id.is_(None), Preset.id)
-            .limit(1))
-    w.set(project, {"style_pack_id": style_pack_id})
+    if spec.prompts is not None:
+        for k, body in spec.prompts.items():
+            w.upsert(ProjectPrompt, [ProjectPrompt.project_id == pid, ProjectPrompt.key == k], {"body": body},
+                     project_id=pid, key=k)
+        s.flush()
 
     # -- Library --
     voice_ids: dict[str, int] = {}

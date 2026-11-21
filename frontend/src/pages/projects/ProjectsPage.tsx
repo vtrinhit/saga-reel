@@ -35,11 +35,14 @@ function ProjectCard({
   genres,
   onDuplicate,
   onDelete,
+  onUseSample,
 }: {
   p: Project;
   genres: Preset[] | undefined;
   onDuplicate: () => void;
   onDelete: () => void;
+  /** Dự án mẫu: tạo dự án mới từ mẫu này. */
+  onUseSample?: () => void;
 }) {
   const navigate = useNavigate();
   const c = p.counts ?? { sequences: 0, clips: 0, assets: 0 };
@@ -63,7 +66,12 @@ function ProjectCard({
           )}
         </div>
         <div className="grid min-w-0 content-start gap-1">
-          <span className="truncate text-md font-semibold">{p.name}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-md font-semibold">{p.name}</span>
+            {p.is_sample ? (
+              <span className="shrink-0 rounded-sm border border-line-3 px-1.5 text-xs text-fg-2">Mẫu</span>
+            ) : null}
+          </span>
           <span className="text-sm text-fg-2">
             {presetName(genres, p.genre_key)} · {p.aspect}
           </span>
@@ -81,6 +89,7 @@ function ProjectCard({
           align="right"
           items={[
             { key: 'settings', label: 'Cài đặt dự án', icon: SlidersHorizontal, onSelect: () => navigate(`/p/${p.id}/settings`) },
+            ...(onUseSample ? [{ key: 'use', label: 'Tạo dự án từ mẫu này', icon: Plus, onSelect: onUseSample }] : []),
             { key: 'dup', label: 'Nhân bản', icon: Copy, onSelect: onDuplicate },
             { key: 'del', label: 'Xoá dự án…', icon: Trash, danger: true, onSelect: onDelete },
           ]}
@@ -155,7 +164,8 @@ function DuplicateDialog({ p, onClose }: { p: Project; onClose: () => void }) {
       >
         <Input id="dup-name" label="Tên dự án mới" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
         <p className="text-sm text-fg-2">
-          Chép cài đặt, thư viện (nhân vật, look, sheet đã chọn) và mẫu riêng của dự án. Tập, clip và take không được chép.
+          Chép bộ prompt, phong cách, cài đặt, quy trình và thư viện (nhân vật, look, sheet đã chọn). Tập, clip và take không
+          được chép.
         </p>
         {error ? (
           <p role="alert" className="text-sm text-state-failed">
@@ -251,9 +261,29 @@ export function ProjectsPage() {
   const projects = useProjects();
   const genres = usePresets('genre');
   const [mode, setMode] = useState<CreateMode | null>(null);
+  const [fromSample, setFromSample] = useState<number | null>(null);
   const [dup, setDup] = useState<Project | null>(null);
   const [del, setDel] = useState<Project | null>(null);
-  const list = projects.data ?? [];
+  const all = projects.data ?? [];
+  const samples = all.filter((p) => p.is_sample);
+  const list = all.filter((p) => !p.is_sample);
+  const card = (p: Project) => (
+    <ProjectCard
+      key={p.id}
+      p={p}
+      genres={genres.data}
+      onDuplicate={() => setDup(p)}
+      onDelete={() => setDel(p)}
+      onUseSample={
+        p.is_sample
+          ? () => {
+              setFromSample(p.id);
+              setMode('blank');
+            }
+          : undefined
+      }
+    />
+  );
 
   return (
     <>
@@ -323,19 +353,35 @@ export function ProjectsPage() {
           </div>
         ) : (
           <ul className="grid gap-3 md:grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">
-            {list.map((p) => (
-              <ProjectCard key={p.id} p={p} genres={genres.data} onDuplicate={() => setDup(p)} onDelete={() => setDel(p)} />
-            ))}
+            {list.map(card)}
           </ul>
         )}
       </section>
 
+      {samples.length ? (
+        <section aria-labelledby="samples-h" className="mt-8">
+          <h2 id="samples-h" className="mb-1 text-sm font-semibold">
+            Dự án mẫu
+          </h2>
+          <p className="mb-3 max-w-[72ch] text-sm text-fg-2">
+            Dự án bình thường được đánh dấu là mẫu: bộ prompt, phong cách, số liệu thể loại và quy trình được nhân bản sang
+            dự án mới. Sửa mẫu không ảnh hưởng dự án đã tạo từ nó.
+          </p>
+          <ul className="grid gap-3 md:grid-cols-[repeat(auto-fill,minmax(300px,1fr))]">{samples.map(card)}</ul>
+        </section>
+      ) : null}
+
       {mode ? (
         <CreateProjectDialog
           mode={mode}
-          onClose={() => setMode(null)}
+          initialSource={fromSample}
+          onClose={() => {
+            setMode(null);
+            setFromSample(null);
+          }}
           onCreated={(p, next) => {
             setMode(null);
+            setFromSample(null);
             toast({ message: `Đã tạo dự án ${p.name}.`, tone: 'success' });
             navigate(`/p/${p.id}/${next}`);
           }}

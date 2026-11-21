@@ -7,7 +7,7 @@
 #   end_frame/style/subject); `clip.assets[].role` ghi đè được.
 # - refs_per_asset: số ảnh tối đa mỗi tài sản (nhân vật 1–2: mỏ neo + một góc gần nhất).
 # - section: khối nào của template image.synced (characters/location/props).
-# - sheet_template: key template trong bảng `template`.
+# - sheet_template: khoá prompt (project_prompt) dùng để ráp prompt sheet của loại.
 # - views: góc nhìn của sheet (thứ tự mặc định) → mô tả tiếng Anh chèn vào template sheet. `anchor` luôn đứng đầu,
 #   sinh chỉ từ chữ; mọi góc khác chỉ tham chiếu ảnh mỏ neo.
 # - default_views: góc mặc định của `sheet.generate`.

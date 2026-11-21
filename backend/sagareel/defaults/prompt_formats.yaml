@@ -1,0 +1,132 @@
+# Khối ĐỊNH DẠNG ĐẦU RA của các công việc LLM — khung của tool, không phải nội dung sáng tạo. Tool tự nối khối này vào
+# tin nhắn system khi chạy bằng LLM của tool (services/llm.plan) và kiểm đầu ra bằng schema; prompt của dự án chỉ giữ
+# phần dặn dò sáng tạo. Agent gửi thẳng kết quả (story.submit / prompts.submit) không đi qua đây.
+analyze_channel: |
+  Reply with ONE valid JSON value only, exactly in the format below. Do not wrap it in Markdown code fences and do not add any text before or after it.
+
+  JSON format:
+  {
+    "style": {"palette": ["warm amber", "teal"], "lighting": "...", "lens": "35mm", "look_words": ["film grain", "..."], "rendering": "..."},
+    "pacing": {"feel": "fast|medium|slow", "notes": "..."},
+    "hook": {"pattern": "question|shock|visual_mystery|promise|cold_open|other", "description": "..."},
+    "structure": {"beats": ["hook", "setup", "twist", "payoff"], "formula": "..."},
+    "subtitles": {"present": true, "style": "bold white, black outline, lower third", "position": "bottom"},
+    "audio": {"music": "...", "voice": "...", "sfx": "..."},
+    "genre_suggestion": {"transition": "cut", "end": "loop", "dialogue_style": "narration", "episode_s": [30, 60], "clip_s": [3, 6], "clips": [8, 14]},
+    "style_block": "English style lock block for image prompts",
+    "negative_block": "English list of things to avoid",
+    "characters": [{"name": "archetype name", "description": "..."}],
+    "locations": [{"name": "...", "description": "..."}]
+  }
+caption: |
+  Reply with ONE valid JSON value only, exactly in the format below. Do not wrap it in Markdown code fences and do not add any text before or after it.
+
+  JSON format:
+  {
+    "title": "...",
+    "caption": "...",
+    "hashtags": ["..."],
+    "keywords": ["..."],
+    "pinned_comment": "...",
+    "cover_title": "..."
+  }
+clone_scene: |
+  Reply with ONE valid JSON value only, exactly in the format below. Do not wrap it in Markdown code fences and do not add any text before or after it.
+
+  JSON format:
+  {
+    "title": "short scene title",
+    "image_prompt": "first-frame image prompt, English",
+    "motion_prompt": "camera + action over the scene duration, English",
+    "shot_size": "ews|ws|fs|mws|ms|mcu|cu|ecu|insert",
+    "angle": "eye|low|high|dutch|ots|pov|overhead",
+    "camera_move": "static|push_in|pull_out|pan_l|pan_r|tilt_u|tilt_d|truck_l|truck_r|track|arc|crane_up|crane_down|handheld|whip_pan|rack_focus",
+    "lens": "24mm|35mm|50mm|85mm|anamorphic",
+    "composition": "center|thirds_l|thirds_r|symmetry|leading_lines|frame_in_frame|negative_space|headroom_tight",
+    "eyeline": "screen_left|screen_right|to_camera|down|up",
+    "screen_dir": "L>R|R>L|toward_cam|away_cam|none",
+    "first_frame_desc": "...",
+    "last_frame_desc": "...",
+    "sfx_desc": "...",
+    "present": ["original description from the table"]
+  }
+describe_asset: |
+  Reply with ONE valid JSON value only, exactly in the format below. Do not wrap it in Markdown code fences and do not add any text before or after it.
+
+  JSON format:
+  {
+    "name": "short name",
+    "description": "one paragraph in English",
+    "lock_word": "navy wool coat, silver pendant",
+    "keep_features": ["face", "hair"],
+    "tags": ["tag"]
+  }
+drift_check: |
+  Reply with ONE valid JSON value only, exactly in the format below. Do not wrap it in Markdown code fences and do not add any text before or after it.
+
+  JSON format:
+  {
+    "ok": true,
+    "score": 0.0,
+    "issues": [{"entity": "character_key", "aspect": "outfit", "severity": "low", "detail": "...", "fix_hint": "..."}]
+  }
+score_take: |
+  Reply with ONE valid JSON value only, exactly in the format below. Do not wrap it in Markdown code fences and do not add any text before or after it.
+
+  JSON format:
+  {
+    "score": 0.0,
+    "prompt_match": 0.0,
+    "character_match": 0.0,
+    "defects": [{"type": "hands", "severity": "low", "detail": "..."}],
+    "verdict": "keep"
+  }
+story_adapt_novel: |
+  Chỉ trả về MỘT giá trị JSON hợp lệ, không bọc ``` và không thêm chữ:
+  {"title": "...", "synopsis": "...", "cliffhanger": "...", "cut_after": "câu nguyên văn",
+   "characters": [{"key": "...", "name": "...", "role": "...", "description": "...", "traits": ["..."]}],
+   "facts": [{"type": "fact", "key": "...", "summary": "...", "quote": "..."}]}
+story_dialogue: |
+  Chỉ trả về MỘT giá trị JSON hợp lệ, không bọc ``` và không thêm chữ:
+  {"items": [{"clip": "c0001", "lines": [{"speaker": "character_key", "text": "...", "emotion": "..."}]}]}
+story_image_prompts: |
+  Chỉ trả về MỘT giá trị JSON hợp lệ, không bọc ``` và không thêm chữ:
+  {"items": [{"clip": "c0001", "prompt": "..."}]}
+story_memory_summarize: |
+  Chỉ trả về MỘT giá trị JSON hợp lệ, không bọc ``` và không thêm chữ:
+  {"summary": "...", "arc_summary": "", "items": [{"type": "fact", "key": "...", "summary": "...", "quote": "..."}],
+   "open_questions": [{"key": "...", "summary": "...", "quote": "..."}], "resolved": ["key"]}
+story_motion_prompts: |
+  Chỉ trả về MỘT giá trị JSON hợp lệ, không bọc ``` và không thêm chữ:
+  {"items": [{"clip": "c0001", "prompt": "..."}]}
+story_outline: |
+  Chỉ trả về MỘT giá trị JSON hợp lệ, không bọc ``` và không thêm chữ:
+  {"episodes": [{"number": 1, "title": "...", "synopsis": "...", "hook": "...", "cliffhanger": "...", "characters": ["key"], "keywords": ["..."]}], "arc_summary": "tóm tắt cả lô tập (2–4 câu)"}
+story_split_clips: |
+  Chỉ trả về MỘT giá trị JSON hợp lệ, không bọc ``` và không thêm chữ:
+  {"scenes": [{"key": "s01", "title": "...", "location": "location_key", "time_of_day": "night", "weather": ""}],
+   "clips": [{"scene": "s01", "beat": "hook", "duration_s": 6, "action": "...", "shot_size": "cu", "angle": "eye",
+     "camera_move": "push_in", "lens": "85mm", "composition": "thirds_l", "eyeline": "screen_right", "screen_dir": "none",
+     "axis_side": "A", "cut_in": "cut", "cut_out": "cut", "link": "cut", "characters": ["character_key"],
+     "looks": {"character_key": "look_key"}, "location": "location_key", "props": ["prop_key"],
+     "dialogue": [{"speaker": "character_key", "text": "...", "emotion": "..."}],
+     "first_frame_desc": "...", "last_frame_desc": "...", "sfx_desc": "..."}]}
+story_write_bible: |
+  Chỉ trả về MỘT giá trị JSON hợp lệ đúng định dạng dưới đây, không bọc trong ``` và không thêm chữ nào khác:
+  {
+    "title": "...", "logline": "...", "tone": "...", "world": "...", "style": "khối phong cách hình ảnh (tiếng Anh)",
+    "characters": [{"key": "snake_case", "name": "...", "role": "...", "description": "...", "traits": ["..."], "voice": "...", "lock_word": "..."}],
+    "locations": [{"key": "snake_case", "name": "...", "description": "..."}],
+    "props": [{"key": "snake_case", "name": "...", "description": "..."}],
+    "relationships": [{"a": "character_key", "b": "character_key", "summary": "..."}],
+    "rules": ["..."],
+    "open_questions": ["..."]
+  }
+translate: |
+  Reply with ONE valid JSON value only, exactly in the format below. Do not wrap it in Markdown code fences and do not add any text before or after it.
+
+  JSON format:
+  {
+    "target_language": "en",
+    "items": [{"id": "1", "text": "..."}]
+  }

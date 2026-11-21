@@ -137,14 +137,11 @@ def _build(s: Session, project: Project, include: Iterable[str] | None = None) -
     med = _Media(s)
 
     presets_all = _alive(s, Preset, Preset.project_id == project.id)
-    style_pack = None
-    if project.style_pack_id is not None:
-        row = s.get(Preset, project.style_pack_id)
-        style_pack = row.key if row is not None else None
     settings, providers = split_settings(_plain(project.settings))
     block = m.ProjectBlock(
         key=project.key, name=project.name, description=project.description or "", genre_key=project.genre_key,
-        style_pack=style_pack, aspect=project.aspect, resolution=project.resolution, fps=project.fps,
+        genre=_plain(project.genre or {}), workflows=_plain(project.workflows or {}),
+        narrator_voice=project.narrator_voice or "", is_sample=bool(project.is_sample), aspect=project.aspect, resolution=project.resolution, fps=project.fps,
         language=project.language, languages=_plain(project.languages), target_platforms=_plain(project.target_platforms),
         style_block=project.style_block or "", negative_block=project.negative_block or "", settings=settings,
         cover=med.ref(project.cover_media_id),
@@ -182,6 +179,11 @@ def _build(s: Session, project: Project, include: Iterable[str] | None = None) -
     skeys = {x.id: x.key or natural[x.id] for x in sounds}  # khoá thật (cột sound.key, migration 0005)
 
     spec = m.ProjectSpec(spec_version=m.SPEC_VERSION, project=block, providers=providers)
+
+    if "prompts" in sections:
+        from sagareel.services import prompts as prompt_svc
+
+        spec.prompts = dict(sorted(prompt_svc.bodies(s, project.id).items()))
 
     if "presets" in sections:
         spec.presets = [m.PresetSpec(kind=p.kind, key=p.key, name=p.name, data=_plain(p.data)) for p in presets_all]

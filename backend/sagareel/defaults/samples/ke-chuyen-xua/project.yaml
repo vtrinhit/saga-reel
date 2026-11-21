@@ -1,0 +1,18 @@
+# Dự án mẫu (dữ liệu seed): kể chuyện xưa — người kể ngoài khung hình (voice-over), tranh vẽ tay hoài niệm.
+key: mau-ke-chuyen-xua
+name: "Mẫu · Kể chuyện xưa"
+description: >-
+  Truyện kể hoài niệm: lời người kể ngoài khung hình trên hình minh hoạ vẽ tay chuyển động nhẹ; nhân vật trong hình
+  không nói. Nhân bản để làm truyện kể/cổ tích/hồi ức mới.
+genre_key: narration
+aspect: "9:16"
+language: vi
+style_block: >-
+  Warm hand-painted 2D anime illustration in the style of classic Japanese animated films, soft watercolor textures,
+  gentle golden light, nostalgic rural Vietnam, cozy detailed backgrounds, expressive kind faces, muted earthy palette
+  with warm highlights, no photorealism
+negative_block: >-
+  photorealistic, 3D render, text, watermark, logo, extra fingers, deformed hands, modern objects
+narrator_voice: >-
+  a calm, warm adult Vietnamese man's voice with a northern accent, speaking slowly and gently like recalling a
+  childhood memory

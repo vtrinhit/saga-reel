@@ -867,8 +867,7 @@ def _check_ids(ids: list[int], what: str) -> list[int]:
 
 
 def _llm_lane(s: Session, task_key: str) -> tuple[str, dict]:
-    p = llm.plan(s, task_key, {"input": "-"}, images=True)
-    route, conn = p.candidates[0]
+    route, conn = llm.first_connection(s, task_key, images=True)
     return f"conn:{conn.id}", {"kind": "llm", "units": 1, "task": task_key, "route": route.to_dict(),
                                "connection_id": conn.id}
 

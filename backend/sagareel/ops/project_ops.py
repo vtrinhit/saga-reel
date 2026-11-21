@@ -26,7 +26,10 @@ class ProjectOut(BaseModel):
     name: str
     description: str
     genre_key: str
-    style_pack_id: int | None
+    genre: dict[str, Any] = Field(default_factory=dict, description="Số liệu thể loại của dự án")
+    workflows: dict[str, Any] = Field(default_factory=dict, description="Quy trình của dự án {key: {steps…}}")
+    narrator_voice: str = ""
+    is_sample: bool = False
     aspect: str
     resolution: str
     fps: int
@@ -51,10 +54,15 @@ class ProjectPage(BaseModel):
 class ProjectCreateParams(BaseModel):
     name: str = Field(min_length=1, max_length=200, description="Tên dự án (tiếng Việt có dấu được)")
     key: str | None = Field(default=None, description="Mã duy nhất (không dấu); bỏ trống = tự sinh từ tên")
-    genre_key: str | None = Field(default=None, description="Thể loại (preset genre), mặc định series")
+    genre_key: str | None = Field(default=None, description="Nhãn thể loại (series, serial, narration, montage, "
+                                  "storyboard…); dự án trống chép số liệu tham khảo của thể loại này")
     aspect: str | None = Field(default=None, description="Tỉ lệ khung, mặc định 9:16")
     language: str | None = Field(default=None, description="Ngôn ngữ chính, mặc định vi")
     target_platforms: list[str] | None = Field(default=None, description="Nền tảng đích (preset platform)")
+    from_project_id: int | None = Field(default=None, description="Nhân bản từ dự án này (thường là dự án mẫu): "
+                                        "prompt, phong cách, số liệu, quy trình. Bỏ trống = dự án trống (chưa có prompt)")
+    include: dict[str, bool] | None = Field(default=None, description="Khi nhân bản: phần chép {prompts, style, "
+                                            "settings, library} (mặc định tất cả)")
 
 
 class ProjectIdParams(BaseModel):
@@ -88,13 +96,16 @@ class ProjectDuplicateParams(BaseModel):
     id: int
     name: str = Field(min_length=1, max_length=200, description="Tên dự án mới")
     key: str | None = Field(default=None, description="Mã dự án mới; bỏ trống = tự sinh từ tên")
+    include: dict[str, bool] | None = Field(default=None, description="Phần chép {prompts, style, settings, library} "
+                                            "(mặc định tất cả)")
 
 
-@op("project.create", summary="Tạo dự án mới (mã tự sinh từ tên nếu bỏ trống)", params=ProjectCreateParams,
+@op("project.create", summary="Tạo dự án mới: trống hoặc nhân bản từ dự án mẫu (from_project_id)",
+    params=ProjectCreateParams,
     result=ProjectOut, mcp="tool")
 def project_create(ctx: OpContext, p: ProjectCreateParams) -> dict:
     return projects.create(ctx, p.name, key=p.key, genre_key=p.genre_key, aspect=p.aspect, language=p.language,
-                           target_platforms=p.target_platforms)
+                           target_platforms=p.target_platforms, from_project_id=p.from_project_id, include=p.include)
 
 
 @op("project.get", summary="Đọc một dự án kèm số tài sản / tập / clip", params=ProjectIdParams, result=ProjectOut,
@@ -127,7 +138,40 @@ def project_delete(ctx: OpContext, p: ProjectDeleteParams) -> dict:
     return projects.delete(ctx, p.confirm_token)
 
 
-@op("project.duplicate", summary="Nhân bản dự án: cài đặt + Library + preset của dự án (không chép tập/clip/take)",
+@op("project.duplicate", summary="Nhân bản dự án (vd. từ dự án mẫu): prompt + phong cách + cài đặt/quy trình + Library "
+    "tuỳ chọn (không chép tập/clip/take)",
     params=ProjectDuplicateParams, result=ProjectOut, mcp="tool")
 def project_duplicate(ctx: OpContext, p: ProjectDuplicateParams) -> dict:
-    return projects.duplicate(ctx, p.id, p.name, key=p.key)
+    return projects.duplicate(ctx, p.id, p.name, key=p.key, include=p.include)
+
+
+class SampleReseedParams(BaseModel):
+    keys: list[str] | None = Field(default=None, description="Key/slug dự án mẫu cần tạo lại; bỏ trống = mọi mẫu thiếu")
+
+
+@op("sample.reseed", summary="Tạo lại dự án mẫu cài sẵn đã xoá/thiếu (mẫu đang có giữ nguyên)",
+    params=SampleReseedParams, mcp="tool")
+def sample_reseed(ctx: OpContext, p: SampleReseedParams) -> dict:
+    from sagareel.services import samples
+
+    return samples.reseed(ctx, p.keys)
+
+
+class EmptyParams(BaseModel):
+    pass
+
+
+@op("genre.list", summary="Số liệu thể loại tham khảo (độ dài tập/clip, số clip, hook…) — chép vào project.genre",
+    params=EmptyParams, read_only=True, idempotent=True, viewer=True, mcp="tool")
+def genre_list(ctx: OpContext, p: EmptyParams) -> dict:
+    from sagareel.services import genres
+
+    return {"items": genres.references()}
+
+
+@op("workflow.defaults", summary="Quy trình mặc định của tool (chép vào project.workflows khi tạo dự án)",
+    params=EmptyParams, read_only=True, idempotent=True, viewer=True, mcp="tool")
+def workflow_defaults(ctx: OpContext, p: EmptyParams) -> dict:
+    from sagareel.services.pipeline import workflow as W
+
+    return {"items": [{"key": k, "name": v.get("name", k), "data": v} for k, v in W.defaults().items()]}

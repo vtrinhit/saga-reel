@@ -90,7 +90,9 @@ export function Overview() {
     queryFn: async () => {
       const out = new Map<string, string>();
       for (const kind of ['genre', 'platform'] as const) {
-        const r = (await callOp('preset.list', { kind })) as unknown as { items: { key: string; name: string }[] };
+        const r = (kind === 'genre'
+          ? await callOp('genre.list', {})
+          : await callOp('preset.list', { kind })) as unknown as { items: { key: string; name: string }[] };
         for (const it of r.items ?? []) out.set(`${kind}:${it.key}`, it.name);
       }
       return out;
@@ -134,7 +136,7 @@ export function Overview() {
   const [collapsed, setCollapsed] = useState<Set<number | null>>(() => new Set());
   const all = seqs.data ?? [];
   const visible = useMemo(() => (arc == null ? all : all.filter((s) => inGroup(s, arc, groups))), [all, arc, groups]);
-  const workflows = useWorkflowPresets(true);
+  const workflows = useWorkflowPresets(pid, true);
   const workflowOf = useCallback((s: SequenceInfo) => workflows.data?.get(workflowKeyOf(s)) ?? null, [workflows.data]);
   const rows = useMemo(
     () => buildMatrixRows(visible, status.data ?? new Map(), groups, collapsed, workflowOf),

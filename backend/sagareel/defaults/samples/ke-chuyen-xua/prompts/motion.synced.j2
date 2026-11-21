@@ -1,0 +1,22 @@
+{#- motion.synced (Mẫu · Kể chuyện xưa) — lời người kể ngoài khung hình (voice-over), không ai trong hình nói. -#}
+Start from the provided image; keep identity, outfit, lighting and background unchanged. Gentle, slow movement like a hand-painted memory.
+{%- if camera %}
+Camera: {{ camera }}.
+{%- endif %}
+{%- if prompt %}
+{{ prompt }}
+{%- endif %}
+{%- for b in beats %}
+{% if b.stamp %}[{{ b.stamp }}] {% endif %}{{ b.text }}
+{%- endfor %}
+{%- for d in dialogue %}
+Voice-over (off-screen narrator, nobody on screen speaks it, no lip movement{% if narrator_voice %}; {{ narrator_voice }}{% endif %}) says in {{ language }}{% if d.emotion %} ({{ d.emotion }}){% endif %}: "{{ d.text }}"
+{%- endfor %}
+{%- if sfx %}
+SFX: {{ sfx }}.
+{%- endif %}
+{%- if ambient %}
+Ambient sound: {{ ambient }}.
+{%- endif %}
+No background music.
+The camera then holds. Stable face, consistent outfit, natural hand movement, single continuous shot, no scene cut, no morphing, no text, no subtitles, no watermark.

@@ -115,9 +115,11 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         try:
             # Truy cập DB từ code async luôn qua thread (không chặn event loop).
             await anyio.to_thread.run_sync(services.db.migrate)
-            # Dữ liệu mặc định (công việc LLM, template) rồi kết nối từ .env.local (lần đầu). Chỉ ghi DB, không gọi
+            # Dữ liệu mặc định (công việc LLM, dự án mẫu) rồi kết nối từ .env.local (lần đầu). Chỉ ghi DB, không gọi
             # provider nào.
             await anyio.to_thread.run_sync(seed.seed_defaults, services.db)
+            if services.settings.seed_samples:
+                await anyio.to_thread.run_sync(seed.seed_samples, services.db)
             await anyio.to_thread.run_sync(_seed_env, services)
             # File skill vận hành ↔ DB (skill.list/get chỉ đọc; lỗi chỉ cảnh báo).
             await anyio.to_thread.run_sync(skills.sync_on_startup, services)

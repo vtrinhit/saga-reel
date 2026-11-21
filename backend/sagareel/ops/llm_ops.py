@@ -1,9 +1,9 @@
-"""Thao tác nhóm `llm` (công việc LLM, định tuyến, chạy) và `template` (template prompt sửa được).
+"""Thao tác nhóm `llm` (công việc LLM, định tuyến, chạy).
 
-- Sửa công việc/template đi qua UnitOfWork → có lịch sử, hoàn tác được (`history.undo`).
+- Sửa công việc đi qua UnitOfWork → có lịch sử, hoàn tác được (`history.undo`).
 - `llm.run` kiểm tra cấu hình **trước** khi tạo job: chưa có LLM → `llm_not_configured` (409) kèm gợi ý tự viết /
-  nhập file / agent ngoài qua MCP; thiếu biến template → `template_variable_missing` (422).
-- Template `locked` không cho actor `llm:*` sửa/khôi phục (spec §8).
+  nhập file / agent ngoài qua MCP; thiếu prompt của dự án → `prompt_missing`; thiếu biến → `template_variable_missing`.
+- Nội dung prompt là dữ liệu của từng dự án (op `prompt.*`), không còn template chung của tool.
 """
 
 from __future__ import annotations
@@ -16,12 +16,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from sagareel.core import templating
 from sagareel.core.context import OpContext
-from sagareel.core.errors import AppError, Conflict, Forbidden, NotFound, ValidationFailed
+from sagareel.core.errors import AppError, Conflict, NotFound, ValidationFailed
 from sagareel.core.ops import op
 from sagareel.core.secrets import mask
-from sagareel.db.models import LlmTask, Template
+from sagareel.db.models import LlmTask
 from sagareel.providers import registry
 from sagareel.services import llm
 from sagareel.services.jobs import JobFailed, NeedsAttention, TransientError
@@ -51,33 +50,6 @@ def task_dict(row: LlmTask) -> dict[str, Any]:
         "fallbacks": [llm.normalize_route(f) for f in (row.fallbacks or [])],
         "updated_at": _iso(row.updated_at),
     }
-
-
-def _modified(row: Template) -> bool:
-    return bool(row.builtin_hash) and llm.body_hash(row.body) != row.builtin_hash
-
-
-def _variables(body: str) -> list[str] | None:
-    try:
-        return templating.variables_of(body)
-    except AppError:
-        return None
-
-
-def template_dict(row: Template, *, body: bool = True) -> dict[str, Any]:
-    out: dict[str, Any] = {
-        "id": row.id,
-        "key": row.key,
-        "kind": row.kind,
-        "locked": row.locked,
-        "modified": _modified(row),
-        "has_builtin": llm.builtin_template(row.key) is not None,
-        "variables": _variables(row.body),
-        "updated_at": _iso(row.updated_at),
-    }
-    if body:
-        out["body"] = row.body
-    return out
 
 
 # --- Kiểm tra -------------------------------------------------------------------------------------------------------
@@ -119,7 +91,10 @@ def _checked_fallbacks(s: Session, specs: list[RouteSpec]) -> list[dict[str, Any
 
 
 def _check_template_exists(s: Session, key: str) -> None:
-    llm.get_template(s, key)
+    """Khoá prompt của công việc phải có trong hợp đồng prompt của tool (nội dung là dữ liệu từng project)."""
+    from sagareel.services import prompts
+
+    prompts.check_key(key)
 
 
 def _effective_routes(s: Session, key: str) -> list[dict]:
@@ -127,12 +102,6 @@ def _effective_routes(s: Session, key: str) -> list[dict]:
         return [r.to_dict() for r in llm.routes(s, key)]
     except AppError:
         return []
-
-
-def _deny_locked_for_llm(ctx: OpContext, row: Template) -> None:
-    if row.locked and ctx.actor.startswith("llm:"):
-        raise Forbidden(f"Template '{row.key}' đang khoá, LLM không được sửa.", code="template_locked",
-                        hint="Người dùng mở khoá template (locked=false) nếu muốn cho LLM sửa.")
 
 
 # --- Công việc LLM --------------------------------------------------------------------------------------------------
@@ -238,6 +207,7 @@ class RunParams(BaseModel):
     variables: dict[str, Any] = Field(default_factory=dict, description="Biến của template (thường có `input`)")
     override: RouteSpec | None = Field(default=None, description="Định tuyến riêng cho lần chạy này")
     images_media_ids: list[int] = Field(default_factory=list, max_length=16, description="Ảnh gửi kèm (vision)")
+    project_id: int | None = Field(default=None, description="Dự án có prompt của công việc (bảng project_prompt)")
 
 
 @op("llm.run", summary="Chạy một công việc LLM (job; stream llm.delta, kết quả {text, data, route, usage})",
@@ -248,82 +218,5 @@ async def llm_run(ctx: OpContext, p: RunParams) -> dict:
         override["connection"] = str(override["connection"])
     data = await anyio.to_thread.run_sync(lambda: llm.submit_run(
         ctx.services, p.task, dict(p.variables), override=override, images_media_ids=list(p.images_media_ids),
-        project_id=ctx.project_id))
+        project_id=p.project_id if p.project_id is not None else ctx.project_id))
     return {"job_id": data["id"]}
-
-
-# --- Template -------------------------------------------------------------------------------------------------------
-
-
-class TemplateListParams(BaseModel):
-    kind: str | None = None
-
-
-@op("template.list", summary="Danh sách template prompt (không kèm nội dung; dùng template.get)",
-    params=TemplateListParams, read_only=True, idempotent=True)
-def template_list(ctx: OpContext, p: TemplateListParams) -> dict:
-    q = select(Template).where(Template.deleted_at.is_(None))
-    if p.kind is not None:
-        q = q.where(Template.kind == p.kind)
-    with ctx.services.db.session() as s:
-        return {"items": [template_dict(r, body=False) for r in s.scalars(q.order_by(Template.key)).all()]}
-
-
-class TemplateKeyParams(BaseModel):
-    key: str
-
-
-@op("template.get", summary="Nội dung một template prompt (kèm bản cài sẵn nếu có)", params=TemplateKeyParams,
-    read_only=True, idempotent=True)
-def template_get(ctx: OpContext, p: TemplateKeyParams) -> dict:
-    with ctx.services.db.session() as s:
-        row = llm.get_template(s, p.key)
-        return {**template_dict(row), "builtin_body": llm.builtin_template(row.key)}
-
-
-class TemplateUpdateParams(BaseModel):
-    key: str = Field(pattern=r"^[a-z][a-z0-9_.]*$", max_length=64)
-    body: str = Field(description="Nội dung Jinja; lưu nguyên văn")
-    locked: bool | None = Field(default=None, description="Khoá: LLM không được sửa")
-    create_if_missing: bool = Field(default=False, description="Tạo template mới nếu chưa có key này")
-    kind: str = Field(default=llm.TEMPLATE_KIND, description="Loại (chỉ dùng khi tạo mới)")
-
-
-@op("template.update", summary="Sửa nội dung template prompt (create_if_missing để tạo mới); kiểm tra cú pháp",
-    params=TemplateUpdateParams, idempotent=True)
-def template_update(ctx: OpContext, p: TemplateUpdateParams) -> dict:
-    templating.check_syntax(p.body)
-    if p.locked is not None and ctx.actor.startswith("llm:"):
-        raise Forbidden("LLM không được đổi trạng thái khoá của template.", code="template_locked")
-    with ctx.uow(f"Sửa template {p.key}") as s:
-        row = s.scalars(select(Template).where(Template.key == p.key)).first()
-        if row is not None and row.deleted_at is not None:
-            raise Conflict(f"Template '{p.key}' đã bị xoá.", hint="Hoàn tác lần xoá (history.undo) để dùng lại.")
-        if row is None:
-            if not p.create_if_missing:
-                llm.get_template(s, p.key)  # ném template_not_found
-            row = Template(key=p.key, kind=p.kind, body=p.body, locked=bool(p.locked), builtin_hash="")
-            s.add(row)
-        else:
-            _deny_locked_for_llm(ctx, row)
-            row.body = p.body
-            if p.locked is not None:
-                row.locked = p.locked
-        s.flush()
-        return template_dict(row)
-
-
-@op("template.reset", summary="Đưa template về nội dung cài sẵn", params=TemplateKeyParams, idempotent=True)
-def template_reset(ctx: OpContext, p: TemplateKeyParams) -> dict:
-    builtin = llm.builtin_template(p.key)
-    with ctx.uow(f"Khôi phục template {p.key}") as s:
-        row = llm.get_template(s, p.key)
-        _deny_locked_for_llm(ctx, row)
-        if builtin is None:
-            raise NotFound(f"Template '{p.key}' không có bản cài sẵn.", code="template_no_builtin",
-                           hint="Chỉ template cài sẵn mới khôi phục được; dùng history.restore cho bản cũ.")
-        row.body = builtin
-        row.builtin_hash = llm.body_hash(builtin)
-        s.flush()
-        return template_dict(row)
-

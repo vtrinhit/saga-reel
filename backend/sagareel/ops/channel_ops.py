@@ -83,8 +83,7 @@ class AnalyzeParams(BaseModel):
 def analyze(ctx: OpContext, p: AnalyzeParams) -> dict:
     st = study.get(ctx, p.study_id)
     with ctx.services.db.session() as s:  # kiểm cấu hình LLM vision trước khi tạo job
-        plan = llm.plan(s, analysis.TASK, {"input": "-"}, images=True)
-    conn = plan.candidates[0][1]
+        conn = llm.first_connection(s, analysis.TASK, images=True)[1]
     params = {"study_id": p.study_id, "scene_threshold": p.scene_threshold, "min_scene_s": p.min_scene_s,
               "max_frames": p.max_frames}
     return jobs.submit(ctx.services, analysis.JOB_TYPE, params, lane=f"conn:{conn.id}", project_id=st["project_id"],
@@ -93,19 +92,20 @@ def analyze(ctx: OpContext, p: AnalyzeParams) -> dict:
 
 
 class MakeParams(BaseModel):
-    genre_preset: bool = True
-    style_pack: bool = True
+    genre: bool = Field(default=True, description="Ghi số liệu thể loại (nhịp, độ dài clip/tập, hook) vào dự án")
+    style: bool = Field(default=True, description="Ghi khối phong cách + khối tránh vào dự án")
     library_suggestions: bool = True
 
 
 class ApplyParams(BaseModel):
     study_id: int
-    project_id: int | None = Field(default=None, description="Preset thuộc dự án này; bỏ trống = theo phân tích")
+    project_id: int | None = Field(default=None, description="Dự án nhận kết quả; bỏ trống = dự án của phân tích, "
+                                   "không có thì tạo dự án mẫu mới")
     make: MakeParams = Field(default_factory=MakeParams)
 
 
-@op("channel.apply", summary="Tạo preset genre/style_pack từ kết quả phân tích + gợi ý Library (không tự tạo asset)",
-    params=ApplyParams, mcp="tool")
+@op("channel.apply", summary="Ghi kết quả phân tích kênh vào dự án (số liệu thể loại, phong cách) + gợi ý Library; "
+    "không có dự án → tạo dự án mẫu mới", params=ApplyParams, mcp="tool")
 async def apply(ctx: OpContext, p: ApplyParams) -> dict:
     return await anyio.to_thread.run_sync(lambda: apply_svc.apply(
-        ctx, p.study_id, p.project_id, p.make.genre_preset, p.make.style_pack, p.make.library_suggestions))
+        ctx, p.study_id, p.project_id, p.make.genre, p.make.style, p.make.library_suggestions))

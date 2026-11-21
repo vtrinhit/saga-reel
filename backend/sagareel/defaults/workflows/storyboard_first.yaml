@@ -1,0 +1,29 @@
+# Quy trình mặc định của tool (chép vào project.workflows khi tạo project): duyệt dàn ý + bảng phân cảnh (ảnh) + animatic trước khi tạo video; duyệt bản cuối.
+# Spec §13 (gate:outline, gate:storyboard, gate:final), phụ lục film-craft §2 (render_animatic + gate:animatic).
+key: storyboard_first
+name: Duyệt bảng phân cảnh trước
+data:
+  label: Bảng phân cảnh trước — duyệt từng chặng
+  description: Dừng duyệt sau dàn ý, sau ảnh (storyboard), sau animatic và trước khi xuất.
+  batch: {mode: parallel, release_after: outline}
+  steps:
+    - {step: write_bible}
+    - {step: outline}
+    - {step: "gate:outline", rerun: [outline]}
+    - {step: write_script}
+    - {step: memory_summarize}
+    - {step: split_clips}
+    - {step: image_prompts}
+    - {step: motion_prompts}
+    - {step: dialogue}
+    - {step: generate_images}
+    - {step: "gate:storyboard", rerun: [image_prompts, generate_images]}
+    - {step: generate_audio}
+    - {step: subtitles}
+    - {step: render_animatic}
+    - {step: "gate:animatic", rerun: [dialogue, generate_audio, render_animatic]}
+    - {step: "gate:pilot", enabled: false}
+    - {step: generate_videos}
+    - {step: render}
+    - {step: "gate:final", rerun: [render]}
+    - {step: export, enabled: false}

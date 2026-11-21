@@ -20,7 +20,8 @@ def settings(tmp_path) -> AppSettings:
         env_file=tmp_path / ".env.local",
         outputs_dir=tmp_path / "outputs",
     )
-    return dataclasses.replace(s, frontend_dist=tmp_path / "frontend_dist")
+    # seed_samples=False: dự án mẫu không tự xuất hiện trong mọi test (test riêng gọi samples.seed).
+    return dataclasses.replace(s, frontend_dist=tmp_path / "frontend_dist", seed_samples=False)
 
 
 @pytest.fixture
@@ -178,10 +179,14 @@ def owner_ctx(request, settings):
 
 @pytest.fixture
 def project(owner_ctx) -> int:
-    """Id của project "demo" (tên "Demo") vừa tạo qua `services.projects.create`."""
-    from sagareel.services import projects
+    """Id của project "demo" (tên "Demo") vừa tạo qua `services.projects.create`, kèm bộ prompt của dữ liệu mẫu
+    "Phim truyện người thật" (prompt là dữ liệu của project — project trống không có prompt nào)."""
+    from sagareel.services import projects, samples
 
-    return projects.create(owner_ctx, name="Demo", key="demo")["id"]
+    pid = projects.create(owner_ctx, name="Demo", key="demo")["id"]
+    with owner_ctx.services.db.session() as s:
+        samples.install_prompts(s, pid, samples.DEFAULT_SAMPLE)
+    return pid
 
 
 @pytest.fixture(scope="session")
