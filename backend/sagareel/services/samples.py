@@ -46,7 +46,7 @@ def _prompt_key(path: Path) -> str:
     return path.name.rsplit(".", 1)[0]
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _definition(slug: str) -> dict[str, Any]:
     folder = SAMPLES_DIR / slug
     raw = yaml.safe_load((folder / "project.yaml").read_text(encoding="utf-8")) or {}

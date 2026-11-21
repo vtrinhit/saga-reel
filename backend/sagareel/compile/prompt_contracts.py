@@ -217,7 +217,7 @@ def output_format(key: str) -> str:
     return _formats().get(key, "")
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def output_schema(key: str) -> dict[str, Any] | None:
     c = BY_KEY.get(key)
     if c is None or c.schema is None:

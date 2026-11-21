@@ -27,12 +27,12 @@ from sagareel.api.static import build_static_router
 from sagareel.config import AppSettings, load_settings
 from sagareel.container import Services
 from sagareel.core.errors import AppError, internal_error, payload, validation_failed
-from sagareel.core.resolver import SCHEMA_PATH, Resolver, load_schema
 from sagareel.core.events import EventBus
+from sagareel.core.resolver import SCHEMA_PATH, Resolver, load_schema
 from sagareel.db.session import Database
 from sagareel.services import auth, seed, skills
-from sagareel.services.worker import Worker
 from sagareel.services.providers import ProviderService
+from sagareel.services.worker import Worker
 
 __all__ = ["APP_NAME", "create_app"]
 

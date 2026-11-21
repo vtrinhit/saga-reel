@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 
 import pytest
-from sqlalchemy import select, text
-
 from sagareel.compile import compiler
 from sagareel.compile import prompt_contracts as C
 from sagareel.core import ops as core_ops
@@ -15,6 +13,7 @@ from sagareel.core.errors import AppError
 from sagareel.db.models import Clip, Project, ProjectPrompt, Sequence
 from sagareel.db.session import Database
 from sagareel.services import projects, prompts, samples
+from sqlalchemy import select, text
 from test_m1_schema import _upgrade
 
 
