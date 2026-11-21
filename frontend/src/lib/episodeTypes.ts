@@ -72,6 +72,13 @@ export interface Clip {
   composition: string;
   eyeline: string;
   screen_dir: string;
+  /** Trường cắt/trục (`meta.enums.cut`). */
+  axis_side?: string;
+  cut_in?: string;
+  cut_out?: string;
+  /** Kết nối/model riêng của clip ('' = theo cài đặt). Chỉ một loại (ảnh hoặc video) — xem `takes.regenerate`. */
+  connection?: string;
+  model?: string;
   custom: Record<string, unknown>;
   updated_at: string;
   /** chỉ có khi đọc qua `review.queue` */

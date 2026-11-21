@@ -23,11 +23,13 @@ export interface MenuProps {
   }) => ReactNode;
   items: MenuItem[];
   align?: 'left' | 'right';
+  /** Mở xuống (mặc định) hoặc lên trên (nút ở đáy card, gần mép dưới khung cuộn). */
+  side?: 'bottom' | 'top';
   label: string;
 }
 
 /** Menu thả xuống (e2: viền + shadow-pop, z dropdown); ↑/↓ di chuyển, Esc đóng và trả focus. */
-export function Menu({ trigger, items, align = 'left', label }: MenuProps) {
+export function Menu({ trigger, items, align = 'left', side = 'bottom', label }: MenuProps) {
   const [open, setOpen] = useState(false);
   const id = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -96,7 +98,8 @@ export function Menu({ trigger, items, align = 'left', label }: MenuProps) {
           aria-label={label}
           onKeyDown={onMenuKey}
           className={cn(
-            'absolute top-[calc(100%+4px)] z-dropdown grid min-w-52 gap-0.5 rounded-md border border-line-2 bg-bg-3 p-1 shadow-pop',
+            'absolute z-dropdown grid min-w-52 gap-0.5 rounded-md border border-line-2 bg-bg-3 p-1 shadow-pop',
+            side === 'top' ? 'bottom-[calc(100%+4px)]' : 'top-[calc(100%+4px)]',
             align === 'right' ? 'right-0' : 'left-0',
           )}
         >

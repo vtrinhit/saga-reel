@@ -1,5 +1,7 @@
 import { AlertTriangle, Check, Undo2, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { portalRoot, TOP_LAYER_EVENT } from '../../lib/portalRoot';
 import { cn } from '../../lib/cn';
 import { useToasts, type ToastItem } from '../../stores/toast';
 import { Button } from './Button';
@@ -77,6 +79,12 @@ function isTyping(el: Element | null): boolean {
 export function ToastViewport() {
   const toasts = useToasts((s) => s.toasts);
   const dismiss = useToasts((s) => s.dismiss);
+  // Trình xem media (<dialog> modal) mở/đóng → vẽ lại để toast vào đúng lớp trên cùng (không bị trơ, không bị che).
+  const [, refresh] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    window.addEventListener(TOP_LAYER_EVENT, refresh);
+    return () => window.removeEventListener(TOP_LAYER_EVENT, refresh);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -91,7 +99,7 @@ export function ToastViewport() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  return (
+  return createPortal(
     <div
       role="status"
       aria-live="polite"
@@ -100,6 +108,7 @@ export function ToastViewport() {
       {toasts.map((t) => (
         <ToastView key={t.id} t={t} onDismiss={() => dismiss(t.id)} />
       ))}
-    </div>
+    </div>,
+    portalRoot(),
   );
 }

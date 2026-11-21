@@ -79,6 +79,9 @@ export function useDialogA11y(
 
     const onKey = (e: KeyboardEvent) => {
       if (topDialog() !== id || e.defaultPrevented) return;
+      // Phím trong một `<dialog>` modal gốc (trình xem media) mở đè lên dialog này: dialog gốc tự xử lý.
+      const nativeModal = e.target instanceof Element ? e.target.closest('dialog') : null;
+      if (nativeModal && nativeModal.open && !nativeModal.contains(panel)) return;
       if (e.key === 'Escape') {
         if (!closeRef.current) return;
         e.preventDefault();

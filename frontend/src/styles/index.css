@@ -267,3 +267,24 @@
     animation: none;
   }
 }
+
+/* Trình xem media (<dialog> + showModal): không để cuộn lọt xuống trang (modern-web-guidance: dialog / prevent-page-scroll). */
+dialog.sr-viewer:modal {
+  overscroll-behavior: contain;
+}
+dialog.sr-viewer::backdrop {
+  background: var(--scrim);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+@media (prefers-reduced-motion: no-preference) {
+  dialog.sr-viewer[open] > * {
+    animation: sr-fade-in var(--dur-base) var(--ease-out);
+  }
+}
+/* Ảnh trên card: giữ lâu để chọn nhiều, không bật menu ảnh của iOS. */
+.sr-no-callout {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
