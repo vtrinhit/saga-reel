@@ -15,5 +15,6 @@
 1. `sr_channel_study_create(title, media_ids, captions, project_id)`.
 2. `sr_channel_analyze(study_id)` → `sr_job_wait` → `sr_channel_study_get` (nhịp cắt, thời lượng clip, kiểu phụ đề,
    hook mở đầu).
-3. Tóm tắt kết quả cho người dùng → `sr_channel_apply(study_id, project_id, make)` để tạo preset/cài đặt theo kênh.
+3. Tóm tắt kết quả cho người dùng → `sr_channel_apply(study_id, project_id, make)` ghi số liệu thể loại + phong cách vào DỰ ÁN
+   (không có project_id → tạo dự án mẫu mới để nhân bản về sau).
 4. Không sao chép nguyên văn nội dung kênh khác; chỉ học cấu trúc/nhịp.

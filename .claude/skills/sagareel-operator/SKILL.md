@@ -26,9 +26,30 @@ catalog op). Đọc `AGENTS.md` ở gốc repo nếu cần chi tiết cửa REST
 
 ## Khởi động mỗi phiên
 
-1. `sr_describe_ops` (lọc `group`) nếu chưa rõ op; op không có tool riêng → `sr_call`.
-2. `sr_project_list` → chọn project (hoặc `sr_project_create`).
-3. `sr_provider_list` + `sr_provider_check` nếu sắp tạo media.
+1. `sr_studio_guide(project_id?)` — bản đồ quy trình: mỗi bước có op "tool làm" và op "agent tự gửi", schema đầu ra,
+   prompt liên quan, gate; kèm trạng thái dự án (tập, clip, prompt thiếu, đang chờ gì).
+2. `sr_describe_ops` (lọc `group`) nếu chưa rõ op; op không có tool riêng → `sr_call`.
+3. `sr_project_list` → chọn project, hoặc tạo từ dự án mẫu: `sr_project_create(name, from_project_id=<mẫu>)`
+   (dự án mẫu = `is_sample: true`; dự án trống KHÔNG có prompt nào).
+4. `sr_provider_list` + `sr_provider_check` nếu sắp tạo media.
+
+## Hai chế độ ngang hàng (chọn theo người dùng, trộn từng bước được)
+
+- **Agent làm hết (không dùng LLM của tool):** agent tự viết kết quả từng bước đúng `output_schema` (xem
+  `sr_prompt_contracts`) rồi gửi thẳng: `sr_story_submit(task, data, …)` (bible, dàn ý, kịch bản, chia clip, prompt
+  ảnh/chuyển động, thoại, bộ nhớ), `sr_prompts_submit`, `sr_clip_update`, `sr_dialogue_bulk_set`, `sr_bible_create`,
+  `sr_export_create(metadata=…)`. SagaReel chỉ tạo ảnh/video/giọng, dựng, xuất. Không cần prompt của dự án.
+  Playbook: `playbooks/agent-only.md`.
+- **Agent điều khiển LLM của tool:** gọi `sr_story_*`, `sr_pipeline_run` — tool dùng prompt CỦA DỰ ÁN + tự nối khối
+  định dạng đầu ra rồi kiểm schema. Thiếu prompt → bước dừng `waiting_input` (không hỏng quy trình): gửi kết quả bằng
+  `sr_story_submit` hoặc viết prompt bằng `sr_prompt_set` rồi chạy tiếp. `sr_prompt_check(project_id)` cảnh báo trước
+  (không LLM, không chặn).
+
+## Prompt là dữ liệu của dự án
+
+Không có bộ prompt chung của tool. Mỗi dự án có prompt riêng (`sr_prompt_list/get/set/preview/check`); hợp đồng biến +
+đầu ra: `sr_prompt_contracts`. Sửa prompt chỉ ảnh hưởng dự án đó. Thể loại mới = nhân bản dự án mẫu rồi sửa prompt,
+hoặc viết trọn bộ từ đầu (`playbooks/new-genre-prompts.md`); xong đánh dấu mẫu `sr_project_update(values={is_sample: true})`.
 
 ## Cách làm việc theo khối lớn: file khai báo
 
@@ -46,6 +67,9 @@ Thay vì gọi hàng trăm op lẻ, sửa cả project bằng file khai báo (YA
 
 | Việc | File |
 |---|---|
+| Agent tự viết mọi thứ, SagaReel chỉ tạo media/dựng/xuất | `playbooks/agent-only.md` |
+| Agent điều khiển LLM của tool (quy trình tự động) | `playbooks/series.md` |
+| Tạo bộ prompt cho thể loại mới qua MCP | `playbooks/new-genre-prompts.md` |
 | Video ghép (montage) từ ý tưởng/clip có sẵn | `playbooks/montage.md` |
 | Phim bộ nhiều tập, nhân vật nhất quán | `playbooks/series.md` |
 | Truyện dài tập chạy hàng loạt (chuyển thể) | `playbooks/long-serial.md` |

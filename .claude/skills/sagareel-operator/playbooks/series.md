@@ -4,7 +4,8 @@ Mục tiêu: nhiều tập cùng nhân vật/bối cảnh nhất quán (Library 
 
 ## 1. Library trước, tập sau
 
-1. `sr_project_create(name, genre_key: "series", aspect: "9:16")`.
+1. `sr_project_create(name, from_project_id=<dự án mẫu>, aspect: "9:16")` — dự án mẫu (`is_sample`) mang theo bộ
+   prompt, phong cách, số liệu thể loại, quy trình. `sr_prompt_check(project_id)` trước khi chạy AI viết.
 2. Nhân vật/bối cảnh: `sr_asset_create` (mô tả = khối khoá dán nguyên văn). Có ảnh mẫu → `sr_asset_describe_from_image`.
 3. Look: `sr_look_create(asset_id, name, lock_word, keep_features, valid_from, valid_to)` — `lock_word` chèn nguyên văn
    vào prompt; `valid_from/valid_to` = khoảng số tập (vd. bị thương từ tập 3).
@@ -16,7 +17,8 @@ Mục tiêu: nhiều tập cùng nhân vật/bối cảnh nhất quán (Library 
 
 - AI viết: `sr_story_write_bible` → `sr_story_outline` → `sr_story_write_script` → `sr_story_split_clips` →
   `sr_story_image_prompts` / `sr_story_motion_prompts` / `sr_story_dialogue`. Mỗi bước là LLM (tốn token): chạy theo
-  từng tập, cho người dùng xem dàn ý trước khi viết kịch bản.
+  từng tập, cho người dùng xem dàn ý trước khi viết kịch bản. Các bước này dùng prompt CỦA DỰ ÁN.
+- Bước nào agent muốn tự viết: `sr_story_submit(task, data)` cùng schema (xem `playbooks/agent-only.md`).
 - Story Bible: `sr_bible_search` để giữ mạch; mục AI đề xuất ở trạng thái chờ → người dùng chọn → `sr_bible_confirm` /
   `sr_bible_reject`.
 - Hoặc soạn cả mùa trong file khai báo: `sr_project_export_spec` → thêm `sequences[]` → `sr_project_plan` →

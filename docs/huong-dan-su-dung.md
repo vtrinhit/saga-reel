@@ -36,13 +36,27 @@ Vào **Dự án**, bấm tạo mới và chọn một trong bốn lối:
 | **Từ kênh mẫu** | Muốn bắt chước nhịp và phong cách một kênh | Phân tích video bạn tải lên; mở tab Kênh |
 | **Dự án trống** | Đã có clip/ảnh, tự dựng | Mở Tổng quan, tự thêm clip hoặc nhập bảng |
 
-Form tạo gồm tên, **thể loại**, tỉ lệ khung hình và nền tảng (gợi ý theo thể loại). Thể loại có sẵn: Phim bộ (serial,
-kết bằng điểm treo), Series, Thuyết minh, Montage (kết lặp), Storyboard. Mỗi thể loại đặt sẵn độ dài tập, số clip, kiểu
-chuyển cảnh, mức nhạc nền; xem và sửa ở mục **Mẫu** (phần 13).
+Form tạo gồm tên, **Bắt đầu từ** (một dự án mẫu hoặc dự án trống), tỉ lệ khung hình và nền tảng. **Dự án mẫu** là dự án
+bình thường được đánh dấu mẫu; tạo từ mẫu = nhân bản bộ **prompt**, khối phong cách, giọng người kể, số liệu thể loại
+(độ dài tập, số clip, chuyển cảnh, kết tập) và quy trình. Có sẵn ba mẫu: *Mẫu · Phim thoại hoạt hình* (nhân vật tự nói,
+không người kể), *Mẫu · Kể chuyện xưa* (lời người kể ngoài khung hình), *Mẫu · Phim truyện người thật* (phim bộ điện
+ảnh). Mẫu hiện ở mục **Dự án mẫu** dưới danh sách dự án; sửa mẫu không ảnh hưởng dự án đã tạo từ nó.
+
+**Dự án trống** không có prompt nào: chọn thể loại để chép số liệu tham khảo; prompt thì tự viết ở Cài đặt dự án →
+**Prompt**, hoặc để agent AI viết qua MCP (đọc `prompt.contracts`, viết bằng `prompt.set`).
 
 Nút **Ước tính chi phí** (nếu có) cho biết trước số lượt LLM, ảnh sheet, ảnh khung hình. Video luôn để ngỏ vì nằm sau gate.
 
-Cài đặt dự án (style, ngôn ngữ, nền tảng, quy trình) ở **Cài đặt** trong rail dự án.
+Cài đặt dự án (style, giọng người kể, ngôn ngữ, nền tảng, đánh dấu là mẫu, **Prompt**) ở **Cài đặt** trong rail dự án.
+
+### Prompt của dự án
+
+Mỗi dự án có bộ prompt riêng, nhóm theo việc: *Ráp prompt* (ảnh khung đầu, video, sheet nhân vật/bối cảnh/đạo cụ), *AI
+viết* (bible, dàn ý, kịch bản, chia clip, prompt ảnh/chuyển động, thoại, bộ nhớ, chuyển thể), *Kiểm tra & khác*
+(lệch nhân vật, chấm take, mô tả ảnh, caption, dịch, phân tích kênh, clone). Mỗi khoá có danh sách biến dùng được và nút
+**Xem trước** (ráp với clip thật của dự án). Prompt AI viết chỉ cần phần dặn dò sáng tạo — định dạng JSON đầu ra do tool
+tự thêm. Khung **Kiểm tra prompt** chỉ cảnh báo (cú pháp, biến lạ, khoá thiếu), không chặn chạy: bước thiếu prompt sẽ
+dừng ở "chờ bạn tự viết" để bạn hoặc agent gửi kết quả.
 
 ## 2. Thư viện: nhân vật, bối cảnh, đạo cụ
 
@@ -224,10 +238,13 @@ lý, nhân vật lệch, bước "chờ bạn tự viết" và yêu cầu từ a
 
 - **Thẻ gate** ghi rõ **giá của bước kế** (số ảnh/video), vì duyệt gate nghĩa là cho phép tiêu tiền. Có hai nút:
   **Duyệt và chạy tiếp** hoặc **Trả lại** (kèm góp ý; bước tương ứng làm lại theo góp ý).
-- Quy trình (gate nào bật) là một preset **quy trình** ở Mẫu. Có sẵn: *Tự động* (chỉ dừng duyệt animatic), *Bảng phân cảnh
+- Quy trình (gate nào bật) là dữ liệu của dự án (chép từ quy trình mặc định khi tạo dự án). Có sẵn: *Tự động* (chỉ dừng duyệt animatic), *Bảng phân cảnh
   trước* (dừng sau dàn ý, sau ảnh, sau animatic, trước bản cuối), *Phim bộ theo lô* (viết tuần tự, thử tập đầu rồi chạy lô).
   Tắt hết gate là tự động hoàn toàn.
 - **Chạy tới gate kế tiếp**: ở Tổng quan chọn nhiều tập (Shift-click), chạy chung; hộp ước tính gom theo chặng.
+- **Hai chế độ**: bạn bấm trên UI (LLM của tool viết theo prompt của dự án) hoặc agent AI qua MCP tự làm mọi bước — tự
+  viết bible, kịch bản, chia clip, prompt, thoại, caption rồi gửi thẳng (không cần LLM của tool), hoặc điều khiển LLM
+  của tool. Bản đồ cho agent: op `studio.guide`.
 - **Agent**: chip "Agent" ở thanh trên cho biết có agent đang làm. Panel **Hoạt động** (phím `.`) hiện mỗi agent đang làm gì,
   thay đổi gần nhất, chi phí đã tiêu, nút **tạm dừng agent**. Agent không bao giờ tự duyệt gate thay bạn. Cách kết nối:
   [agent và MCP](agents-va-mcp.md).
@@ -272,14 +289,11 @@ Số việc chạy cùng lúc (kể cả dựng/ffmpeg) đặt ở **Luồng** �
 - Agent: `queue.concurrency` (xem trần + số đang chạy/chờ từng loại và từng kết nối), `queue.set_concurrency`
   (`{"values": {"video": 3}}`).
 
-## 13. Mẫu (preset)
+## 13. Mẫu (preset kỹ thuật)
 
-Màn **Mẫu** chứa các preset dùng chung, đều sửa được (bản cài sẵn có nút khôi phục):
-- **Thể loại** (độ dài tập, số clip, chuyển cảnh, mức nhạc, kiểu kết, hook 3 giây đầu);
-- **Quy trình** (bước nào chạy, gate nào bật);
-- **Nền tảng** (thông số xuất);
-- **Phụ đề**, **chuyển cảnh**, **chuyển động ảnh tĩnh** (zoom, pan, grain...);
-- **Prompt** (mẫu prompt ảnh, chuyển động, sheet) và skill vận hành của agent.
+Màn **Mẫu** chỉ chứa preset KỸ THUẬT dùng chung, đều sửa được (bản cài sẵn có nút khôi phục): **Nền tảng** (thông số
+xuất), **Phụ đề**, **chuyển cảnh**, **chuyển động ảnh tĩnh** (zoom, pan, grain...). Thể loại, quy trình, phong cách và
+prompt là dữ liệu của từng dự án (Cài đặt dự án); "mẫu" cho một thể loại là **dự án mẫu** (phần 1).
 
 Cài đặt theo tầng: mặc định, toàn cục, preset, dự án, tập, cảnh, clip, lần chạy; tầng sau thắng tầng trước. Chỗ nào có
 nhãn nguồn bạn thấy giá trị đang đến từ tầng nào.
