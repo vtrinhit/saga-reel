@@ -51,6 +51,8 @@ import {
   useSounds,
   useStudioLiveRefresh,
   useTimelineItems,
+  effectiveClips,
+  manualTrimPatch,
   renderSourceMs,
   videoSources,
   VARIANT_LABEL,
@@ -119,7 +121,8 @@ export function StudioPage() {
   const soundsQ = useSounds(pid);
   const m = useStudioMutations(pid, sid);
 
-  const clips = useMemo(() => clipsQ.data ?? [], [clipsQ.data]);
+  // Trim hiệu lực như bản dựng (tự cắt / nguyên take) để timeline khớp độ dài bản dựng.
+  const clips = useMemo(() => effectiveClips(clipsQ.data ?? []), [clipsQ.data]);
   const lines = useMemo(() => linesQ.data ?? [], [linesQ.data]);
   const items = useMemo(() => itemsQ.data ?? [], [itemsQ.data]);
   const sounds = useMemo(() => soundsQ.data ?? [], [soundsQ.data]);
@@ -221,6 +224,19 @@ export function StudioPage() {
       }
     },
     onError: (e, { clip }) => toastError(`Không tạo lại được video ${clip.key}`, e),
+  });
+
+  // --- Phân tích tự cắt (job ffmpeg, không tốn tiền): chờ xong rồi nạp lại clip để thấy auto_trim ---
+  const analyzeTrim = useMutation({
+    mutationFn: async (clipId: number) => {
+      const j = (await callOp('clip.analyze_trim', { ids: [clipId] })) as unknown as { id: number };
+      await callOp('job.wait', { ids: [j.id], timeout_s: 120 });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: sk.clips(sid ?? -1) });
+      toast({ message: 'Đã phân tích video để tự cắt.', tone: 'success' });
+    },
+    onError: (e) => toastError('Không phân tích được video', e),
   });
 
   const saveScript = useMutation({
@@ -358,13 +374,10 @@ export function StudioPage() {
           transitions={transitions}
           readOnly={viewer}
           audioHref={`${base}/s/${sid}/audio`}
-          onUpdate={(values, label) => {
-            // Clip có video: độ dài khi dựng theo nguồn sau trim → đổi điểm ra thay vì duration_ms.
-            if (typeof values.duration_ms === 'number' && selectedClip.video_take_id != null && videoSrc.get(selectedClip.id)) {
-              const t = trimValues(selectedClip, values.duration_ms, videoSrc.get(selectedClip.id)!, FPS);
-              void m.updateClip(selectedClip, t.values, 'điểm ra (trim)');
-            } else void m.updateClip(selectedClip, values, label);
-          }}
+          sourceMs={videoSrc.get(selectedClip.id) ?? null}
+          onUpdate={(values, label) => void m.updateClip(selectedClip, values, label)}
+          onAnalyzeTrim={() => analyzeTrim.mutate(selectedClip.id)}
+          analyzing={analyzeTrim.isPending}
           onRegenerate={() => regen.mutate({ clip: selectedClip, dry: true })}
           regenerating={regen.isPending}
           offline={offline}
@@ -553,7 +566,7 @@ export function StudioPage() {
             if (!c) return;
             const t = trimValues(c, ms, videoSrc.get(id) ?? null, FPS);
             const changed = Object.entries(t.values).some(([k, v]) => (c as unknown as Record<string, unknown>)[k] !== v);
-            if (changed) void m.updateClip(c, t.values, c.video_take_id != null ? 'điểm ra (trim)' : 'thời lượng');
+            if (changed) void m.updateClip(c, manualTrimPatch(c, t.values), c.video_take_id != null ? 'điểm ra (trim)' : 'thời lượng');
           }}
           onMoveLine={(id, off) => {
             const l = lines.find((x) => x.id === id);

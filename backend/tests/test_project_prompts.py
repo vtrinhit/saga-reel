@@ -332,6 +332,31 @@ async def test_story_submit_split_clips_and_script_without_llm(owner_ctx, client
     assert bad["error_code"] == "submit_invalid"
 
 
+def test_story_submit_adapt_novel_without_llm(client):
+    """Agent gửi thẳng kết quả chuyển thể: tạo tập (synopsis/kịch bản/nguồn) + nhân vật, kiểm như đường LLM."""
+    pid = rest(client, "project.create", {"name": "Chuyển thể bởi agent"})["id"]
+    novel = "Chương một. An về làng sau mười năm. Bà ngoại đứng chờ ở cổng.\n\nChương hai. Đêm ấy có tiếng gõ cửa."
+    data = {"episodes": [
+        {"title": "Trở về", "synopsis": "An về làng", "cliffhanger": "Bà ngoại đứng chờ",
+         "characters": [{"key": "an", "name": "An", "role": "chính", "description": "Cô gái 20 tuổi tóc ngắn"}],
+         "facts": [{"summary": "An xa làng mười năm", "quote": "An về làng sau mười năm."}],
+         "source_text": "Chương một. An về làng sau mười năm. Bà ngoại đứng chờ ở cổng.",
+         "script": "CẢNH 1 — Cổng làng — Chiều\nAN: Bà ơi!"},
+        {"title": "Tiếng gõ cửa", "synopsis": "Đêm đầu tiên ở làng"},
+    ]}
+    out = rest(client, "story.submit", {"task": "adapt_novel", "project_id": pid, "data": data, "text": novel})
+    res = out["result"]
+    assert res["episodes"] == 2 and len(res["sequence_ids"]) == 2
+    s1 = rest(client, "sequence.get", {"id": res["sequence_ids"][0]})
+    assert s1["title"] == "Trở về" and s1["synopsis"] == "An về làng" and s1["script"].startswith("CẢNH 1")
+    assert s1["number"] == 1 and rest(client, "sequence.get", {"id": res["sequence_ids"][1]})["number"] == 2
+    assets = rest(client, "asset.list", {"project_id": pid})["items"]
+    assert any(a["key"] == "an" and a["kind"] == "character" for a in assets)
+    bad = rest(client, "story.submit", {"task": "adapt_novel", "project_id": pid, "data": {"episodes": [{}]}}, 422)
+    assert bad["error_code"] == "submit_invalid" and bad["extra"]["errors"]
+    bad = rest(client, "story.submit", {"task": "adapt_novel", "data": data}, 422)
+
+
 def test_prompt_check_and_guide(client):
     pid = rest(client, "project.create", {"name": "Trống"})["id"]
     chk = rest(client, "prompt.check", {"project_id": pid})
@@ -347,9 +372,25 @@ def test_prompt_check_and_guide(client):
     assert g["state"]["prompts"]["missing"] and g["state"]["project"]["id"] == pid
 
 
+def test_prompt_check_ok_with_only_warnings(owner_ctx, project):
+    """ok = false chỉ khi thiếu khoá/sai cú pháp; đủ khoá mà chỉ có cảnh báo biến → ok = true."""
+    from sagareel.services import prompts as prompt_svc
+    from sagareel.services.samples import SAMPLES_DIR
+
+    folder = SAMPLES_DIR / "phim-thoai-hoat-hinh" / "prompts"
+    with owner_ctx.services.db.session() as s:
+        for f in folder.iterdir():
+            prompt_svc.put(s, project, f.stem if f.suffix == ".md" else f.name[: -len(f.suffix)], f.read_text("utf-8"))
+        prompt_svc.put(s, project, "caption", "{{ input }} {{ lạ }}")
+        chk = prompt_svc.check_session(s, project)
+        assert chk["missing"] == [] and chk["warnings"] and chk["ok"] is True
+        prompt_svc.put(s, project, "caption", "{% if %}")  # ghi thẳng DB (prompt.set đã chặn cú pháp sai)
+        chk = prompt_svc.check_session(s, project)
+        assert chk["ok"] is False and any(w["code"] == "template_syntax_error" for w in chk["warnings"])
+
+
 async def test_spec_without_workflows_gets_defaults_and_reapply_is_noop(owner_ctx):
     import yaml as _yaml
-
     from sagareel.core.ops import invoke
     from sagareel.services.spec import plan as sp
 

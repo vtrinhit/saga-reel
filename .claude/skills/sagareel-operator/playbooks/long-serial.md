@@ -29,3 +29,7 @@ Mục tiêu: chuyển thể truyện dài thành hàng chục/hàng trăm tập,
 `sr_project_export_spec(project_id, include: ["sequences"])` → sửa YAML → `sr_project_plan` → cho người dùng xem
 `updates` + `estimate` → `sr_project_apply`. Không xoá tập qua plan; tập thừa nằm trong `delete_candidates` — muốn xoá
 thì `sr_call` op `sequence.delete_preview` → báo → op `sequence.delete`.
+
+Agent tự chuyển thể (không dùng LLM của tool): đọc truyện, tự chia tập rồi gửi
+`sr_story_submit(task="adapt_novel", project_id, data={episodes: [{title, synopsis, cliffhanger, characters, facts,
+script?, source_text?}]}, text=<truyện gốc, tuỳ chọn>)` — mỗi phần tử thành một tập mới (kiểm như đường LLM).

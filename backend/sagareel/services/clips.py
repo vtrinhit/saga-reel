@@ -65,6 +65,7 @@ UPDATE_FORBIDDEN = {
 }
 MAX_BULK = 1000
 LIST_MAX = 500
+TRIM_MODES = ("auto", "manual", "none")  # clip.settings["trim_mode"] — render/trim.py
 
 
 def _enum_error(field: str, value: Any, allowed: frozenset[str], loc: str = "values") -> dict:
@@ -123,9 +124,11 @@ def clip_out(c: Clip) -> dict[str, Any]:
 
 
 def get(ctx: OpContext, clip_id: int) -> dict[str, Any]:
+    from sagareel.services import trimming
+
     with ctx.services.db.session() as s:
         c = get_clip(s, clip_id)
-        out = clip_out(c)
+        out = {**clip_out(c), **trimming.info_for(s, [c]).get(c.id, {})}
         out["dialogue"] = [entities.to_dict(d) for d in s.scalars(
             select(DialogueLine).where(DialogueLine.clip_id == c.id, DialogueLine.deleted_at.is_(None))
             .order_by(DialogueLine.rank, DialogueLine.id))]
@@ -259,8 +262,11 @@ def list_page(s: Session, sequence_id: int, cursor: str | None = None, limit: in
     rows = s.scalars(q.order_by(Clip.rank, Clip.id).limit(limit + 1)).all()
     more = len(rows) > limit
     rows = rows[:limit]
+    from sagareel.services import trimming
+
     media_of = selected_media(s, rows)
-    return {"items": [{**clip_out(c), **media_of.get(c.id, {})} for c in rows],
+    trims = trimming.info_for(s, rows)
+    return {"items": [{**clip_out(c), **media_of.get(c.id, {}), **trims.get(c.id, {})} for c in rows],
             "next_cursor": f"{rows[-1].rank}:{rows[-1].id}" if more else None}
 
 
@@ -439,10 +445,32 @@ def _check_update(values: dict[str, Any]) -> dict[str, Any]:
     if bad:
         raise AppError("readonly_field", f"Không sửa được trường bằng clip.update: {', '.join(sorted(bad))}.",
                        hint=" ".join(sorted(set(bad.values()))), status=422, extra={"fields": sorted(bad)})
-    return entities.check_values("clip", normalize_fields(values))
+    values = dict(values)
+    trim_mode = values.pop("trim_mode", None)
+    if trim_mode is not None and trim_mode not in TRIM_MODES:
+        raise ValidationFailed("Giá trị không hợp lệ.", hint="Xem `extra.errors`.", extra={"errors": [
+            {"loc": ["values", "trim_mode"], "msg": f"trim_mode phải là một trong: {', '.join(TRIM_MODES)}.",
+             "type": "enum"}]})
+    clean = entities.check_values("clip", normalize_fields(values)) if values or trim_mode is None else {}
+    if trim_mode is not None:
+        clean[TRIM_MODE_KEY] = trim_mode
+    return clean
+
+
+TRIM_MODE_KEY = "__trim_mode__"  # khoá nội bộ (không phải cột) mang trim_mode từ _check_update sang _apply_update
 
 
 def _apply_update(s: Session, c: Clip, clean: dict[str, Any]) -> list[str]:
+    clean = dict(clean)
+    if TRIM_MODE_KEY in clean:
+        # `trim_mode` là trường ảo: gộp vào clip.settings (giữ các khoá khác như audio_sync), `auto` = xoá khoá.
+        mode = clean.pop(TRIM_MODE_KEY)
+        base = dict(clean.get("settings", c.settings) or {})
+        if mode == "auto":
+            base.pop("trim_mode", None)
+        else:
+            base["trim_mode"] = mode
+        clean["settings"] = base
     changed = _changed(c, clean)
     if "scene_id" in changed:
         _check_scene(s, changed["scene_id"], c.sequence_id)
@@ -537,9 +565,16 @@ def copy_values(obj: Any, **overrides: Any) -> dict[str, Any]:
 def split(ctx: OpContext, clip_id: int, at_ms: int) -> dict[str, Any]:
     """Tách clip tại `at_ms` (tính từ đầu clip): clip gốc giữ phần đầu, clip mới phần sau. Cả hai trỏ cùng take
     (không tạo/xoá take) và cắt bằng `trim_in_ms/trim_out_ms`; lời thoại có `offset_ms ≥ at_ms` sang clip mới."""
+    from sagareel.services import trimming
+
     u = entities.uow(ctx, f"Tách clip #{clip_id}", "clip.split")
     with u as s:
         c = get_clip(s, clip_id)
+        auto = (trimming.info_for(s, [c]).get(c.id) or {}).get("auto_trim") if c.video_take_id else None
+        if c.video_take_id and (auto or {}).get("applied") and (auto or {}).get("dur_ms") and                 (c.settings or {}).get("trim_mode") not in ("manual", "none") and not c.trim_in_ms and not c.trim_out_ms:
+            # Clip đang tự cắt: thời gian trên màn hình tính từ điểm vào tự cắt → chuyển cả hai nửa sang trim tay.
+            c.trim_in_ms, c.trim_out_ms, c.duration_ms = int(auto["in_ms"]), int(auto["out_ms"]), int(auto["dur_ms"])
+            c.settings = {**(c.settings or {}), "trim_mode": "manual"}
         if not (0 < at_ms < c.duration_ms):
             raise ValidationFailed(f"Điểm tách phải nằm trong (0, {c.duration_ms}) ms.",
                                    extra={"errors": [{"loc": ["at_ms"], "msg": "ngoài khoảng", "type": "range"}]})

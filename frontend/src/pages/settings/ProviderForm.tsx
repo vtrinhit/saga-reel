@@ -12,7 +12,7 @@ import { IconButton } from '../../components/ui/IconButton';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Textarea } from '../../components/ui/Textarea';
-import { buildSubmit, fieldPlaceholder, initialValues, serverFieldErrors, type FormValues } from '../../lib/providerForm';
+import { buildSubmit, fieldPlaceholder, initialValues, isSecondsList, serverFieldErrors, type FormValues } from '../../lib/providerForm';
 import { toast } from '../../stores/toast';
 import { KIND_LABEL, KIND_ORDER } from './providerText';
 
@@ -127,6 +127,19 @@ export function ProviderForm({ open, onClose, adapters, conn, kind }: ProviderFo
           />
         );
       case 'json':
+        if (isSecondsList(f))
+          return (
+            <Input
+              key={f.name}
+              {...common}
+              inputMode="numeric"
+              spellCheck={false}
+              value={typeof v === 'string' ? v : ''}
+              onChange={(e) => set(f.name, e.target.value)}
+              placeholder={fieldPlaceholder(f, conn ?? undefined)}
+              trailing={<span className="text-xs text-fg-3">giây</span>}
+            />
+          );
         return (
           <Textarea
             key={f.name}

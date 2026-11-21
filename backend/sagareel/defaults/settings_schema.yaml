@@ -34,10 +34,12 @@ video.engine:
   choices: [ai_video, still_motion]
   description: Cách dựng clip — video AI hay ảnh tĩnh có chuyển động.
 video.duration:
-  type: enum
+  type: int
   default: 6
-  choices: [6, 10, 15]
-  description: Thời lượng mỗi clip video (giây).
+  description: >-
+    Thời lượng mặc định (giây) khi chạy thử video/clip chưa đặt thời lượng. Mỗi clip tự đặt thời lượng mong muốn
+    (clip.duration_ms, số bất kỳ); khi tạo video app xin mức nhỏ nhất ≥ mong muốn + 0,3 s trong danh sách thời lượng
+    của kết nối (capabilities.durations), bản dựng tự cắt sát nội dung.
 video.resolution:
   type: enum
   default: 720p
@@ -103,7 +105,7 @@ audio.duration_sync:
   default: voice_drives
   choices: [voice_drives, clip_drives, none]
   description: >-
-    Khớp thời lượng giọng ↔ clip. voice_drives — giọng quyết định độ dài clip (ai_video chọn 6/10/15 ≥ giọng);
+    Khớp thời lượng giọng ↔ clip. voice_drives — giọng quyết định độ dài clip (ai_video chọn mức thời lượng của kết nối ≥ giọng);
     clip_drives — tăng tốc giọng bằng atempo ≤ 1.25 (cảnh báo nếu cần hơn); none — không tự khớp.
 audio.dialogue_lufs:
   type: float

@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import anyio
 import httpx
 
+from sagareel.core import durations
 from sagareel.media.ffmpeg import FFmpegError
 from sagareel.media.probe import probe
 from sagareel.providers.base import (
@@ -55,6 +56,8 @@ if TYPE_CHECKING:
     from sagareel.services.worker import JobRun
 
 DEFAULT_URL = "http://127.0.0.1:8888"
+# Mức giây GrokTele nhận (`VALID_DURATIONS` của GrokTele); kết nối ghi đè bằng `options.durations`.
+DEFAULT_DURATIONS = (3, 5, 6, 7, 8, 10, 12, 15)
 DEFAULT_POLL_INTERVAL = 4.0
 DEFAULT_TIMEOUT_S = 7200  # GrokTele tự xếp hàng; một job 6 s đo được ~176 s, có thể phải chờ tài khoản rảnh
 MIN_VIDEO_BYTES = 5 * 1024
@@ -133,9 +136,12 @@ class MultiKitVideoAdapter(VideoAdapter):
         ConfigField("poll_interval", "Chu kỳ hỏi trạng thái (giây)", "int", False, int(DEFAULT_POLL_INTERVAL)),
         ConfigField("timeout_s", "Thời gian chờ tối đa mỗi lượt (giây)", "int", False, DEFAULT_TIMEOUT_S,
                     help="Quá hạn thì job thử lại sau và tiếp tục chờ đúng job cũ (không gửi lại)."),
+        ConfigField("durations", "Thời lượng hỗ trợ (giây)", "json", False, list(DEFAULT_DURATIONS),
+                    help="Danh sách giây GrokTele/MultiKit tạo được, vd. [3, 5, 6, 8, 10]. Để trống = mặc định. "
+                         "Clip xin mức nhỏ nhất ≥ thời lượng mong muốn + 0,3 s."),
     ]
     default_capabilities: ClassVar[dict] = {
-        "durations": [6, 10, 15],
+        "durations": list(DEFAULT_DURATIONS),
         "resolutions": ["480p", "720p", "1080p"],
         "aspects": ["9:16", "16:9"],
         "needs_image": True,
@@ -219,9 +225,9 @@ class MultiKitVideoAdapter(VideoAdapter):
     def _check_request(self, req: VideoRequest) -> None:
         """Kiểm tra trước mỗi lần gửi (không cần khi chỉ poll job đã được nhận — ảnh đầu vào có thể đã bị xoá)."""
         caps = self.capabilities()
-        if req.duration_s not in caps["durations"]:
+        if not durations.supported(caps.get("durations"), req.duration_s):
             raise CapabilityError(f"Thời lượng {req.duration_s} s không được hỗ trợ.",
-                                  hint=f"Chọn một trong {caps['durations']} giây.")
+                                  hint=f"Chọn một trong {durations.sanitize(caps.get('durations'))} giây.")
         if req.resolution not in caps["resolutions"]:
             raise CapabilityError(f"Độ phân giải {req.resolution} không được hỗ trợ.",
                                   hint=f"Chọn một trong {caps['resolutions']}.")

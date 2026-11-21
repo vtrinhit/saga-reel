@@ -400,7 +400,11 @@ def _target(ctx: OpContext, kind: str, connection: int | str | None) -> tuple[Co
 
 def _require_capability(adapter: Adapter, key: str, value: Any, label: str) -> None:
     allowed = adapter.capabilities().get(key)
-    if isinstance(allowed, list) and value not in allowed:
+    if key == "durations":  # danh sách rỗng/không khai báo = mọi số giây
+        from sagareel.core import durations
+
+        allowed = durations.sanitize(allowed) or None
+    if isinstance(allowed, list) and allowed and value not in allowed:
         raise AppError(
             "capability_mismatch",
             f"Kết nối '{adapter.conn.name}' không hỗ trợ {label} {value}.",

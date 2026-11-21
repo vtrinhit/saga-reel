@@ -2207,6 +2207,38 @@
   "destructive": false,
   "group": "clip",
   "idempotent": false,
+  "long_running": true,
+  "mcp": "tool",
+  "name": "clip.analyze_trim",
+  "params_schema": {
+   "properties": {
+    "ids": {
+     "description": "Clip cần phân tích video đang chọn",
+     "items": {
+      "type": "integer"
+     },
+     "maxItems": 1000,
+     "minItems": 1,
+     "title": "Ids",
+     "type": "array"
+    }
+   },
+   "required": [
+    "ids"
+   ],
+   "title": "ClipAnalyzeTrimParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Phân tích video đang chọn của clip (đoạn nói, chuyển động, độ to) để tự cắt sát nội dung → job; không tốn tiền provider. Kết quả: auto_trim{in_ms, out_ms, dur_ms, reason} mỗi clip (xem/chấp nhận hoặc đặt trim_in_ms/trim_out_ms/trim_mode bằng clip.update)",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "clip",
+  "idempotent": false,
   "long_running": false,
   "mcp": "tool",
   "name": "clip.bulk_create",
@@ -3237,6 +3269,7 @@
     },
     "values": {
      "additionalProperties": true,
+     "description": "Cột clip → giá trị. Thêm `trim_mode` (auto|manual|none): auto = tự cắt sát nội dung (mặc định), manual = theo trim_in_ms/trim_out_ms, none = nguyên take; trim_in_ms/trim_out_ms ≠ 0 luôn thắng tự cắt",
      "title": "Values",
      "type": "object"
     }
@@ -3271,7 +3304,7 @@
     },
     "engine": {
      "default": "auto",
-     "description": "auto: cảnh 4.5-17 s -> ai_video (6/10/15 s), còn lại still_motion đúng thời lượng",
+     "description": "auto: cảnh 4.5-17 s -> ai_video, còn lại still_motion; clip giữ đúng độ dài cảnh",
      "enum": [
       "auto",
       "ai_video",
@@ -14170,7 +14203,7 @@
      "title": "Clip Ids"
     },
     "data": {
-     "description": "Kết quả bước, ĐÚNG schema đầu ra của bước (prompt.contracts → output_schema); write_script = chữ kịch bản",
+     "description": "Kết quả bước, ĐÚNG schema đầu ra của bước (prompt.contracts → output_schema); write_script = chữ kịch bản; adapt_novel = {episodes: [AdaptOut + script?, source_text?]} (mỗi phần tử một tập mới)",
      "title": "Data"
     },
     "episodes": {
@@ -14204,7 +14237,7 @@
       }
      ],
      "default": null,
-     "description": "write_bible / outline",
+     "description": "write_bible / outline / adapt_novel",
      "title": "Project Id"
     },
     "replace": {
@@ -14244,9 +14277,22 @@
      "title": "Sequence Ids"
     },
     "task": {
-     "description": "Bước: write_bible, outline, write_script, split_clips, image_prompts, motion_prompts, dialogue, memory_summarize",
+     "description": "Bước: write_bible, outline, write_script, split_clips, image_prompts, motion_prompts, dialogue, memory_summarize, adapt_novel",
      "title": "Task",
      "type": "string"
+    },
+    "text": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "adapt_novel: truyện gốc (tuỳ chọn) để định vị source_text từng tập và bằng chứng trích dẫn",
+     "title": "Text"
     }
    },
    "required": [
@@ -14258,7 +14304,7 @@
   },
   "read_only": false,
   "result_schema": null,
-  "summary": "Gửi thẳng KẾT QUẢ một bước viết (bible, dàn ý, kịch bản, chia clip, prompt, thoại, bộ nhớ) — kiểm đúng schema như đường LLM rồi lưu; không gọi LLM của tool, quy trình đang chờ chạy tiếp",
+  "summary": "Gửi thẳng KẾT QUẢ một bước viết (bible, dàn ý, kịch bản, chia clip, prompt, thoại, bộ nhớ, chuyển thể truyện thành tập) — kiểm đúng schema như đường LLM rồi lưu; không gọi LLM của tool, quy trình đang chờ chạy tiếp",
   "viewer": false
  },
  {
