@@ -96,15 +96,32 @@ export function useProjectData(pid: number | null) {
   });
 }
 
+/**
+ * Nền tảng (`preset.list kind=platform`) hoặc số liệu thể loại tham khảo (`genre.list` — thể loại là dữ liệu của dự án,
+ * không còn là preset). Cả hai trả `{items: [{key, name, data}]}`.
+ */
 export function usePresets(kind: 'genre' | 'platform') {
   return useQuery({
     queryKey: libKeys.presets(kind),
     queryFn: async () => {
-      // `preset.list` trả `{items}`.
-      const r = (await callOp('preset.list', { kind })) as unknown as { items: Preset[] };
+      const r = (kind === 'genre'
+        ? await callOp('genre.list', {})
+        : await callOp('preset.list', { kind })) as unknown as { items: Preset[] };
       return r.items ?? [];
     },
     staleTime: 5 * 60_000,
+  });
+}
+
+/** Dự án mẫu (`is_sample`) — nhân bản ra dự án mới. */
+export function useSampleProjects() {
+  return useQuery({
+    queryKey: ['projects', 'samples'],
+    queryFn: async () => {
+      const r = (await callOp('project.list', { limit: 200 })) as unknown as { items: Project[] };
+      return (r.items ?? []).filter((p) => p.is_sample);
+    },
+    staleTime: 60_000,
   });
 }
 

@@ -259,7 +259,7 @@ def test_take_score_and_describe(client, svc, setup, tmp_path):
     with svc.db.session() as s:
         sc = s.get(Take, tid).auto_score["score"]
         assert (sc["score"], sc["prompt_match"], sc["character_match"], sc["verdict"]) == (70, 80, 90, "keep")
-    out = ok(client, "asset.describe_from_image", {"media_id": img, "hint": "An"})
+    out = ok(client, "asset.describe_from_image", {"media_id": img, "hint": "An", "project_id": setup["project"]})
     job = wait(client, [out["job_id"]])[0]
     assert job["status"] == "succeeded" and job["result"]["data"]["lock_word"] == "navy coat"
 

@@ -1,4 +1,6 @@
-"""Định tuyến LLM theo công việc (Task 13): routes, chuỗi dự phòng, run_task, ops `llm.*` / `template.*`, job `llm.run`."""
+"""Định tuyến LLM theo công việc (Task 13): routes, chuỗi dự phòng, run_task, ops `llm.*`, job `llm.run`.
+
+Prompt là dữ liệu của project: test dùng một dự án có prompt chung `{{ input }}` cho mọi khoá."""
 
 from __future__ import annotations
 
@@ -9,10 +11,8 @@ import pytest
 from PIL import Image
 from sqlalchemy import select
 
-from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError
-from sagareel.core.ops import invoke
-from sagareel.db.models import LlmTask, Media, ProviderConnection, Template
+from sagareel.db.models import LlmTask, Media, Project, ProviderConnection
 from sagareel.services import llm
 
 HINT_WORDS = ("MCP", "sr_context_pack", "sr_prompts_submit")
@@ -21,16 +21,32 @@ HINT_WORDS = ("MCP", "sr_context_pack", "sr_prompts_submit")
 # --- Helper -------------------------------------------------------------------------------------------------------
 
 
-def seed_llm_defaults(session) -> None:
-    """Chèn 14 llm_task + template mặc định (việc seed khi khởi động thuộc Task 15)."""
+GENERIC = "<!-- role: system -->\nBạn là trợ lý viết phim.\n<!-- role: user -->\n{{ input }}"
+PID: list[int] = []
+
+
+def add_prompt_project(session) -> int:
+    """Dự án có prompt `GENERIC` cho mọi công việc LLM mặc định; trả id."""
+    from sagareel.services import prompts
+
+    p = Project(key=f"llm{len(PID)}", name="LLM")
+    session.add(p)
+    session.flush()
+    for t in llm.default_tasks():
+        prompts.put(session, p.id, t["template_key"], GENERIC)
+    return p.id
+
+
+def seed_llm_defaults(session) -> int:
+    """Chèn llm_task mặc định (việc seed khi khởi động thuộc Task 15) + dự án có prompt; trả id dự án."""
     for t in llm.default_tasks():
         session.add(LlmTask(key=t["key"], label=t["label"], description=t["description"],
                             template_key=t["template_key"], needs_vision=t["needs_vision"], json_mode=t["json_mode"],
                             route={"connection": None, "model": None, "params": {}}, fallbacks=[]))
-        body = llm.builtin_template(t["template_key"])
-        session.add(Template(key=t["template_key"], kind="llm", body=body, locked=False,
-                             builtin_hash=llm.body_hash(body)))
     session.flush()
+    pid = add_prompt_project(session)
+    PID[:] = [pid]
+    return pid
 
 
 def add_llm(session, name: str, **cols) -> ProviderConnection:
@@ -53,10 +69,11 @@ def ok(client, name: str, payload: dict | None = None) -> dict:
 
 @pytest.fixture
 def app_services(client):
-    # Lifespan của app đã seed công việc LLM + template mặc định (services/seed.py, Task 15).
+    # Lifespan của app đã seed công việc LLM mặc định (services/seed.py, Task 15); thêm dự án có prompt.
     services = client.app.state.services
     with services.db.session() as s:
         assert s.scalars(select(LlmTask)).first() is not None
+        PID[:] = [add_prompt_project(s)]
     return services
 
 
@@ -95,13 +112,14 @@ def set_route(client, task: str, *, connection: str = "fake-llm", model: str | N
 
 
 async def run_llm(client, run_jobs, task: str, variables: dict | None = None, **extra) -> dict:
-    job_id = ok(client, "llm.run", {"task": task, "variables": variables or {"input": "x"}, **extra})["job_id"]
+    job_id = ok(client, "llm.run", {"task": task, "variables": variables or {"input": "x"}, "project_id": PID[0],
+                                    **extra})["job_id"]
     job = await run_jobs(job_id)
     assert job["status"] == "succeeded", job
     return job["result"]
 
 
-FAKE_REPLIES = {"caption": '{"captions": ["a"]}', "write_script": "Kịch bản", "default": "{}"}
+FAKE_REPLIES = {"caption": '{"captions": ["a"]}', "story_write_script": "Kịch bản", "default": "{}"}
 
 
 # --- routes() -----------------------------------------------------------------------------------------------------
@@ -135,7 +153,7 @@ def test_routes_default_to_first_enabled_llm_connection(services):
         add_llm(s, "img", kind="image", adapter="fake_image")
         add_llm(s, "first")
         add_llm(s, "second")
-        rs = llm.routes(s, "write_script", None)
+        rs = llm.routes(s, "story_write_script", None)
         assert [(r.connection, r.model) for r in rs] == [("first", None)]
 
 
@@ -162,7 +180,7 @@ def test_routes_skip_non_vision_for_vision_tasks(services):
         assert e.value.code == "llm_not_configured" and "text-only" in e.value.detail
         # override chỉ định kết nối thì không tự đổi sang kết nối khác
         with pytest.raises(AppError) as e:
-            llm.routes(s, "write_script", {"connection": "seeing"})
+            llm.routes(s, "story_write_script", {"connection": "seeing"})
         assert e.value.code == "llm_not_configured"
 
 
@@ -170,7 +188,7 @@ def test_routes_without_any_llm_raise_not_configured(services):
     with services.db.session() as s:
         seed_llm_defaults(s)
         with pytest.raises(AppError) as e:
-            llm.routes(s, "write_script", None)
+            llm.routes(s, "story_write_script", None)
     assert e.value.code == "llm_not_configured" and e.value.status == 409
     assert all(w in e.value.hint for w in HINT_WORDS)
     with services.db.session() as s, pytest.raises(AppError) as e:
@@ -192,7 +210,7 @@ async def test_fallback_chain_used_when_primary_fails(services):
             task.fallbacks = [{"connection": "backup", "model": "b1", "params": {}}]
 
     await anyio.to_thread.run_sync(setup)
-    out = await llm.run_task(services, "caption", {"input": "ảnh mèo"})
+    out = await llm.run_task(services, "caption", {"input": "ảnh mèo"}, project_id=PID[0])
     assert out.data == {"captions": ["ok"]}
     assert (out.route.connection, out.route.model) == ("backup", "b1")
     assert len(out.attempts) == 2
@@ -208,27 +226,27 @@ async def test_transient_failure_also_falls_back_and_all_failed_raises(services)
             seed_llm_defaults(s)
             add_llm(s, "flaky", options={"fail_transient": True})
             add_llm(s, "dead", options={"fail": True})
-            task = s.scalars(select(LlmTask).where(LlmTask.key == "write_script")).one()
+            task = s.scalars(select(LlmTask).where(LlmTask.key == "story_write_script")).one()
             task.route = {"connection": "flaky", "model": None, "params": {}}
             task.fallbacks = [{"connection": "dead", "model": None, "params": {}}]
 
     await anyio.to_thread.run_sync(setup)
     with pytest.raises(TransientError):  # còn lỗi tạm thời → job sẽ thử lại cả chuỗi sau
-        await llm.run_task(services, "write_script", {"input": "x"})
+        await llm.run_task(services, "story_write_script", {"input": "x"}, project_id=PID[0])
 
 
 async def test_invalid_json_moves_to_next_route_and_fences_are_stripped(services):
     def setup():
         with services.db.session() as s:
             seed_llm_defaults(s)
-            add_llm(s, "chatty", options={"replies": {"outline": "Sure! here it is"}})
-            add_llm(s, "fenced", options={"replies": {"outline": '```json\n{"acts": [1, 2]}\n```'}})
-            task = s.scalars(select(LlmTask).where(LlmTask.key == "outline")).one()
+            add_llm(s, "chatty", options={"replies": {"story_outline": "Sure! here it is"}})
+            add_llm(s, "fenced", options={"replies": {"story_outline": '```json\n{"acts": [1, 2]}\n```'}})
+            task = s.scalars(select(LlmTask).where(LlmTask.key == "story_outline")).one()
             task.route = {"connection": "chatty", "model": None, "params": {}}
             task.fallbacks = [{"connection": "fenced", "model": None, "params": {}}]
 
     await anyio.to_thread.run_sync(setup)
-    out = await llm.run_task(services, "outline", {"input": "x"})
+    out = await llm.run_task(services, "story_outline", {"input": "x"}, project_id=PID[0])
     assert out.data == {"acts": [1, 2]} and out.route.connection == "fenced"
     assert out.attempts[0]["error_code"] == "llm_invalid_json"
 
@@ -239,13 +257,13 @@ async def test_run_task_reads_config_every_call(services):
             if s.scalars(select(LlmTask)).first() is None:
                 seed_llm_defaults(s)
                 add_llm(s, "x")
-            task = s.scalars(select(LlmTask).where(LlmTask.key == "write_script")).one()
+            task = s.scalars(select(LlmTask).where(LlmTask.key == "story_write_script")).one()
             task.route = {"connection": "x", "model": model, "params": {}}
 
     await anyio.to_thread.run_sync(setup, "m1")
-    first = await llm.run_task(services, "write_script", {"input": "x"})
+    first = await llm.run_task(services, "story_write_script", {"input": "x"}, project_id=PID[0])
     await anyio.to_thread.run_sync(setup, "m2")
-    second = await llm.run_task(services, "write_script", {"input": "x"})
+    second = await llm.run_task(services, "story_write_script", {"input": "x"}, project_id=PID[0])
     assert (first.route.model, second.route.model) == ("m1", "m2")
 
 
@@ -269,10 +287,10 @@ async def test_run_task_sends_rendered_template_and_variables_verbatim(services,
 
     await anyio.to_thread.run_sync(setup)
     text = "  Dòng một\r\n  dòng hai  "
-    await llm.run_task(services, "write_script", {"input": text})
+    await llm.run_task(services, "story_write_script", {"input": text}, project_id=PID[0])
     req = seen[0]
     assert req.messages[-1] == {"role": "user", "content": text}
-    assert req.messages[0]["role"] == "system" and req.params["template_key"] == "write_script"
+    assert req.messages[0]["role"] == "system" and req.params["template_key"] == "story_write_script"
     assert req.json_mode is False
 
 
@@ -280,7 +298,7 @@ async def test_run_task_sends_rendered_template_and_variables_verbatim(services,
 
 
 def test_no_llm_configured_error_suggests_alternatives(client, app_services):
-    r = call(client, "llm.run", {"task": "write_script", "variables": {"input": "x"}})
+    r = call(client, "llm.run", {"task": "story_write_script", "variables": {"input": "x"}})
     assert r.status_code == 409, r.text
     body = r.json()
     assert body["error_code"] == "llm_not_configured"
@@ -290,7 +308,7 @@ def test_no_llm_configured_error_suggests_alternatives(client, app_services):
 
 def test_missing_variable_rejected_before_enqueue(client, app_services):
     ok(client, "provider.create", {"kind": "llm", "adapter": "fake_llm", "name": "fake-llm"})
-    r = call(client, "llm.run", {"task": "write_script", "variables": {}})
+    r = call(client, "llm.run", {"task": "story_write_script", "variables": {}, "project_id": PID[0]})
     assert r.status_code == 422 and r.json()["error_code"] == "template_variable_missing"
     assert r.json()["extra"]["name"] == "input"
 
@@ -311,8 +329,8 @@ async def test_llm_run_emits_deltas(client_with_bus, run_jobs):
     client = client_with_bus
     reply = " ".join(f"từ{i}" for i in range(200))
     ok(client, "provider.create", {"kind": "llm", "adapter": "fake_llm", "name": "fake-llm",
-                                   "options": {"replies": {"write_script": reply}}})
-    result = await run_llm(client, run_jobs, "write_script")
+                                   "options": {"replies": {"story_write_script": reply}}})
+    result = await run_llm(client, run_jobs, "story_write_script")
     assert result["text"] == reply and result["data"] is None
     deltas = [d for t, d in client.events if t == "llm.delta"]
     assert deltas and all(set(d) >= {"job_id", "text"} for d in deltas)
@@ -349,7 +367,8 @@ async def test_llm_run_with_image_media_and_override(client, app_services, run_j
     assert result["route"] == {"connection": "other", "model": "vx", "params": {}}
     name, req = seen[0]
     assert name == "other" and req.images == [path.resolve()] and req.model == "vx"
-    r = call(client, "llm.run", {"task": "score_take", "variables": {"input": "x"}, "images_media_ids": [999]})
+    r = call(client, "llm.run", {"task": "score_take", "variables": {"input": "x"}, "images_media_ids": [999],
+                                 "project_id": PID[0]})
     assert r.status_code == 404
 
 
@@ -363,7 +382,7 @@ def test_task_list_and_update_validates(client, app_services):
     r = call(client, "llm.task_update", {"key": "caption", "fallbacks": [{"connection": "img"}]})
     assert r.status_code == 422 and r.json()["error_code"] == "capability_mismatch"
     r = call(client, "llm.task_update", {"key": "caption", "template_key": "khong_co"})
-    assert r.status_code == 404 and r.json()["error_code"] == "template_not_found"
+    assert r.status_code == 422 and r.json()["error_code"] == "prompt_key_unknown"
     r = call(client, "llm.task_update", {"key": "khong_co", "label": "x"})
     assert r.status_code == 404 and r.json()["error_code"] == "llm_task_not_found"
     ok(client, "provider.create", {"kind": "llm", "adapter": "fake_llm", "name": "fake-llm"})
@@ -385,47 +404,12 @@ def test_task_update_is_undoable(client, app_services):
 
 def test_task_create(client, app_services):
     created = ok(client, "llm.task_create", {"key": "summarize_comments", "label": "Tóm tắt bình luận",
-                                             "template_key": "memory_summarize", "json_mode": True})
+                                             "template_key": "story_memory_summarize", "json_mode": True})
     assert created["key"] == "summarize_comments" and created["json_mode"] is True
     r = call(client, "llm.task_create", {"key": "summarize_comments", "label": "x", "template_key": "caption"})
     assert r.status_code == 409
     r = call(client, "llm.task_create", {"key": "Bad Key", "label": "x", "template_key": "caption"})
     assert r.status_code == 422
-
-
-def test_template_list_get_update_reset(client, app_services):
-    all_items = {t["key"]: t for t in ok(client, "template.list")["items"]}
-    assert all_items["image.synced"]["has_builtin"] and all_items["image.synced"]["modified"] is False
-    items = {t["key"]: t for t in ok(client, "template.list", {"kind": "llm"})["items"]}
-    assert len(items) == len(llm.default_tasks()) and items["caption"]["modified"] is False and items["caption"]["has_builtin"]
-    got = ok(client, "template.get", {"key": "caption"})
-    assert "{{ input }}" in got["body"] and got["variables"] == ["input"]
-    new_body = "<!-- role: user -->\nViết chú thích cho {{ input }} theo giọng {{ tone }}"
-    upd = ok(client, "template.update", {"key": "caption", "body": new_body})
-    assert upd["body"] == new_body and upd["modified"] is True and upd["variables"] == ["input", "tone"]
-    r = call(client, "template.update", {"key": "caption", "body": "{% if %}"})
-    assert r.status_code == 422 and r.json()["error_code"] == "template_syntax_error"
-    reset = ok(client, "template.reset", {"key": "caption"})
-    assert reset["body"] == llm.builtin_template("caption") and reset["modified"] is False
-    r = call(client, "template.get", {"key": "khong_co"})
-    assert r.status_code == 404 and r.json()["error_code"] == "template_not_found"
-    r = call(client, "template.update", {"key": "moi", "body": "{{ input }}"})
-    assert r.status_code == 404
-    created = ok(client, "template.update", {"key": "moi", "body": "{{ input }}", "create_if_missing": True})
-    assert created["key"] == "moi" and created["has_builtin"] is False
-    r = call(client, "template.reset", {"key": "moi"})
-    assert r.status_code == 404 and r.json()["error_code"] == "template_no_builtin"
-
-
-async def test_locked_template_cannot_be_changed_by_llm(app_services):
-    with app_services.db.session() as s:
-        s.scalars(select(Template).where(Template.key == "caption")).one().locked = True
-    ctx = OpContext(services=app_services, actor="llm:gpt-x", role="owner")
-    with pytest.raises(AppError) as e:
-        await invoke("template.update", {"key": "caption", "body": "{{ input }}"}, ctx)
-    assert e.value.code == "template_locked"
-    owner = OpContext(services=app_services, actor="user:owner", role="owner")
-    assert (await invoke("template.update", {"key": "caption", "body": "{{ input }}"}, owner))["body"] == "{{ input }}"
 
 
 def test_llm_models_op(client, app_services):
@@ -441,9 +425,9 @@ def test_catalog_flags(client):
     assert cat["llm.task_list"]["read_only"] and cat["llm.task_list"]["viewer"] and cat["llm.task_list"]["mcp"] == "tool"
     assert cat["llm.run"]["long_running"] and cat["llm.run"]["mcp"] == "tool"
     assert cat["llm.models"]["read_only"]
-    for name in ("llm.task_update", "llm.task_create", "template.list", "template.get", "template.update",
-                 "template.reset"):
+    for name in ("llm.task_update", "llm.task_create"):
         assert name in cat
+    assert not [n for n in cat if n.startswith("template.")]  # không còn template chung của tool
     assert json.dumps(cat["llm.run"]["params_schema"])
 
 
@@ -470,9 +454,10 @@ async def test_llm_run_logs_llm_call_and_resets_deltas_on_fallback(client_with_b
                                    "options": {"fail": True}})
     ok(client, "provider.create", {"kind": "llm", "adapter": "fake_llm", "name": "fake-llm",
                                    "options": {"replies": FAKE_REPLIES}})
-    ok(client, "llm.task_update", {"key": "write_script", "route": {"connection": "broken"},
+    ok(client, "llm.task_update", {"key": "story_write_script", "route": {"connection": "broken"},
                                    "fallbacks": [{"connection": "fake-llm", "model": "fb"}]})
-    job_id = ok(client, "llm.run", {"task": "write_script", "variables": {"input": "x"}})["job_id"]
+    job_id = ok(client, "llm.run", {"task": "story_write_script", "variables": {"input": "x"},
+                                    "project_id": PID[0]})["job_id"]
     job = await run_jobs(job_id)
     assert job["status"] == "succeeded", job
     assert job["result"]["route"]["connection"] == "fake-llm" and len(job["result"]["attempts"]) == 2
@@ -500,9 +485,10 @@ async def test_llm_run_never_leaks_api_key_into_job_or_logs(client, app_services
 
     monkeypatch.setattr(registry.get("fake_llm"), "chat", leaky_chat)
     ok(client, "provider.create", {"kind": "llm", "adapter": "fake_llm", "name": "leaky", "api_key": LLM_KEY})
-    set_route(client, "write_script", connection="leaky")
+    set_route(client, "story_write_script", connection="leaky")
     caplog.set_level("DEBUG")
-    job_id = ok(client, "llm.run", {"task": "write_script", "variables": {"input": "x"}})["job_id"]
+    job_id = ok(client, "llm.run", {"task": "story_write_script", "variables": {"input": "x"},
+                                    "project_id": PID[0]})["job_id"]
     job = await run_jobs(job_id)
     assert job["status"] == "failed", job
     logs = json.dumps(ok(client, "job.logs", {"id": job_id}), ensure_ascii=False)
@@ -520,8 +506,8 @@ async def test_provider_rejection_404_falls_back(services):
         with services.db.session() as s:
             seed_llm_defaults(s)
             add_llm(s, "real", adapter="openai_compat", base_url="http://llm.test/v1", default_model="m-gone")
-            add_llm(s, "backup", options={"replies": {"write_script": "Kịch bản dự phòng"}})
-            task = s.scalars(select(LlmTask).where(LlmTask.key == "write_script")).one()
+            add_llm(s, "backup", options={"replies": {"story_write_script": "Kịch bản dự phòng"}})
+            task = s.scalars(select(LlmTask).where(LlmTask.key == "story_write_script")).one()
             task.route = {"connection": "real", "model": None, "params": {}}
             task.fallbacks = [{"connection": "backup", "model": None, "params": {}}]
 
@@ -529,7 +515,7 @@ async def test_provider_rejection_404_falls_back(services):
     with respx.mock:
         respx.post("http://llm.test/v1/chat/completions").mock(return_value=httpx.Response(
             404, json={"error": {"message": "model_not_found: m-gone"}}))
-        out = await llm.run_task(services, "write_script", {"input": "x"})
+        out = await llm.run_task(services, "story_write_script", {"input": "x"}, project_id=PID[0])
     assert out.text == "Kịch bản dự phòng" and out.route.connection == "backup"
     assert [(a["connection"], a["ok"], a.get("error_code")) for a in out.attempts] == [
         ("real", False, "provider_rejected"), ("backup", True, None)]
@@ -541,13 +527,13 @@ async def test_app_input_error_stops_chain(services):
             seed_llm_defaults(s)
             add_llm(s, "a")
             add_llm(s, "b")
-            task = s.scalars(select(LlmTask).where(LlmTask.key == "write_script")).one()
+            task = s.scalars(select(LlmTask).where(LlmTask.key == "story_write_script")).one()
             task.route = {"connection": "a", "model": None, "params": {}}
             task.fallbacks = [{"connection": "b", "model": None, "params": {}}]
 
     await anyio.to_thread.run_sync(setup)
     with pytest.raises(AppError) as e:
-        await llm.run_task(services, "write_script", {})
+        await llm.run_task(services, "story_write_script", {}, project_id=PID[0])
     assert e.value.code == "template_variable_missing"
 
 
@@ -562,15 +548,15 @@ async def test_empty_response_moves_to_fallback(services):
         with services.db.session() as s:
             seed_llm_defaults(s)
             add_llm(s, "real", adapter="openai_compat", base_url="http://llm.test/v1", default_model="m")
-            add_llm(s, "backup", options={"replies": {"write_script": "dự phòng"}})
-            task = s.scalars(select(LlmTask).where(LlmTask.key == "write_script")).one()
+            add_llm(s, "backup", options={"replies": {"story_write_script": "dự phòng"}})
+            task = s.scalars(select(LlmTask).where(LlmTask.key == "story_write_script")).one()
             task.route = {"connection": "real", "model": None, "params": {}}
             task.fallbacks = [{"connection": "backup", "model": None, "params": {}}]
 
     await anyio.to_thread.run_sync(setup)
     with respx.mock:
         respx.post("http://llm.test/v1/chat/completions").mock(return_value=httpx.Response(200, content=b""))
-        out = await llm.run_task(services, "write_script", {"input": "x"}, on_delta=lambda _: None)
+        out = await llm.run_task(services, "story_write_script", {"input": "x"}, on_delta=lambda _: None, project_id=PID[0])
     assert out.text == "dự phòng"
     assert [a.get("error_code") for a in out.attempts] == ["provider_empty_response", None]
 
@@ -579,19 +565,19 @@ async def test_truncated_json_moves_to_fallback_and_text_is_flagged(services):
     def setup():
         with services.db.session() as s:
             seed_llm_defaults(s)
-            add_llm(s, "short", options={"replies": {"caption": '{"captions": ["a"]}', "write_script": "cụt"},
+            add_llm(s, "short", options={"replies": {"caption": '{"captions": ["a"]}', "story_write_script": "cụt"},
                                          "finish_reason": "length"})
             add_llm(s, "long", options={"replies": {"caption": '{"captions": ["b"]}'}})
-            for key in ("caption", "write_script"):
+            for key in ("caption", "story_write_script"):
                 task = s.scalars(select(LlmTask).where(LlmTask.key == key)).one()
                 task.route = {"connection": "short", "model": None, "params": {}}
                 task.fallbacks = [{"connection": "long", "model": None, "params": {}}]
 
     await anyio.to_thread.run_sync(setup)
-    out = await llm.run_task(services, "caption", {"input": "x"})
+    out = await llm.run_task(services, "caption", {"input": "x"}, project_id=PID[0])
     assert out.data == {"captions": ["b"]} and out.truncated is False
     assert out.attempts[0]["error_code"] == "llm_truncated" and out.attempts[0]["truncated"] is True
-    out = await llm.run_task(services, "write_script", {"input": "x"})  # không phải JSON: giữ, đánh dấu bị cắt
+    out = await llm.run_task(services, "story_write_script", {"input": "x"}, project_id=PID[0])  # không phải JSON: giữ, đánh dấu bị cắt
     assert out.text == "cụt" and out.truncated is True and out.attempts[0]["finish_reason"] == "length"
     assert out.to_dict()["truncated"] is True
 

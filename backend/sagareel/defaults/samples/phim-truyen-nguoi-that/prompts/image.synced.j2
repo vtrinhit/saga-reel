@@ -1,0 +1,71 @@
+{#- image.synced — prompt ảnh ghép đồng bộ 4 khối (craft-and-prompts §7.1). Giá trị biến chèn nguyên văn. -#}
+[CHARACTER LOCK]
+{%- for r in refs %}
+{{ r.label }}.
+{%- endfor %}
+{%- for c in characters %}
+{{ c.name }}: {{ c.description }}
+{%- if c.description_delta %}
+{{ c.description_delta }}
+{%- endif %}
+Keep exactly: {% if c.lock_word %}{{ c.lock_word }}; {% endif %}face, hair, skin tone, body shape.
+{%- if c.keep_features %}
+Must keep: {{ c.keep_features | join(", ") }}.
+{%- endif %}
+{%- endfor %}
+{%- if characters %}
+Do not redesign the characters. Do not change their faces, outfits or proportions.
+{%- endif %}
+
+[STYLE LOCK]
+{%- if style_block %}
+{{ style_block }}
+{%- endif %}
+{{ orientation }} {{ aspect }}, cinematic still, soft natural film grain, consistent color grade.
+
+[SCENE]
+{%- if location %}
+{{ location.name }}: {{ location.description }}
+{%- if location.description_delta %}
+{{ location.description_delta }}
+{%- endif %}
+{%- if location.lock_word %}
+Keep exactly: {{ location.lock_word }}.
+{%- endif %}
+{%- endif %}
+{%- for p in props %}
+{{ p.name }}: {{ p.description }}
+{%- if p.description_delta %}
+{{ p.description_delta }}
+{%- endif %}
+{%- if p.lock_word %}
+Keep exactly: {{ p.lock_word }}.
+{%- endif %}
+{%- endfor %}
+{%- if scene.summary %}
+{{ scene.summary }}
+{%- endif %}
+{%- if scene.conditions %}
+{{ scene.conditions }}.
+{%- endif %}
+{%- if scene.lighting %}
+Key light: {{ scene.lighting }}.
+{%- endif %}
+{%- if scene.mood %}
+Mood: {{ scene.mood }}.
+{%- endif %}
+
+[ACTION / CAMERA]
+{%- if shot.text %}
+{{ shot.text }}.
+{%- endif %}
+{%- if first_frame %}
+{{ first_frame }}
+{%- endif %}
+{{ prompt }}
+{%- if shot.eyeline %}
+Looking {{ shot.eyeline }}.
+{%- endif %}
+Leave the lower third clear for subtitles.
+
+Avoid: {{ negative }}. Change only what the Scene and Action blocks describe; keep everything else identical to the references.

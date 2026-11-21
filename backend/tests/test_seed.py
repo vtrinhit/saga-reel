@@ -1,4 +1,4 @@
-"""Seed dữ liệu mặc định (công việc LLM + template) và kết nối provider từ `.env.local` (Task 15).
+"""Seed dữ liệu mặc định (công việc LLM) và kết nối provider từ `.env.local` (Task 15).
 
 Không test nào đọc `.env.local` thật: file env luôn nằm trong `tmp_path`.
 """
@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
 
 import pytest
 from sagareel.db.models import (
@@ -16,7 +15,6 @@ from sagareel.db.models import (
     LlmTask,
     ProviderConnection,
     Revision,
-    Template,
 )
 from sagareel.services import llm, seed, system_state
 from sagareel.services.seed import seed_defaults, seed_from_env
@@ -191,87 +189,29 @@ def test_seed_from_env_keeps_existing_connection_by_name(tmp_db, tmp_path):
 # --- seed_defaults ------------------------------------------------------------------------------------------------
 
 
-def test_seed_defaults_inserts_tasks_and_templates_idempotently(tmp_db):
+def test_seed_defaults_inserts_tasks_idempotently(tmp_db):
     seed_defaults(tmp_db)
     with tmp_db.session() as s:
         tasks = {t.key: t for t in s.scalars(select(LlmTask)).all()}
-        templates = {t.key: t for t in s.scalars(select(Template)).all()}
         assert set(tasks) == {t["key"] for t in llm.default_tasks()}
-        from sagareel.compile import compiler
-
-        md = {p.stem for p in llm.TEMPLATES_DIR.glob("*.md")}
-        assert set(templates) == md | set(compiler.TEMPLATE_KINDS)
-        for key, t in templates.items():
-            if key in md:
-                assert t.kind == llm.TEMPLATE_KIND and t.body == llm.builtin_template(key)
-            else:
-                assert t.kind == compiler.TEMPLATE_KINDS[key] and t.body == compiler.builtin_body(key)
-            assert t.builtin_hash == llm.body_hash(t.body)
+        assert not {"outline", "write_script", "split_clips", "dialogue"} & set(tasks)  # việc cũ đã bỏ
         assert tasks["analyze_channel"].needs_vision and tasks["analyze_channel"].json_mode
-        assert llm.normalize_route(tasks["outline"].route)["connection"] is None
+        assert llm.normalize_route(tasks["story_outline"].route)["connection"] is None
     sets = _change_sets(tmp_db)
     assert len(sets) == 1 and sets[0].actor == "system:seed"
     seed_defaults(tmp_db)
     assert len(_change_sets(tmp_db)) == 1  # lần hai không đổi gì
 
 
-def test_seed_defaults_does_not_overwrite_user_edit(tmp_db, tmp_path, monkeypatch):
+def test_seed_defaults_does_not_overwrite_user_edit(tmp_db):
     seed_defaults(tmp_db)
     with tmp_db.session() as s:
-        s.scalars(select(Template).where(Template.key == "outline")).one().body = "Bản của tôi {{ x }}"
         s.scalars(select(LlmTask).where(LlmTask.key == "caption")).one().label = "Caption riêng"
-        s.delete(s.scalars(select(LlmTask).where(LlmTask.key == "dialogue")).one())
-
-    # Bản cài sẵn mới: mọi template đổi nội dung.
-    new_dir = tmp_path / "templates"
-    shutil.copytree(llm.TEMPLATES_DIR, new_dir)
-    for p in new_dir.glob("*.md"):
-        p.write_text(p.read_text("utf-8") + "\nBản mới.\n", "utf-8")
-    monkeypatch.setattr(llm, "TEMPLATES_DIR", new_dir)
-
+        s.delete(s.scalars(select(LlmTask).where(LlmTask.key == "story_dialogue")).one())
     seed_defaults(tmp_db)
     with tmp_db.session() as s:
-        outline = s.scalars(select(Template).where(Template.key == "outline")).one()
-        caption = s.scalars(select(Template).where(Template.key == "caption")).one()
-        assert outline.body == "Bản của tôi {{ x }}"  # bản người dùng sửa giữ nguyên
-        assert outline.builtin_hash == llm.body_hash(llm.builtin_template("outline"))  # vẫn là "đã sửa"
-        assert caption.body.endswith("Bản mới.\n")  # bản chưa sửa được nâng cấp
-        assert caption.builtin_hash == llm.body_hash(caption.body)
         assert s.scalars(select(LlmTask).where(LlmTask.key == "caption")).one().label == "Caption riêng"
-        assert s.scalars(select(LlmTask).where(LlmTask.key == "dialogue")).one()  # công việc bị xoá được chèn lại
-
-
-def test_seed_defaults_compiler_templates_keep_user_edit(tmp_db, tmp_path, monkeypatch):
-    from sagareel.compile import compiler
-
-    seed_defaults(tmp_db)
-    with tmp_db.session() as s:
-        s.scalars(select(Template).where(Template.key == "image.synced")).one().body = "Của tôi {{ prompt }}"
-    new_dir = tmp_path / "j2"
-    shutil.copytree(compiler.TEMPLATES_DIR, new_dir)
-    for p in new_dir.glob("*.j2"):
-        p.write_text(p.read_text("utf-8") + "\nmoi\n", "utf-8")
-    monkeypatch.setattr(compiler, "TEMPLATES_DIR", new_dir)
-    seed_defaults(tmp_db)
-    with tmp_db.session() as s:
-        img = s.scalars(select(Template).where(Template.key == "image.synced")).one()
-        mot = s.scalars(select(Template).where(Template.key == "motion.synced")).one()
-        assert img.body == "Của tôi {{ prompt }}"
-        assert img.builtin_hash == llm.body_hash(compiler.builtin_body("image.synced"))
-        assert mot.body.endswith("moi\n") and mot.kind == "motion"
-        assert compiler.template_body(s, "image.synced") == ("Của tôi {{ prompt }}", "db")
-
-
-def test_seed_defaults_keeps_soft_deleted_template(tmp_db):
-    from sagareel.db.base import utcnow
-
-    seed_defaults(tmp_db)
-    with tmp_db.session() as s:
-        s.scalars(select(Template).where(Template.key == "translate")).one().deleted_at = utcnow()
-    seed_defaults(tmp_db)
-    with tmp_db.session() as s:
-        rows = s.scalars(select(Template).where(Template.key == "translate")).all()
-        assert len(rows) == 1 and rows[0].deleted_at is not None
+        assert s.scalars(select(LlmTask).where(LlmTask.key == "story_dialogue")).one()  # bị xoá được chèn lại
 
 
 # --- định tuyến LLM -------------------------------------------------------------------------------------------------
@@ -286,7 +226,7 @@ def test_llm_tasks_routed_to_llm_local(tmp_db, tmp_path):
         for t in tasks:
             assert llm.normalize_route(t.route) == {"connection": "llm-local", "model": None, "params": {}}
         # Định tuyến mặc định chạy được: route chính là llm-local (cả công việc cần vision).
-        assert llm.routes(s, "outline")[0].connection == "llm-local"
+        assert llm.routes(s, "story_outline")[0].connection == "llm-local"
         assert llm.routes(s, "analyze_channel")[0].connection == "llm-local"
         assert llm.find_connection(s, "llm-local").default_model == "gpt-6-luna"
 
@@ -298,12 +238,12 @@ def test_force_reseed_keeps_user_route(tmp_db, tmp_path):
     with tmp_db.session() as s:
         s.scalars(select(LlmTask).where(LlmTask.key == "caption")).one().route = {
             "connection": "other", "model": "m", "params": {}}
-        s.scalars(select(LlmTask).where(LlmTask.key == "outline")).one().route = {
+        s.scalars(select(LlmTask).where(LlmTask.key == "story_outline")).one().route = {
             "connection": None, "model": None, "params": {}}
     seed_from_env(tmp_db, env, force=True)
     with tmp_db.session() as s:
         assert s.scalars(select(LlmTask).where(LlmTask.key == "caption")).one().route["connection"] == "other"
-        assert s.scalars(select(LlmTask).where(LlmTask.key == "outline")).one().route["connection"] == "llm-local"
+        assert s.scalars(select(LlmTask).where(LlmTask.key == "story_outline")).one().route["connection"] == "llm-local"
 
 
 def test_no_llm_connection_leaves_routes_empty(tmp_db, tmp_path):

@@ -85,9 +85,15 @@ def test_spine_project_to_tiktok_package(client, settings):
     data["encode"]["preset"] = "veryfast"  # cấu hình (không phải monkeypatch): mã hoá nhanh cho test
     ok(client, "preset.update", {"id": tiktok["id"], "data": data})
 
-    # --- Project + Library -----------------------------------------------------------------------------------------
+    # --- Project (nhân bản từ dự án mẫu: mang theo bộ prompt) + Library -----------------------------------------
+    from sagareel.services import samples
+
+    services = client.app.state.services
+    samples.seed(services.db)
+    with services.db.session() as s:
+        src = samples.find_sample(s, "serial").id
     proj = ok(client, "project.create", {"name": "Truyện bà cháu", "key": "baochau", "aspect": "9:16",
-                                         "target_platforms": ["tiktok"]})
+                                         "target_platforms": ["tiktok"], "from_project_id": src})
     pid = proj["id"]
     ok(client, "project.update", {"id": pid, "values": {"resolution": "240p"}})  # dựng nhỏ cho nhanh
     asset = ok(client, "asset.create", {"project_id": pid, "kind": "character", "name": "Bé An",

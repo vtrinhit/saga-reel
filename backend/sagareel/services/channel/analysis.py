@@ -241,7 +241,7 @@ async def analyze_video(services: Services, work: Path, mid: int, path: Path, db
               for i, t in enumerate(times)]
     sheet = await anyio.to_thread.run_sync(lambda: sc.contact_sheet(frames, work / f"sheet_{mid}.jpg"))
     outcome = await llm.run_task(services, TASK, {"input": sample_text(title, met, captions, times)},
-                                 images=[sheet], log=log)
+                                 images=[sheet], log=log, project_id=project_id)
     analysis = normalize(outcome.data)
 
     def store() -> int:

@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 import anyio
+
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, ValidationFailed
 from sagareel.db.models import DialogueLine, Project
@@ -39,14 +40,15 @@ def _load(ctx: OpContext, sequence_id: int, lang: str, force: bool) -> dict[str,
                 "title": seq.title, "untranslated_tts": {"lines": len(fresh), "chars": sum(len(x.text) for x in fresh)}}
 
 
-async def _translate(ctx: OpContext, lang: str, items: list[dict[str, str]]) -> dict[str, str]:
+async def _translate(ctx: OpContext, lang: str, items: list[dict[str, str]],
+                     project_id: int | None = None) -> dict[str, str]:
     from sagareel.services import llm
 
     out: dict[str, str] = {}
     for i in range(0, len(items), BATCH):
         chunk = items[i:i + BATCH]
         payload = json.dumps({"target_language": lang, "items": chunk}, ensure_ascii=False)
-        outcome = await llm.run_task(ctx.services, "translate", {"input": payload})
+        outcome = await llm.run_task(ctx.services, "translate", {"input": payload}, project_id=project_id)
         data = outcome.data if outcome.data is not None else _json(outcome.text)
         rows = data.get("items") if isinstance(data, dict) else None
         if not isinstance(rows, list):
@@ -134,7 +136,7 @@ async def run_dub(ctx: OpContext, sequence_id: int, lang: str, *, force: bool = 
     todo = info["todo"]
     if progress:
         progress(None, stage=f"Đang dịch {len(todo)} câu sang {lang}")
-    translated = await _translate(ctx, lang, todo) if todo else {}
+    translated = await _translate(ctx, lang, todo, info["project_id"]) if todo else {}
     cs_id = await anyio.to_thread.run_sync(_save, ctx, lang, translated, info["project_id"]) if translated else None
     missing = [int(x["id"]) for x in todo if x["id"] not in translated]
     out: dict[str, Any] = {"lang": lang, "translated": len(translated), "missing": missing, "change_set_id": cs_id,

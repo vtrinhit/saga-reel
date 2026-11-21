@@ -47,7 +47,7 @@ export function PresetsPage() {
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const list = useQuery({
     queryKey: listKey(kind),
-    queryFn: async () => ((await callOp('preset.list', { kind: kind as 'genre' })) as unknown as { items: Preset[] }).items,
+    queryFn: async () => ((await callOp('preset.list', { kind: kind as 'platform' })) as unknown as { items: Preset[] }).items,
   });
   const items = list.data ?? [];
   const selected = items.find((p) => p.key === selKey) ?? items[0] ?? null;
@@ -207,7 +207,7 @@ function PresetEditor({ preset, viewer, onKey }: { preset: Preset; viewer: boole
     },
   });
   const reset = useMutation({
-    mutationFn: () => callOp('preset.reset_builtin', { key: preset.key, kind: preset.kind as 'genre' }),
+    mutationFn: () => callOp('preset.reset_builtin', { key: preset.key, kind: preset.kind as 'platform' }),
     onSuccess: () => {
       toast({ message: `Đã khôi phục ${preset.name} về bản cài sẵn.`, tone: 'success' });
       refresh();
@@ -417,7 +417,7 @@ function CreatePresetDialog({ open, kind, onClose, onCreated }: { open: boolean;
     }
   }, [open]);
   const m = useMutation({
-    mutationFn: async () => (await callOp('preset.create', { kind: kind as 'genre', key, name: name.trim(), data: {}, project_id: null })) as unknown as Preset,
+    mutationFn: async () => (await callOp('preset.create', { kind: kind as 'platform', key, name: name.trim(), data: {}, project_id: null })) as unknown as Preset,
     onSuccess: (p) => {
       toast({ message: `Đã tạo preset ${p.name}.`, tone: 'success' });
       void qc.invalidateQueries({ queryKey: ['presets'] });
@@ -426,7 +426,7 @@ function CreatePresetDialog({ open, kind, onClose, onCreated }: { open: boolean;
     },
     onError: (e) => setErr(presetErrors(e).join(' · ') || errorMessage(e, 'Không tạo được preset.')),
   });
-  const strict = kind === 'platform' || kind === 'genre';
+  const strict = kind === 'platform';
   return (
     <Modal
       open={open}

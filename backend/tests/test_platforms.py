@@ -8,7 +8,7 @@ import itertools
 import pytest
 from sagareel.core.errors import AppError, Forbidden, ValidationFailed
 from sagareel.db.models import Preset
-from sagareel.services import presets
+from sagareel.services import genres, presets
 from sagareel.services.export import checks, metadata, platforms
 
 PLATFORMS = ["fb-reels", "fb-video", "yt-shorts", "yt-long", "tiktok"]
@@ -31,7 +31,8 @@ def spec_of(key: str) -> dict:
 def test_builtin_files_all_valid_and_complete():
     defs = presets.builtin_definitions()
     assert {d["key"] for d in defs if d["kind"] == "platform"} == set(PLATFORMS)
-    assert {d["key"] for d in defs if d["kind"] == "genre"} == set(GENRES)
+    assert {x["key"] for x in genres.references()} == set(GENRES)  # số liệu thể loại tham khảo (không còn preset)
+    assert not {d["kind"] for d in defs} - set(presets.KINDS)
     for d in defs:
         assert d["name"]
         if d["kind"] == "platform":
@@ -50,7 +51,7 @@ def test_platform_numbers_match_research():
 
 
 def test_genre_numbers_match_research():
-    g = {d["key"]: d["data"] for d in presets.builtin_definitions() if d["kind"] == "genre"}
+    g = {x["key"]: x["data"] for x in genres.references()}
     assert g["serial"]["episode_s"] == [60, 90] and g["serial"]["clips"] == [12, 18] and g["serial"]["end"] == "cliffhanger"
     assert g["narration"]["transition"] == "crossfade" and g["narration"]["ken_burns"]["pan_max_pct"] == 6
     assert g["montage"]["beat_sync"] is True and g["montage"]["end"] == "loop"
@@ -81,20 +82,18 @@ def test_platform_validation_is_strict():
 
 def test_genre_validation_strict_but_keeps_extras():
     g = {"episode_s": [60, 90], "clip_s": [6, 10], "clips": [12, 18], "transition": "cut", "my_extra": {"a": 1}}
-    assert presets.validate_data("genre", g)["my_extra"] == {"a": 1}
+    assert genres.validate(g)["my_extra"] == {"a": 1}
     for bad in ({**g, "episode_s": [90, 60]}, {**g, "transition": "spin"}, {**g, "clips": [1]},
                 {**g, "hook": {"window_s": 3, "visual_in_s": 5}}):
         with pytest.raises(ValidationFailed):
-            presets.validate_data("genre", bad)
+            genres.validate(bad)
 
 
-def test_other_kinds_only_need_an_object():
-    assert presets.validate_data("workflow", {"steps": ["a"]}) == {"steps": ["a"]}
-    with pytest.raises(ValidationFailed):
-        presets.validate_data("workflow", ["a"])  # type: ignore[arg-type]
-    with pytest.raises(ValidationFailed) as e:
-        presets.validate_data("bogus", {})
-    assert e.value.code == "preset_kind_invalid"
+def test_removed_kinds_rejected():
+    for kind in ("bogus", "genre", "workflow", "style_pack", "voice", "channel_brand"):  # nay là dữ liệu dự án
+        with pytest.raises(ValidationFailed) as e:
+            presets.validate_data(kind, {})
+        assert e.value.code == "preset_kind_invalid"
 
 
 # --- Seed idempotent + giữ chỉnh sửa --------------------------------------------------------------------------------
@@ -118,35 +117,35 @@ def test_seed_upgrades_unedited_keeps_edited(services, owner_ctx, monkeypatch):
     def newer():
         out = copy.deepcopy(defs)
         for d in out:
-            if d["kind"] == "genre":
-                d["data"]["clips"] = [3, 4]
+            if d["kind"] == "transition":
+                d["data"]["duration_ms"] = 777
         return out
 
-    presets.update(owner_ctx, kind="genre", key="serial",
-                   data={**spec_g(defs, "serial"), "clips": [20, 30]})  # người dùng sửa serial
+    fade = spec_g(defs, "fade")
+    presets.update(owner_ctx, kind="transition", key="fade", data={**fade, "duration_ms": 123})  # người dùng sửa
     monkeypatch.setattr(presets, "builtin_definitions", newer)
     presets.seed_builtins(services.db)
-    assert presets.get_preset(owner_ctx, kind="genre", key="series")["data"]["clips"] == [3, 4]  # chưa sửa → nâng cấp
-    serial = presets.get_preset(owner_ctx, kind="genre", key="serial")
-    assert serial["data"]["clips"] == [20, 30] and serial["modified"] is True  # đã sửa → giữ nguyên
+    assert presets.get_preset(owner_ctx, kind="transition", key="dissolve")["data"]["duration_ms"] == 777  # nâng cấp
+    edited = presets.get_preset(owner_ctx, kind="transition", key="fade")
+    assert edited["data"]["duration_ms"] == 123 and edited["modified"] is True  # đã sửa → giữ nguyên
     monkeypatch.undo()
-    reset = presets.reset_builtin(owner_ctx, "serial")
-    assert reset["data"]["clips"] == [12, 18] and reset["modified"] is False
+    reset = presets.reset_builtin(owner_ctx, "fade", kind="transition")
+    assert reset["data"] == fade and reset["modified"] is False
 
 
 def spec_g(defs, key):
-    return next(d["data"] for d in defs if d["kind"] == "genre" and d["key"] == key)
+    return next(d["data"] for d in defs if d["kind"] == "transition" and d["key"] == key)
 
 
 def test_removed_builtin_is_not_resurrected(services, owner_ctx):
     presets.ensure_builtins(services)
     with services.db.session() as s:
-        row = s.query(Preset).filter_by(kind="genre", key="montage").one()
+        row = s.query(Preset).filter_by(kind="transition", key="dissolve").one()
         row.deleted_at = row.created_at
     presets.seed_builtins(services.db)
-    assert not [p for p in presets.list_presets(owner_ctx, "genre") if p["key"] == "montage"]
-    assert presets.reset_builtin(owner_ctx, "montage")["key"] == "montage"  # reset_builtin hồi sinh có chủ ý
-    assert [p for p in presets.list_presets(owner_ctx, "genre") if p["key"] == "montage"]
+    assert not [p for p in presets.list_presets(owner_ctx, "transition") if p["key"] == "dissolve"]
+    assert presets.reset_builtin(owner_ctx, "dissolve", kind="transition")["key"] == "dissolve"  # hồi sinh có chủ ý
+    assert [p for p in presets.list_presets(owner_ctx, "transition") if p["key"] == "dissolve"]
 
 
 # --- Ops preset.* ---------------------------------------------------------------------------------------------------
@@ -170,9 +169,10 @@ def test_preset_ops_crud_flow(client):
     stale = call(client, "preset.update", {"id": dup["id"], "name": "x", "expected_updated_at": "2020-01-01T00:00:00Z"})
     assert stale.json()["error_code"] == "stale_write"
 
-    created = call(client, "preset.create", {"kind": "workflow", "key": "wf1", "name": "Quy trình", "data": {"steps": []}})
+    created = call(client, "preset.create", {"kind": "transition", "key": "tr1", "name": "Cắt", "data": {"xfade": None}})
     assert created.status_code == 200
-    assert call(client, "preset.create", {"kind": "workflow", "key": "Bad Key", "name": "x", "data": {}}).status_code == 422
+    assert call(client, "preset.create", {"kind": "transition", "key": "Bad Key", "name": "x", "data": {}}).status_code == 422
+    assert call(client, "preset.create", {"kind": "workflow", "key": "wf1", "name": "x", "data": {}}).status_code == 422
 
     prev = call(client, "preset.delete_preview", {"id": dup["id"]}).json()
     assert prev["impact"]["count"] == 1 and prev["confirm_token"]

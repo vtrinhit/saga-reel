@@ -83,6 +83,8 @@ export interface PipelinePlan {
   sequences: { sequence_id: number; clips: number; clips_estimated?: boolean; images: number; videos: number; tts?: number; renders?: number; llm_calls: number; status: string }[];
   estimate: { images: number; videos: number; llm_calls: number; tts?: number; renders?: number; cost?: number | null; clips_estimated?: boolean };
   note?: string;
+  /** Cảnh báo prompt của dự án (`prompt.check`, không chặn): bước thiếu prompt sẽ dừng chờ nhập. */
+  prompt_warnings?: { key: string; code: string; message: string }[];
 }
 
 /** `sequence.status` (`engine.sequence_status`). */

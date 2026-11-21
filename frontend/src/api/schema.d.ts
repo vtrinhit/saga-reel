@@ -557,7 +557,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Tạo preset genre/style_pack từ kết quả phân tích + gợi ý Library (không tự tạo asset) */
+        /** Ghi kết quả phân tích kênh vào dự án (số liệu thể loại, phong cách) + gợi ý Library; không có dự án → tạo dự án mẫu mới */
         post: operations["channel.apply"];
         delete?: never;
         options?: never;
@@ -1228,6 +1228,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/genre.list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Số liệu thể loại tham khảo (độ dài tập/clip, số clip, hook…) — chép vào project.genre */
+        post: operations["genre.list"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/history.list": {
         parameters: {
             query?: never;
@@ -1494,23 +1511,6 @@ export interface paths {
         put?: never;
         /** Chờ tới khi mọi job rời queued/running — tức đã kết thúc (succeeded/failed/cancelled) hoặc dừng chờ người quyết định (needs_attention, interrupted, waiting_*) — hoặc hết giờ; trả trạng thái từng job và timed_out */
         post: operations["job.wait"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ops/library.templates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Template prompt của compiler (image/motion/sheet): nội dung hiệu lực + bản cài sẵn */
-        post: operations["library.templates"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1866,7 +1866,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Chạy quy trình theo preset cho các tập (job dài pipeline.run, dừng ở gate/bước chờ nhập, nối lại được); dry_run chỉ ước tính */
+        /** Chạy quy trình của dự án cho các tập (job dài pipeline.run, dừng ở gate/bước chờ nhập, nối lại được); dry_run chỉ ước tính */
         post: operations["pipeline.run"];
         delete?: never;
         options?: never;
@@ -2053,7 +2053,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Tạo dự án mới (mã tự sinh từ tên nếu bỏ trống) */
+        /** Tạo dự án mới: trống hoặc nhân bản từ dự án mẫu (from_project_id) */
         post: operations["project.create"];
         delete?: never;
         options?: never;
@@ -2104,7 +2104,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Nhân bản dự án: cài đặt + Library + preset của dự án (không chép tập/clip/take) */
+        /** Nhân bản dự án (vd. từ dự án mẫu): prompt + phong cách + cài đặt/quy trình + Library tuỳ chọn (không chép tập/clip/take) */
         post: operations["project.duplicate"];
         delete?: never;
         options?: never;
@@ -2191,6 +2191,142 @@ export interface paths {
         put?: never;
         /** Sửa dự án (hoàn tác được); kèm expected_updated_at để chống ghi đè */
         post: operations["project.update"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/prompt.check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Kiểm bộ prompt của dự án (không LLM, chỉ cảnh báo): cú pháp, khoá thiếu, biến lạ, bước sẽ thiếu prompt khi chạy bằng LLM của tool */
+        post: operations["prompt.check"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/prompt.contracts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hợp đồng prompt của tool: mỗi khoá nhận biến gì, trả gì (JSON schema), op nào dùng */
+        post: operations["prompt.contracts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/prompt.delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Xoá (mềm, hoàn tác được) prompt của dự án — cần confirm_token */
+        post: operations["prompt.delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/prompt.delete_preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Xem tác động của việc xoá prompt và lấy confirm_token */
+        post: operations["prompt.delete_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/prompt.get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Nội dung một prompt của dự án kèm hợp đồng biến của khoá đó */
+        post: operations["prompt.get"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/prompt.list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prompt của dự án (không kèm nội dung) + các khoá còn thiếu so với hợp đồng */
+        post: operations["prompt.list"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/prompt.preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Xem trước prompt với dữ liệu thật (clip/look của dự án) hoặc biến thử (LLM) */
+        post: operations["prompt.preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/prompt.set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Viết/sửa prompt của dự án (kiểm cú pháp Jinja sandbox; cảnh báo biến lạ so với hợp đồng) */
+        post: operations["prompt.set"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2599,6 +2735,23 @@ export interface paths {
         put?: never;
         /** Hàng duyệt: clip cần duyệt theo thứ tự (mặc định pending) kèm take đang chọn */
         post: operations["review.queue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/sample.reseed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tạo lại dự án mẫu cài sẵn đã xoá/thiếu (mẫu đang có giữ nguyên) */
+        post: operations["sample.reseed"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3285,6 +3438,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/story.submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Gửi thẳng KẾT QUẢ một bước viết (bible, dàn ý, kịch bản, chia clip, prompt, thoại, bộ nhớ) — kiểm đúng schema như đường LLM rồi lưu; không gọi LLM của tool, quy trình đang chờ chạy tiếp */
+        post: operations["story.submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/story.write_bible": {
         parameters: {
             query?: never;
@@ -3313,6 +3483,23 @@ export interface paths {
         put?: never;
         /** AI viết kịch bản tập từ dàn ý + số liệu thể loại + bộ nhớ truyện (chữ chạy dần) → job */
         post: operations["story.write_script"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/studio.guide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bản đồ quy trình làm phim cho agent: từng bước (mục đích, vào/ra + schema, op tool làm, op agent tự gửi, prompt liên quan, gate) + trạng thái dự án */
+        post: operations["studio.guide"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3466,74 +3653,6 @@ export interface paths {
         put?: never;
         /** Phán quyết take (keep/trim/fix_post/regenerate/reject) kèm lý do; null = xoá (hoàn tác được) */
         post: operations["take.verdict"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ops/template.get": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Nội dung một template prompt (kèm bản cài sẵn nếu có) */
-        post: operations["template.get"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ops/template.list": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Danh sách template prompt (không kèm nội dung; dùng template.get) */
-        post: operations["template.list"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ops/template.reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Đưa template về nội dung cài sẵn */
-        post: operations["template.reset"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ops/template.update": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Sửa nội dung template prompt (create_if_missing để tạo mới); kiểm tra cú pháp */
-        post: operations["template.update"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3925,6 +4044,23 @@ export interface paths {
         put?: never;
         /** Sửa hồ sơ giọng (hoàn tác được) */
         post: operations["voice.update"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ops/workflow.defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quy trình mặc định của tool (chép vào project.workflows khi tạo dự án) */
+        post: operations["workflow.defaults"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4777,13 +4913,13 @@ export interface components {
              */
             task?: ("write_bible" | "outline" | "write_script" | "split_clips" | "image_prompts" | "motion_prompts" | "dialogue") | null;
         };
-        /** DeleteParams */
-        DeleteParams: {
+        /** ContractsParams */
+        ContractsParams: {
             /**
-             * Confirm Token
-             * @description Lấy từ <loại>.delete_preview
+             * Key
+             * @description Chỉ một khoá; bỏ trống = mọi khoá
              */
-            confirm_token?: string | null;
+            key?: string | null;
         };
         /** DeletePreviewOut */
         DeletePreviewOut: {
@@ -4798,6 +4934,13 @@ export interface components {
              * @default 600
              */
             expires_in_s?: number;
+        };
+        /** DeletePreviewParams */
+        DeletePreviewParams: {
+            /** Project Id */
+            project_id: number;
+            /** Keys */
+            keys: string[];
         };
         /** DescribeParams */
         DescribeParams: {
@@ -4962,7 +5105,7 @@ export interface components {
              * @description Loại thực thể (= tên bảng), vd. project, clip, asset
              * @enum {string}
              */
-            type: "project" | "group_node" | "sequence" | "scene" | "asset_kind" | "asset" | "asset_variant" | "clip" | "dialogue_line" | "voice_profile" | "timeline_item" | "sound" | "preset" | "bible_item" | "channel_study" | "skill_file";
+            type: "project" | "group_node" | "sequence" | "scene" | "asset_kind" | "asset" | "asset_variant" | "clip" | "dialogue_line" | "voice_profile" | "timeline_item" | "sound" | "preset" | "bible_item" | "channel_study" | "skill_file" | "project_prompt";
             /** Id */
             id: number;
         };
@@ -4973,7 +5116,7 @@ export interface components {
              * @description Loại thực thể (= tên bảng)
              * @enum {string}
              */
-            type: "project" | "group_node" | "sequence" | "scene" | "asset_kind" | "asset" | "asset_variant" | "clip" | "dialogue_line" | "voice_profile" | "timeline_item" | "sound" | "preset" | "bible_item" | "channel_study" | "skill_file";
+            type: "project" | "group_node" | "sequence" | "scene" | "asset_kind" | "asset" | "asset_variant" | "clip" | "dialogue_line" | "voice_profile" | "timeline_item" | "sound" | "preset" | "bible_item" | "channel_study" | "skill_file" | "project_prompt";
             /**
              * Filters
              * @description Lọc bằng nhau theo cột, vd. {"sequence_id": 3}; giá trị mảng = một trong; null = trống
@@ -5008,7 +5151,7 @@ export interface components {
              * @description Loại thực thể (= tên bảng)
              * @enum {string}
              */
-            type: "project" | "group_node" | "sequence" | "scene" | "asset_kind" | "asset" | "asset_variant" | "clip" | "dialogue_line" | "voice_profile" | "timeline_item" | "sound" | "preset" | "bible_item" | "channel_study" | "skill_file";
+            type: "project" | "group_node" | "sequence" | "scene" | "asset_kind" | "asset" | "asset_variant" | "clip" | "dialogue_line" | "voice_profile" | "timeline_item" | "sound" | "preset" | "bible_item" | "channel_study" | "skill_file" | "project_prompt";
             /** Id */
             id: number;
             /**
@@ -5276,7 +5419,7 @@ export interface components {
              * Include
              * @description Phần đưa vào: presets, library, groups, sequences (bỏ trống = tất cả)
              */
-            include?: ("presets" | "library" | "groups" | "sequences")[] | null;
+            include?: ("prompts" | "presets" | "library" | "groups" | "sequences")[] | null;
             /**
              * Save
              * @description Ghi thêm file vào outputs/specs/
@@ -5310,6 +5453,14 @@ export interface components {
              * @description Góp ý — được đưa vào bước viết/tạo lại
              */
             feedback: string;
+        };
+        /** GuideParams */
+        GuideParams: {
+            /**
+             * Project Id
+             * @description Kèm trạng thái của dự án: tập, clip, prompt thiếu, chờ gì
+             */
+            project_id?: number | null;
         };
         /** HistoryListParams */
         HistoryListParams: {
@@ -5411,7 +5562,7 @@ export interface components {
             idea: string;
             /**
              * Genre
-             * @description Key preset thể loại: storyboard, montage, series, serial, narration
+             * @description Thể loại: storyboard, montage, series, serial, narration (số liệu tham khảo; dự án mới nhân bản từ dự án mẫu cùng thể loại nếu có)
              * @default serial
              */
             genre?: string;
@@ -5430,6 +5581,11 @@ export interface components {
              * @description Bỏ trống = tạo dự án mới
              */
             project_id?: number | null;
+            /**
+             * From Project Id
+             * @description Dự án mới nhân bản prompt/phong cách từ dự án này (mặc định: dự án mẫu cùng thể loại)
+             */
+            from_project_id?: number | null;
             /**
              * Name
              * @description Tên dự án mới (mặc định lấy từ ý tưởng)
@@ -5705,6 +5861,13 @@ export interface components {
              */
             timeout_s?: number;
         };
+        /** KeyParams */
+        KeyParams: {
+            /** Project Id */
+            project_id: number;
+            /** Key */
+            key: string;
+        };
         /** LoginBody */
         LoginBody: {
             /** Password */
@@ -5782,15 +5945,17 @@ export interface components {
         /** MakeParams */
         MakeParams: {
             /**
-             * Genre Preset
+             * Genre
+             * @description Ghi số liệu thể loại (nhịp, độ dài clip/tập, hook) vào dự án
              * @default true
              */
-            genre_preset?: boolean;
+            genre?: boolean;
             /**
-             * Style Pack
+             * Style
+             * @description Ghi khối phong cách + khối tránh vào dự án
              * @default true
              */
-            style_pack?: boolean;
+            style?: boolean;
             /**
              * Library Suggestions
              * @default true
@@ -5995,7 +6160,7 @@ export interface components {
             sequence_ids: number[];
             /**
              * Workflow Key
-             * @description full_auto / storyboard_first / serial_batch …
+             * @description Khoá quy trình trong project.workflows (full_auto / storyboard_first / serial_batch …)
              * @default full_auto
              */
             workflow_key?: string;
@@ -6147,7 +6312,7 @@ export interface components {
         PresetListParams: {
             /**
              * Kind
-             * @description Lọc theo loại: platform, genre, subtitle_style, voice, transition, workflow, channel_brand, style_pack, motion
+             * @description Lọc theo loại: platform, subtitle_style, transition, motion
              */
             kind?: string | null;
             /**
@@ -6165,7 +6330,7 @@ export interface components {
             id?: number | null;
             /**
              * Kind
-             * @description Loại: platform, genre, subtitle_style, voice, transition, workflow, channel_brand, style_pack, motion
+             * @description Loại: platform, subtitle_style, transition, motion
              */
             kind?: string | null;
             /** Key */
@@ -6195,7 +6360,7 @@ export interface components {
             id?: number | null;
             /**
              * Kind
-             * @description Loại: platform, genre, subtitle_style, voice, transition, workflow, channel_brand, style_pack, motion
+             * @description Loại: platform, subtitle_style, transition, motion
              */
             kind?: string | null;
             /** Key */
@@ -6219,6 +6384,35 @@ export interface components {
              * @description Lệch → lỗi stale_write 409
              */
             expected_updated_at?: string | null;
+        };
+        /** PreviewParams */
+        PreviewParams: {
+            /** Project Id */
+            project_id: number;
+            /** Key */
+            key: string;
+            /**
+             * Body
+             * @description Thân cần thử (chưa lưu); bỏ trống = prompt đang lưu
+             */
+            body?: string | null;
+            /**
+             * Clip Id
+             * @description Clip mẫu (image.synced/motion.synced); bỏ trống = clip đầu tiên của dự án
+             */
+            clip_id?: number | null;
+            /**
+             * Look Id
+             * @description Look mẫu (sheet.*); bỏ trống = look đầu tiên đúng loại
+             */
+            look_id?: number | null;
+            /**
+             * Variables
+             * @description Biến thử cho prompt LLM; thiếu biến nào thì dùng chữ giữ chỗ <tên biến>
+             */
+            variables?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** ProjectCounts */
         ProjectCounts: {
@@ -6255,7 +6449,7 @@ export interface components {
             key?: string | null;
             /**
              * Genre Key
-             * @description Thể loại (preset genre), mặc định series
+             * @description Nhãn thể loại (series, serial, narration, montage, storyboard…); dự án trống chép số liệu tham khảo của thể loại này
              */
             genre_key?: string | null;
             /**
@@ -6273,6 +6467,18 @@ export interface components {
              * @description Nền tảng đích (preset platform)
              */
             target_platforms?: string[] | null;
+            /**
+             * From Project Id
+             * @description Nhân bản từ dự án này (thường là dự án mẫu): prompt, phong cách, số liệu, quy trình. Bỏ trống = dự án trống (chưa có prompt)
+             */
+            from_project_id?: number | null;
+            /**
+             * Include
+             * @description Khi nhân bản: phần chép {prompts, style, settings, library} (mặc định tất cả)
+             */
+            include?: {
+                [key: string]: boolean;
+            } | null;
         };
         /** ProjectDeleteParams */
         ProjectDeleteParams: {
@@ -6296,6 +6502,13 @@ export interface components {
              * @description Mã dự án mới; bỏ trống = tự sinh từ tên
              */
             key?: string | null;
+            /**
+             * Include
+             * @description Phần chép {prompts, style, settings, library} (mặc định tất cả)
+             */
+            include?: {
+                [key: string]: boolean;
+            } | null;
         };
         /** ProjectIdParams */
         ProjectIdParams: {
@@ -6327,8 +6540,30 @@ export interface components {
             description: string;
             /** Genre Key */
             genre_key: string;
-            /** Style Pack Id */
-            style_pack_id: number | null;
+            /**
+             * Genre
+             * @description Số liệu thể loại của dự án
+             */
+            genre?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Workflows
+             * @description Quy trình của dự án {key: {steps…}}
+             */
+            workflows?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Narrator Voice
+             * @default
+             */
+            narrator_voice?: string;
+            /**
+             * Is Sample
+             * @default false
+             */
+            is_sample?: boolean;
             /** Aspect */
             aspect: string;
             /** Resolution */
@@ -6371,6 +6606,11 @@ export interface components {
             items: components["schemas"]["ProjectOut"][];
             /** Next Cursor */
             next_cursor?: number | null;
+        };
+        /** ProjectParams */
+        ProjectParams: {
+            /** Project Id */
+            project_id: number;
         };
         /** ProjectUpdateParams */
         ProjectUpdateParams: {
@@ -6825,6 +7065,19 @@ export interface components {
              * @description Ảnh gửi kèm (vision)
              */
             images_media_ids?: number[];
+            /**
+             * Project Id
+             * @description Dự án có prompt của công việc (bảng project_prompt)
+             */
+            project_id?: number | null;
+        };
+        /** SampleReseedParams */
+        SampleReseedParams: {
+            /**
+             * Keys
+             * @description Key/slug dự án mẫu cần tạo lại; bỏ trống = mọi mẫu thiếu
+             */
+            keys?: string[] | null;
         };
         /** SceneCreateParams */
         SceneCreateParams: {
@@ -7120,6 +7373,26 @@ export interface components {
              */
             media_id: number | null;
         };
+        /** SetParams */
+        SetParams: {
+            /** Project Id */
+            project_id: number;
+            /**
+             * Key
+             * @description Khoá trong prompt.contracts, vd. image.synced, story_write_script
+             */
+            key: string;
+            /**
+             * Body
+             * @description Thân Jinja (lưu nguyên văn)
+             */
+            body: string;
+            /**
+             * Expected Updated At
+             * @description `updated_at` lúc đọc (chống ghi đè)
+             */
+            expected_updated_at?: string | null;
+        };
         /** SetPasswordParams */
         SetPasswordParams: {
             /**
@@ -7374,6 +7647,56 @@ export interface components {
              */
             replace?: boolean;
         };
+        /** StorySubmitParams */
+        StorySubmitParams: {
+            /**
+             * Task
+             * @description Bước: write_bible, outline, write_script, split_clips, image_prompts, motion_prompts, dialogue, memory_summarize
+             */
+            task: string;
+            /**
+             * Data
+             * @description Kết quả bước, ĐÚNG schema đầu ra của bước (prompt.contracts → output_schema); write_script = chữ kịch bản
+             */
+            data: unknown;
+            /**
+             * Project Id
+             * @description write_bible / outline
+             */
+            project_id?: number | null;
+            /**
+             * Sequence Id
+             * @description write_script / split_clips / *_prompts / dialogue / memory_summarize
+             */
+            sequence_id?: number | null;
+            /**
+             * Clip Ids
+             * @description *_prompts / dialogue: chỉ các clip này
+             */
+            clip_ids?: number[] | null;
+            /**
+             * Sequence Ids
+             * @description outline: điền dàn ý cho các tập có sẵn
+             */
+            sequence_ids?: number[] | null;
+            /**
+             * Episodes
+             * @description outline: số tập MỚI
+             */
+            episodes?: number | null;
+            /**
+             * Idea
+             * @description write_bible: ý tưởng (ghi lại cho lịch sử)
+             * @default (agent tự viết)
+             */
+            idea?: string;
+            /**
+             * Replace
+             * @description split_clips: thay clip cũ của tập
+             * @default true
+             */
+            replace?: boolean;
+        };
         /** StudyCreateParams */
         StudyCreateParams: {
             /**
@@ -7579,45 +7902,6 @@ export interface components {
             /** Template Key */
             template_key?: string | null;
         };
-        /** TemplateKeyParams */
-        TemplateKeyParams: {
-            /** Key */
-            key: string;
-        };
-        /** TemplateListParams */
-        TemplateListParams: {
-            /** Kind */
-            kind?: string | null;
-        };
-        /** TemplateUpdateParams */
-        TemplateUpdateParams: {
-            /** Key */
-            key: string;
-            /**
-             * Body
-             * @description Nội dung Jinja; lưu nguyên văn
-             */
-            body: string;
-            /**
-             * Locked
-             * @description Khoá: LLM không được sửa
-             */
-            locked?: boolean | null;
-            /**
-             * Create If Missing
-             * @description Tạo template mới nếu chưa có key này
-             * @default false
-             */
-            create_if_missing?: boolean;
-            /**
-             * Kind
-             * @description Loại (chỉ dùng khi tạo mới)
-             * @default llm
-             */
-            kind?: string;
-        };
-        /** TemplatesParams */
-        TemplatesParams: Record<string, never>;
         /** TimelineAddParams */
         TimelineAddParams: {
             /** Sequence Id */
@@ -8152,7 +8436,7 @@ export interface components {
             study_id: number;
             /**
              * Project Id
-             * @description Preset thuộc dự án này; bỏ trống = theo phân tích
+             * @description Dự án nhận kết quả; bỏ trống = dự án của phân tích, không có thì tạo dự án mẫu mới
              */
             project_id?: number | null;
             make?: components["schemas"]["MakeParams"];
@@ -8177,6 +8461,14 @@ export interface components {
         sagareel__ops__pipeline_ops__SequenceIdParams: {
             /** Sequence Id */
             sequence_id: number;
+        };
+        /** DeleteParams */
+        sagareel__ops__prompt_ops__DeleteParams: {
+            /**
+             * Confirm Token
+             * @description Lấy từ prompt.delete_preview
+             */
+            confirm_token?: string | null;
         };
         /** SequenceIdParams */
         sagareel__ops__sequence_ops__SequenceIdParams: {
@@ -8206,6 +8498,14 @@ export interface components {
             /**
              * Confirm Token
              * @description Lấy từ bước *_preview (10 phút)
+             */
+            confirm_token?: string | null;
+        };
+        /** DeleteParams */
+        sagareel__ops__voice_ops__DeleteParams: {
+            /**
+             * Confirm Token
+             * @description Lấy từ <loại>.delete_preview
              */
             confirm_token?: string | null;
         };
@@ -10539,7 +10839,7 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["DeleteParams"];
+                "application/json": components["schemas"]["sagareel__ops__voice_ops__DeleteParams"];
             };
         };
         responses: {
@@ -11170,6 +11470,48 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["GateRejectParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "genre.list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["EmptyParams"];
             };
         };
         responses: {
@@ -11842,48 +12184,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["JobWaitParams"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorPayload"];
-                };
-            };
-            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorPayload"];
-                };
-            };
-        };
-    };
-    "library.templates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["TemplatesParams"];
             };
         };
         responses: {
@@ -13596,6 +13896,342 @@ export interface operations {
             };
         };
     };
+    "prompt.check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "prompt.contracts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ContractsParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "prompt.delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["sagareel__ops__prompt_ops__DeleteParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "prompt.delete_preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeletePreviewParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletePreviewOut"];
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "prompt.get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeyParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "prompt.list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "prompt.preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "prompt.set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
     "prompts.submit": {
         parameters: {
             query?: never;
@@ -14572,6 +15208,48 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": components["schemas"]["ReviewQueueParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "sample.reseed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SampleReseedParams"];
             };
         };
         responses: {
@@ -16284,6 +16962,48 @@ export interface operations {
             };
         };
     };
+    "story.submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StorySubmitParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
     "story.write_bible": {
         parameters: {
             query?: never;
@@ -16336,6 +17056,48 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SequenceTaskParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "studio.guide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["GuideParams"];
             };
         };
         responses: {
@@ -16714,174 +17476,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TakeVerdictParams"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorPayload"];
-                };
-            };
-            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorPayload"];
-                };
-            };
-        };
-    };
-    "template.get": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TemplateKeyParams"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorPayload"];
-                };
-            };
-            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorPayload"];
-                };
-            };
-        };
-    };
-    "template.list": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["TemplateListParams"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorPayload"];
-                };
-            };
-            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorPayload"];
-                };
-            };
-        };
-    };
-    "template.reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TemplateKeyParams"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorPayload"];
-                };
-            };
-            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorPayload"];
-                };
-            };
-        };
-    };
-    "template.update": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TemplateUpdateParams"];
             };
         };
         responses: {
@@ -17679,7 +18273,7 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["DeleteParams"];
+                "application/json": components["schemas"]["sagareel__ops__voice_ops__DeleteParams"];
             };
         };
         responses: {
@@ -17848,6 +18442,48 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["VoiceUpdateParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "workflow.defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["EmptyParams"];
             };
         };
         responses: {

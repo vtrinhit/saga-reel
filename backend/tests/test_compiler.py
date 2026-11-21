@@ -23,7 +23,6 @@ from sagareel.db.models import (
     Scene,
     Sequence,
     Take,
-    Template,
 )
 from sagareel.providers.base import Connection, ImageRequest
 from sagareel.providers.fake.image import FakeImageAdapter
@@ -218,10 +217,12 @@ def test_look_selection_by_sequence_number_then_default(owner_ctx, mk):
     assert "Keep exactly: WEDDING;" in compile_image(owner_ctx, cid).text
 
 
-def test_template_is_data_db_row_overrides_builtin(owner_ctx, mk):
+def test_template_is_project_data(owner_ctx, mk, project):
+    from sagareel.services import prompts
+
     cid = mk.clip(mk.sequence(), image_prompt="  giữ nguyên  ")
     with owner_ctx.services.db.session() as s:
-        s.add(Template(key="image.synced", kind="image", body="TỰ SỬA [{{ prompt }}] {{ aspect }}", locked=True))
+        prompts.put(s, project, "image.synced", "TỰ SỬA [{{ prompt }}] {{ aspect }}")
     assert compile_image(owner_ctx, cid).text == "TỰ SỬA [  giữ nguyên  ] 9:16"
 
 

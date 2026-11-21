@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Play } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useParams } from 'react-router';
 import { callOp } from '../../api/ops';
 import { errorMessage, gateLabel, untilFirstGate, type PipelinePlan } from '../../lib/activity';
 import { toast } from '../../stores/toast';
 import { useConnection } from '../../stores/connection';
+import { fetchWorkflows, type WorkflowRow } from '../shell/useShellData';
 import { Button } from '../ui/Button';
 import { Checkbox } from '../ui/Checkbox';
 import { ErrorState } from '../ui/ErrorState';
@@ -26,18 +28,13 @@ export interface RunToGateDialogProps {
   onStarted?: () => void;
 }
 
-interface WorkflowPreset {
-  key: string;
-  name: string;
-  data?: { label?: string; steps?: { step: string; enabled?: boolean }[] };
-}
-
 /**
  * "Chạy tới gate kế tiếp": chọn quy trình → `pipeline.run` dry_run (ước tính ảnh/video/LLM của phần còn lại)
  * → chạy thật. Quy trình tự dừng ở gate bật đầu tiên — giá sau gate được báo lại ở GateCard.
  */
 export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workflowKey, onStarted }: RunToGateDialogProps) {
   const qc = useQueryClient();
+  const { projectId = null } = useParams();
   const offline = useConnection((s) => s.state === 'offline');
   const [wf, setWf] = useState(workflowKey || 'full_auto');
   const [pilot, setPilot] = useState(false);
@@ -48,9 +45,10 @@ export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workfl
     }
   }, [open, workflowKey, sequenceIds.length]);
 
-  const workflows = useQuery({
-    queryKey: ['pipeline', 'workflows'],
-    queryFn: async () => ((await callOp('preset.list', { kind: 'workflow' })) as unknown as { items: WorkflowPreset[] }).items,
+  // Quy trình là dữ liệu của dự án (`project.workflows`).
+  const workflows = useQuery<WorkflowRow[]>({
+    queryKey: ['pipeline', 'workflows', projectId],
+    queryFn: () => fetchWorkflows(projectId),
     enabled: open,
     staleTime: 5 * 60_000,
   });
@@ -158,7 +156,27 @@ export function RunToGateDialog({ open, onClose, sequenceIds, scopeLabel, workfl
               {firstGate ? `Dừng ở gate ${gateLabel(firstGate)} để bạn duyệt. ` : 'Quy trình không có gate — chạy tới hết. '}
               Cột “Cả quy trình” là toàn bộ phần chưa làm; tập chưa chia clip được ước theo thể loại.
             </p>
+            {plan.data?.prompt_warnings?.length ? (
+              <details className="text-xs text-fg-2">
+                <summary className="cursor-pointer">Kiểm tra prompt: {nf.format(plan.data.prompt_warnings.length)} cảnh báo (không chặn)</summary>
+                <ul className="mt-1 grid gap-0.5">
+                  {plan.data.prompt_warnings.map((w) => (
+                    <li key={`${w.key}:${w.message}`}>{w.message}</li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
             {offline ? <p className="text-xs text-state-failed">Đang mất kết nối với máy nhà — chưa chạy được.</p> : null}
+            {plan.data?.prompt_warnings?.length ? (
+              <div className="grid gap-0.5 text-xs text-fg-2" role="status">
+                <p className="font-medium text-warn">Prompt của dự án: {plan.data.prompt_warnings.length} cảnh báo (không chặn)</p>
+                <ul className="grid gap-0.5">
+                  {plan.data.prompt_warnings.slice(0, 6).map((w) => (
+                    <li key={`${w.key}:${w.message}`}>{w.message}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </>
         ) : null}
       </div>

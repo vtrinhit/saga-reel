@@ -114,14 +114,29 @@ export function useSequenceStatus(seqId: string | null) {
   });
 }
 
-/** Mọi preset quy trình (`preset.list kind=workflow` → `{items}`), theo key. Đổi hiếm → cache 5 phút. */
-export function useWorkflowPresets(enabled: boolean) {
+/** Một quy trình (`project.workflows[key]` hoặc `workflow.defaults`): `{name, label, steps…}`. */
+export interface WorkflowRow {
+  key: string;
+  name: string;
+  data: { label?: string; steps?: { step: string; enabled?: boolean }[] } & Record<string, unknown>;
+}
+
+/** Quy trình của dự án (`project.workflows` — dữ liệu của dự án); chưa có dự án → quy trình mặc định của tool. */
+export async function fetchWorkflows(projectId: number | string | null): Promise<WorkflowRow[]> {
+  if (projectId != null && /^\d+$/.test(String(projectId))) {
+    const p = (await callOp('project.get', { id: Number(projectId) })) as unknown as {
+      workflows?: Record<string, WorkflowRow['data'] & { name?: string }>;
+    };
+    return Object.entries(p.workflows ?? {}).map(([key, data]) => ({ key, name: String(data?.name ?? key), data }));
+  }
+  return ((await callOp('workflow.defaults', {})) as unknown as { items: WorkflowRow[] }).items ?? [];
+}
+
+/** Quy trình của dự án theo key (Map key → dữ liệu). Đổi hiếm → cache 5 phút. */
+export function useWorkflowPresets(projectId: number | string | null, enabled: boolean) {
   return useQuery({
-    queryKey: shellKeys.workflows,
-    queryFn: async () => {
-      const r = (await callOp('preset.list', { kind: 'workflow' })) as unknown as { items: { key: string; data: unknown }[] };
-      return new Map((r.items ?? []).map((p) => [p.key, p.data]));
-    },
+    queryKey: [...shellKeys.workflows, projectId ?? 'default'],
+    queryFn: async () => new Map((await fetchWorkflows(projectId)).map((w) => [w.key, w.data as unknown])),
     enabled,
     staleTime: 5 * 60_000,
     retry: false,

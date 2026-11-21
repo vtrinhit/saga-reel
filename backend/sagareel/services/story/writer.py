@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from sagareel.compile import compiler
 from sagareel.core import rank, speech
 from sagareel.core.context import OpContext
-from sagareel.core.errors import AppError, NotFound, ValidationFailed
+from sagareel.core.errors import AppError, ValidationFailed
 from sagareel.db.models import (
     Asset,
     AssetVariant,
@@ -36,7 +36,7 @@ from sagareel.db.models import (
     Sequence,
 )
 from sagareel.services import clips as clip_svc
-from sagareel.services import entities, presets
+from sagareel.services import entities, genres
 from sagareel.services import sequences as seq_svc
 from sagareel.services.story import bible, llmio, memory, state
 from sagareel.services.story import schemas as S
@@ -129,6 +129,8 @@ def src(by: str, name: str, model: str | None = None) -> dict[str, Any]:
 
 
 def llm_ctx(ctx: OpContext, model: str) -> OpContext:
+    if model == llmio.GIVEN_MODEL:  # kết quả do agent/người gửi thẳng → ghi dưới chính actor đó
+        return ctx
     return dataclasses.replace(ctx, actor=f"llm:{model or 'unknown'}")
 
 
@@ -141,12 +143,11 @@ def get_sequence(s: Session, sequence_id: int) -> Sequence:
 
 
 def genre_of(s: Session, project: Project, key: str | None = None) -> tuple[str, dict[str, Any]]:
-    key = key or project.genre_key or "series"
-    try:
-        return key, presets.get_data(s, "genre", key, project.id)
-    except NotFound:
-        d = presets.builtin_definition("genre", key)
-        return key, dict(d["data"]) if d else {}
+    """(nhãn thể loại, số liệu) — số liệu là dữ liệu của project (`project.genre`). `key` khác nhãn hiện tại → số liệu
+    tham khảo `defaults/genres/<key>.yaml` (vd. write_bible đổi thể loại)."""
+    if key and key != project.genre_key:
+        return key, genres.reference(key) or {}
+    return project.genre_key or "", genres.of_project(project)
 
 
 def _span(v: Any, default: tuple[float, float]) -> tuple[float, float]:
@@ -238,6 +239,12 @@ def load_cast(s: Session, project: Project, number: int | None = None) -> Cast:
                 characters={a.key: a for a in rows if a.kind == "character"})
 
 
+def _seq_project(ctx: OpContext, sequence_id: int) -> int:
+    """Project của tập — để LLM dùng đúng bộ prompt của project."""
+    with ctx.services.db.session() as s:
+        return get_sequence(s, sequence_id).project_id
+
+
 async def _thread(fn, *args, **kw):
     return await anyio.to_thread.run_sync(lambda: fn(*args, **kw))
 
@@ -294,20 +301,20 @@ async def write_bible(ctx: OpContext, project_id: int, idea: str, *, genre: str 
                       on_delta: Delta = None, log: Log = None) -> dict[str, Any]:
     if not (idea or "").strip():
         raise ValidationFailed("Cần ý tưởng để viết Story Bible.")
-    presets.ensure_builtins(ctx.services)
 
     def load() -> dict[str, Any]:
         with ctx.services.db.session() as s:
             p = get_project(s, project_id)
             key, g = genre_of(s, p, genre)
             if genre and not g:
-                raise ValidationFailed(f"Không có preset thể loại '{genre}'.")
+                raise ValidationFailed(f"Không có số liệu thể loại '{genre}'.", code="genre_unknown",
+                                       hint="Thể loại tham khảo: " + ", ".join(x["key"] for x in genres.references()))
             return {"genre": genre_block(key, g)}
 
     v = await _thread(load)
     out = await llmio.run(ctx.services, "story_write_bible", {"idea": idea, "genre": v["genre"],
                                                               "feedback": feedback}, S.BibleOut,
-                          on_delta=on_delta, log=log)
+                          on_delta=on_delta, log=log, project_id=project_id)
     b: S.BibleOut = out.data
     counts: dict[str, int] = {}
 
@@ -319,8 +326,11 @@ async def write_bible(ctx: OpContext, project_id: int, idea: str, *, genre: str 
         with u as s:
             p = get_project(s, project_id)
             u.project_id = p.id
-            if genre:
+            if genre and genre != p.genre_key:
                 p.genre_key = genre
+                ref = genres.reference(genre)
+                if ref:
+                    p.genre = ref
             if not (p.style_block or "").strip() and b.style:
                 p.style_block = b.style
             if not (p.description or "").strip():
@@ -366,7 +376,6 @@ async def outline(ctx: OpContext, project_id: int, *, episodes: int | None = Non
     """Dàn ý một lô tập: `sequence_ids` (điền synopsis các tập có sẵn) hoặc `episodes` (tạo N tập mới nối tiếp)."""
     if not sequence_ids and not episodes:
         raise ValidationFailed("Cần episodes (số tập mới) hoặc sequence_ids.")
-    presets.ensure_builtins(ctx.services)
 
     def load() -> dict[str, Any]:
         with ctx.services.db.session() as s:
@@ -397,7 +406,7 @@ async def outline(ctx: OpContext, project_id: int, *, episodes: int | None = Non
     out = await llmio.run(ctx.services, "story_outline",
                           {"genre": v["genre"], "context": v["context"], "arc": arc,
                            "episodes": ", ".join(str(n) for n in v["numbers"]), "feedback": feedback},
-                          S.OutlineOut, on_delta=on_delta, log=log)
+                          S.OutlineOut, on_delta=on_delta, log=log, project_id=project_id)
     o: S.OutlineOut = out.data
     by_num = {e.number: e for e in o.episodes}
     eps = [by_num.get(n) for n in v["numbers"]]
@@ -490,7 +499,6 @@ def _iso(v: Any) -> Any:
 async def write_script(ctx: OpContext, sequence_id: int, *, feedback: str = "", run: dict[str, Any] | None = None,
                        genre_overrides: dict[str, Any] | None = None, on_delta: Delta = None,
                        log: Log = None) -> dict[str, Any]:
-    presets.ensure_builtins(ctx.services)
 
     def load() -> dict[str, Any]:
         with ctx.services.db.session() as s:
@@ -498,7 +506,8 @@ async def write_script(ctx: OpContext, sequence_id: int, *, feedback: str = "", 
 
     v = await _thread(load)
     packed = v.pop("_packed")
-    out = await llmio.run(ctx.services, "story_write_script", v, None, min_chars=40, on_delta=on_delta, log=log)
+    out = await llmio.run(ctx.services, "story_write_script", v, None, min_chars=40, on_delta=on_delta, log=log,
+                          project_id=await _thread(_seq_project, ctx, sequence_id))
     script = out.data
     res = await _thread(seq_svc.update, llm_ctx(ctx, out.model), sequence_id, {"script": script})
     return {"sequence_id": sequence_id, "chars": len(script), "model": out.model, "context_tokens": packed["tokens"],
@@ -662,7 +671,6 @@ def plan_clips(split: S.SplitOut, cast: Cast, genre_key: str, g: dict[str, Any])
 async def split_clips(ctx: OpContext, sequence_id: int, *, feedback: str = "", replace: bool = True,
                       run: dict[str, Any] | None = None, genre_overrides: dict[str, Any] | None = None,
                       on_delta: Delta = None, log: Log = None) -> dict[str, Any]:
-    presets.ensure_builtins(ctx.services)
 
     def load() -> dict[str, Any]:
         with ctx.services.db.session() as s:
@@ -685,7 +693,7 @@ async def split_clips(ctx: OpContext, sequence_id: int, *, feedback: str = "", r
     out = await llmio.run(ctx.services, "story_split_clips",
                           {"genre": v["genre"], "rules": COVERAGE_RULES, "cast": v["cast"].text, "enums": enums_text(),
                            "episode": v["episode"], "script": v["script"], "feedback": feedback},
-                          S.SplitOut, on_delta=on_delta, log=log)
+                          S.SplitOut, on_delta=on_delta, log=log, project_id=await _thread(_seq_project, ctx, sequence_id))
     scenes, planned, warnings = plan_clips(out.data, v["cast"], v["genre_key"], v["g"])
     lctx = llm_ctx(ctx, out.model)
 
@@ -862,7 +870,8 @@ async def write_prompts(ctx: OpContext, part: str, *, sequence_id: int | None = 
         variables = {"clips": "\n".join(chunk), "feedback": feedback}
         if part == "image":
             variables.update(style=v["style"], cast=v["cast"])
-        out = await llmio.run(ctx.services, task, variables, S.PromptsOut, on_delta=on_delta, log=log)
+        out = await llmio.run(ctx.services, task, variables, S.PromptsOut, on_delta=on_delta, log=log,
+                              project_id=await _thread(_seq_project, ctx, v["sequence_id"]))
         model = out.model
         for it in out.data.items:
             cid = v["keys"].get(it.clip.strip().strip("[]`"))
@@ -923,7 +932,8 @@ async def write_dialogue(ctx: OpContext, *, sequence_id: int | None = None, clip
     for i in range(0, len(v["briefs"]), PROMPT_BATCH):
         out = await llmio.run(ctx.services, "story_dialogue",
                               {"cast": v["cast"], "clips": "\n".join(v["briefs"][i:i + PROMPT_BATCH]),
-                               "feedback": feedback}, S.DialogueOut, on_delta=on_delta, log=log)
+                               "feedback": feedback}, S.DialogueOut, on_delta=on_delta, log=log,
+                              project_id=await _thread(_seq_project, ctx, v["sequence_id"]))
         model = out.model
         for it in out.data.items:
             cid = v["keys"].get(it.clip.strip().strip("[]`"))
@@ -997,7 +1007,6 @@ async def adapt_novel(ctx: OpContext, project_id: int, *, text: str | None = Non
                       on_delta: Delta = None, log: Log = None,
                       progress: Callable[[float, str], None] | None = None) -> dict[str, Any]:
     """Tách truyện dài thành tập theo độ dài mục tiêu; mỗi tập kết ở câu treo LLM chọn (`cut_after`)."""
-    presets.ensure_builtins(ctx.services)
     body = (await _thread(_read_text, ctx.services, text, upload_id)).replace("\r\n", "\n").strip()
     if not body:
         raise ValidationFailed("Truyện rỗng.")
@@ -1029,7 +1038,7 @@ async def adapt_novel(ctx: OpContext, project_id: int, *, text: str | None = Non
         known_txt = "\n".join(f"- `{k}` — {n}" for k, n in known.items()) or "(chưa có)"
         out = await llmio.run(ctx.services, "story_adapt_novel",
                               {"genre": v["genre"], "number": number, "known": known_txt, "passage": passage,
-                               "feedback": feedback}, S.AdaptOut, on_delta=on_delta, log=log)
+                               "feedback": feedback}, S.AdaptOut, on_delta=on_delta, log=log, project_id=project_id)
         a: S.AdaptOut = out.data
         cut = end
         if a.cut_after.strip() and end < total:
@@ -1111,7 +1120,7 @@ async def memory_summarize(ctx: OpContext, sequence_id: int, *, feedback: str = 
     out = await llmio.run(ctx.services, "story_memory_summarize",
                           {"episode": v["episode"], "script": v["script"], "known": v["known"],
                            "open_questions": v["open"], "feedback": feedback}, S.MemoryOut,
-                          on_delta=on_delta, log=log)
+                          on_delta=on_delta, log=log, project_id=await _thread(_seq_project, ctx, sequence_id))
     m: S.MemoryOut = out.data
     lctx = llm_ctx(ctx, out.model)
 

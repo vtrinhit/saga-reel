@@ -1934,9 +1934,10 @@
    "$defs": {
     "MakeParams": {
      "properties": {
-      "genre_preset": {
+      "genre": {
        "default": true,
-       "title": "Genre Preset",
+       "description": "Ghi số liệu thể loại (nhịp, độ dài clip/tập, hook) vào dự án",
+       "title": "Genre",
        "type": "boolean"
       },
       "library_suggestions": {
@@ -1944,9 +1945,10 @@
        "title": "Library Suggestions",
        "type": "boolean"
       },
-      "style_pack": {
+      "style": {
        "default": true,
-       "title": "Style Pack",
+       "description": "Ghi khối phong cách + khối tránh vào dự án",
+       "title": "Style",
        "type": "boolean"
       }
      },
@@ -1968,7 +1970,7 @@
       }
      ],
      "default": null,
-     "description": "Preset thuộc dự án này; bỏ trống = theo phân tích",
+     "description": "Dự án nhận kết quả; bỏ trống = dự án của phân tích, không có thì tạo dự án mẫu mới",
      "title": "Project Id"
     },
     "study_id": {
@@ -1984,7 +1986,7 @@
   },
   "read_only": false,
   "result_schema": null,
-  "summary": "Tạo preset genre/style_pack từ kết quả phân tích + gợi ý Library (không tự tạo asset)",
+  "summary": "Ghi kết quả phân tích kênh vào dự án (số liệu thể loại, phong cách) + gợi ý Library; không có dự án → tạo dự án mẫu mới",
   "viewer": false
  },
  {
@@ -4007,7 +4009,8 @@
       "preset",
       "bible_item",
       "channel_study",
-      "skill_file"
+      "skill_file",
+      "project_prompt"
      ],
      "title": "Type",
      "type": "string"
@@ -4079,7 +4082,8 @@
       "preset",
       "bible_item",
       "channel_study",
-      "skill_file"
+      "skill_file",
+      "project_prompt"
      ],
      "title": "Type",
      "type": "string"
@@ -4170,7 +4174,8 @@
       "preset",
       "bible_item",
       "channel_study",
-      "skill_file"
+      "skill_file",
+      "project_prompt"
      ],
      "title": "Type",
      "type": "string"
@@ -4620,6 +4625,24 @@
   "result_schema": null,
   "summary": "Từ chối gate đang chờ kèm góp ý → chạy lại các bước liên quan với góp ý đó",
   "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "genre",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "genre.list",
+  "params_schema": {
+   "properties": {},
+   "title": "EmptyParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Số liệu thể loại tham khảo (độ dài tập/clip, số clip, hook…) — chép vào project.genre",
+  "viewer": true
  },
  {
   "costly": false,
@@ -6007,24 +6030,6 @@
  {
   "costly": false,
   "destructive": false,
-  "group": "library",
-  "idempotent": true,
-  "long_running": false,
-  "mcp": "call",
-  "name": "library.templates",
-  "params_schema": {
-   "properties": {},
-   "title": "TemplatesParams",
-   "type": "object"
-  },
-  "read_only": true,
-  "result_schema": null,
-  "summary": "Template prompt của compiler (image/motion/sheet): nội dung hiệu lực + bản cài sẵn",
-  "viewer": true
- },
- {
-  "costly": false,
-  "destructive": false,
   "group": "llm",
   "idempotent": true,
   "long_running": false,
@@ -6130,6 +6135,19 @@
      ],
      "default": null,
      "description": "Định tuyến riêng cho lần chạy này"
+    },
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Dự án có prompt của công việc (bảng project_prompt)",
+     "title": "Project Id"
     },
     "task": {
      "description": "Key công việc LLM, vd. write_script",
@@ -7407,9 +7425,22 @@
      "title": "Episodes",
      "type": "integer"
     },
+    "from_project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Dự án mới nhân bản prompt/phong cách từ dự án này (mặc định: dự án mẫu cùng thể loại)",
+     "title": "From Project Id"
+    },
     "genre": {
      "default": "serial",
-     "description": "Key preset thể loại: storyboard, montage, series, serial, narration",
+     "description": "Thể loại: storyboard, montage, series, serial, narration (số liệu tham khảo; dự án mới nhân bản từ dự án mẫu cùng thể loại nếu có)",
      "title": "Genre",
      "type": "string"
     },
@@ -7556,7 +7587,7 @@
     },
     "workflow_key": {
      "default": "full_auto",
-     "description": "full_auto / storyboard_first / serial_batch …",
+     "description": "Khoá quy trình trong project.workflows (full_auto / storyboard_first / serial_batch …)",
      "title": "Workflow Key",
      "type": "string"
     }
@@ -7569,7 +7600,7 @@
   },
   "read_only": false,
   "result_schema": null,
-  "summary": "Chạy quy trình theo preset cho các tập (job dài pipeline.run, dừng ở gate/bước chờ nhập, nối lại được); dry_run chỉ ước tính",
+  "summary": "Chạy quy trình của dự án cho các tập (job dài pipeline.run, dừng ở gate/bước chờ nhập, nối lại được); dry_run chỉ ước tính",
   "viewer": false
  },
  {
@@ -7881,7 +7912,7 @@
       }
      ],
      "default": null,
-     "description": "Loại: platform, genre, subtitle_style, voice, transition, workflow, channel_brand, style_pack, motion",
+     "description": "Loại: platform, subtitle_style, transition, motion",
      "title": "Kind"
     },
     "project_id": {
@@ -7926,7 +7957,7 @@
       }
      ],
      "default": null,
-     "description": "Lọc theo loại: platform, genre, subtitle_style, voice, transition, workflow, channel_brand, style_pack, motion",
+     "description": "Lọc theo loại: platform, subtitle_style, transition, motion",
      "title": "Kind"
     },
     "project_id": {
@@ -8063,7 +8094,7 @@
       }
      ],
      "default": null,
-     "description": "Loại: platform, genre, subtitle_style, voice, transition, workflow, channel_brand, style_pack, motion",
+     "description": "Loại: platform, subtitle_style, transition, motion",
      "title": "Kind"
     },
     "name": {
@@ -8277,6 +8308,19 @@
      "description": "Tỉ lệ khung, mặc định 9:16",
      "title": "Aspect"
     },
+    "from_project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Nhân bản từ dự án này (thường là dự án mẫu): prompt, phong cách, số liệu, quy trình. Bỏ trống = dự án trống (chưa có prompt)",
+     "title": "From Project Id"
+    },
     "genre_key": {
      "anyOf": [
       {
@@ -8287,8 +8331,24 @@
       }
      ],
      "default": null,
-     "description": "Thể loại (preset genre), mặc định series",
+     "description": "Nhãn thể loại (series, serial, narration, montage, storyboard…); dự án trống chép số liệu tham khảo của thể loại này",
      "title": "Genre Key"
+    },
+    "include": {
+     "anyOf": [
+      {
+       "additionalProperties": {
+        "type": "boolean"
+       },
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Khi nhân bản: phần chép {prompts, style, settings, library} (mặc định tất cả)",
+     "title": "Include"
     },
     "key": {
      "anyOf": [
@@ -8429,6 +8489,12 @@
      "title": "Fps",
      "type": "integer"
     },
+    "genre": {
+     "additionalProperties": true,
+     "description": "Số liệu thể loại của dự án",
+     "title": "Genre",
+     "type": "object"
+    },
     "genre_key": {
      "title": "Genre Key",
      "type": "string"
@@ -8436,6 +8502,11 @@
     "id": {
      "title": "Id",
      "type": "integer"
+    },
+    "is_sample": {
+     "default": false,
+     "title": "Is Sample",
+     "type": "boolean"
     },
     "key": {
      "title": "Key",
@@ -8452,6 +8523,11 @@
     },
     "name": {
      "title": "Name",
+     "type": "string"
+    },
+    "narrator_voice": {
+     "default": "",
+     "title": "Narrator Voice",
      "type": "string"
     },
     "negative_block": {
@@ -8471,17 +8547,6 @@
      "title": "Style Block",
      "type": "string"
     },
-    "style_pack_id": {
-     "anyOf": [
-      {
-       "type": "integer"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "title": "Style Pack Id"
-    },
     "target_platforms": {
      "items": {},
      "title": "Target Platforms",
@@ -8491,6 +8556,12 @@
      "format": "date-time",
      "title": "Updated At",
      "type": "string"
+    },
+    "workflows": {
+     "additionalProperties": true,
+     "description": "Quy trình của dự án {key: {steps…}}",
+     "title": "Workflows",
+     "type": "object"
     }
    },
    "required": [
@@ -8499,7 +8570,6 @@
     "name",
     "description",
     "genre_key",
-    "style_pack_id",
     "aspect",
     "resolution",
     "fps",
@@ -8518,7 +8588,7 @@
    "title": "ProjectOut",
    "type": "object"
   },
-  "summary": "Tạo dự án mới (mã tự sinh từ tên nếu bỏ trống)",
+  "summary": "Tạo dự án mới: trống hoặc nhân bản từ dự án mẫu (from_project_id)",
   "viewer": false
  },
  {
@@ -8615,6 +8685,22 @@
     "id": {
      "title": "Id",
      "type": "integer"
+    },
+    "include": {
+     "anyOf": [
+      {
+       "additionalProperties": {
+        "type": "boolean"
+       },
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Phần chép {prompts, style, settings, library} (mặc định tất cả)",
+     "title": "Include"
     },
     "key": {
      "anyOf": [
@@ -8727,6 +8813,12 @@
      "title": "Fps",
      "type": "integer"
     },
+    "genre": {
+     "additionalProperties": true,
+     "description": "Số liệu thể loại của dự án",
+     "title": "Genre",
+     "type": "object"
+    },
     "genre_key": {
      "title": "Genre Key",
      "type": "string"
@@ -8734,6 +8826,11 @@
     "id": {
      "title": "Id",
      "type": "integer"
+    },
+    "is_sample": {
+     "default": false,
+     "title": "Is Sample",
+     "type": "boolean"
     },
     "key": {
      "title": "Key",
@@ -8750,6 +8847,11 @@
     },
     "name": {
      "title": "Name",
+     "type": "string"
+    },
+    "narrator_voice": {
+     "default": "",
+     "title": "Narrator Voice",
      "type": "string"
     },
     "negative_block": {
@@ -8769,17 +8871,6 @@
      "title": "Style Block",
      "type": "string"
     },
-    "style_pack_id": {
-     "anyOf": [
-      {
-       "type": "integer"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "title": "Style Pack Id"
-    },
     "target_platforms": {
      "items": {},
      "title": "Target Platforms",
@@ -8789,6 +8880,12 @@
      "format": "date-time",
      "title": "Updated At",
      "type": "string"
+    },
+    "workflows": {
+     "additionalProperties": true,
+     "description": "Quy trình của dự án {key: {steps…}}",
+     "title": "Workflows",
+     "type": "object"
     }
    },
    "required": [
@@ -8797,7 +8894,6 @@
     "name",
     "description",
     "genre_key",
-    "style_pack_id",
     "aspect",
     "resolution",
     "fps",
@@ -8816,7 +8912,7 @@
    "title": "ProjectOut",
    "type": "object"
   },
-  "summary": "Nhân bản dự án: cài đặt + Library + preset của dự án (không chép tập/clip/take)",
+  "summary": "Nhân bản dự án (vd. từ dự án mẫu): prompt + phong cách + cài đặt/quy trình + Library tuỳ chọn (không chép tập/clip/take)",
   "viewer": false
  },
  {
@@ -8834,6 +8930,7 @@
       {
        "items": {
         "enum": [
+         "prompts",
          "presets",
          "library",
          "groups",
@@ -9015,6 +9112,12 @@
      "title": "Fps",
      "type": "integer"
     },
+    "genre": {
+     "additionalProperties": true,
+     "description": "Số liệu thể loại của dự án",
+     "title": "Genre",
+     "type": "object"
+    },
     "genre_key": {
      "title": "Genre Key",
      "type": "string"
@@ -9022,6 +9125,11 @@
     "id": {
      "title": "Id",
      "type": "integer"
+    },
+    "is_sample": {
+     "default": false,
+     "title": "Is Sample",
+     "type": "boolean"
     },
     "key": {
      "title": "Key",
@@ -9038,6 +9146,11 @@
     },
     "name": {
      "title": "Name",
+     "type": "string"
+    },
+    "narrator_voice": {
+     "default": "",
+     "title": "Narrator Voice",
      "type": "string"
     },
     "negative_block": {
@@ -9057,17 +9170,6 @@
      "title": "Style Block",
      "type": "string"
     },
-    "style_pack_id": {
-     "anyOf": [
-      {
-       "type": "integer"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "title": "Style Pack Id"
-    },
     "target_platforms": {
      "items": {},
      "title": "Target Platforms",
@@ -9077,6 +9179,12 @@
      "format": "date-time",
      "title": "Updated At",
      "type": "string"
+    },
+    "workflows": {
+     "additionalProperties": true,
+     "description": "Quy trình của dự án {key: {steps…}}",
+     "title": "Workflows",
+     "type": "object"
     }
    },
    "required": [
@@ -9085,7 +9193,6 @@
     "name",
     "description",
     "genre_key",
-    "style_pack_id",
     "aspect",
     "resolution",
     "fps",
@@ -9224,6 +9331,12 @@
        "title": "Fps",
        "type": "integer"
       },
+      "genre": {
+       "additionalProperties": true,
+       "description": "Số liệu thể loại của dự án",
+       "title": "Genre",
+       "type": "object"
+      },
       "genre_key": {
        "title": "Genre Key",
        "type": "string"
@@ -9231,6 +9344,11 @@
       "id": {
        "title": "Id",
        "type": "integer"
+      },
+      "is_sample": {
+       "default": false,
+       "title": "Is Sample",
+       "type": "boolean"
       },
       "key": {
        "title": "Key",
@@ -9247,6 +9365,11 @@
       },
       "name": {
        "title": "Name",
+       "type": "string"
+      },
+      "narrator_voice": {
+       "default": "",
+       "title": "Narrator Voice",
        "type": "string"
       },
       "negative_block": {
@@ -9266,17 +9389,6 @@
        "title": "Style Block",
        "type": "string"
       },
-      "style_pack_id": {
-       "anyOf": [
-        {
-         "type": "integer"
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "title": "Style Pack Id"
-      },
       "target_platforms": {
        "items": {},
        "title": "Target Platforms",
@@ -9286,6 +9398,12 @@
        "format": "date-time",
        "title": "Updated At",
        "type": "string"
+      },
+      "workflows": {
+       "additionalProperties": true,
+       "description": "Quy trình của dự án {key: {steps…}}",
+       "title": "Workflows",
+       "type": "object"
       }
      },
      "required": [
@@ -9294,7 +9412,6 @@
       "name",
       "description",
       "genre_key",
-      "style_pack_id",
       "aspect",
       "resolution",
       "fps",
@@ -9629,6 +9746,12 @@
      "title": "Fps",
      "type": "integer"
     },
+    "genre": {
+     "additionalProperties": true,
+     "description": "Số liệu thể loại của dự án",
+     "title": "Genre",
+     "type": "object"
+    },
     "genre_key": {
      "title": "Genre Key",
      "type": "string"
@@ -9636,6 +9759,11 @@
     "id": {
      "title": "Id",
      "type": "integer"
+    },
+    "is_sample": {
+     "default": false,
+     "title": "Is Sample",
+     "type": "boolean"
     },
     "key": {
      "title": "Key",
@@ -9652,6 +9780,11 @@
     },
     "name": {
      "title": "Name",
+     "type": "string"
+    },
+    "narrator_voice": {
+     "default": "",
+     "title": "Narrator Voice",
      "type": "string"
     },
     "negative_block": {
@@ -9671,17 +9804,6 @@
      "title": "Style Block",
      "type": "string"
     },
-    "style_pack_id": {
-     "anyOf": [
-      {
-       "type": "integer"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "title": "Style Pack Id"
-    },
     "target_platforms": {
      "items": {},
      "title": "Target Platforms",
@@ -9691,6 +9813,12 @@
      "format": "date-time",
      "title": "Updated At",
      "type": "string"
+    },
+    "workflows": {
+     "additionalProperties": true,
+     "description": "Quy trình của dự án {key: {steps…}}",
+     "title": "Workflows",
+     "type": "object"
     }
    },
    "required": [
@@ -9699,7 +9827,6 @@
     "name",
     "description",
     "genre_key",
-    "style_pack_id",
     "aspect",
     "resolution",
     "fps",
@@ -9719,6 +9846,348 @@
    "type": "object"
   },
   "summary": "Sửa dự án (hoàn tác được); kèm expected_updated_at để chống ghi đè",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "prompt",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "prompt.check",
+  "params_schema": {
+   "properties": {
+    "project_id": {
+     "title": "Project Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "project_id"
+   ],
+   "title": "ProjectParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Kiểm bộ prompt của dự án (không LLM, chỉ cảnh báo): cú pháp, khoá thiếu, biến lạ, bước sẽ thiếu prompt khi chạy bằng LLM của tool",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "prompt",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "prompt.contracts",
+  "params_schema": {
+   "properties": {
+    "key": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Chỉ một khoá; bỏ trống = mọi khoá",
+     "title": "Key"
+    }
+   },
+   "title": "ContractsParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Hợp đồng prompt của tool: mỗi khoá nhận biến gì, trả gì (JSON schema), op nào dùng",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": true,
+  "group": "prompt",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "prompt.delete",
+  "params_schema": {
+   "properties": {
+    "confirm_token": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Lấy từ prompt.delete_preview",
+     "title": "Confirm Token"
+    }
+   },
+   "title": "DeleteParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Xoá (mềm, hoàn tác được) prompt của dự án — cần confirm_token",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "prompt",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "prompt.delete_preview",
+  "params_schema": {
+   "properties": {
+    "keys": {
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 50,
+     "minItems": 1,
+     "title": "Keys",
+     "type": "array"
+    },
+    "project_id": {
+     "title": "Project Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "project_id",
+    "keys"
+   ],
+   "title": "DeletePreviewParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": {
+   "properties": {
+    "confirm_token": {
+     "title": "Confirm Token",
+     "type": "string"
+    },
+    "expires_in_s": {
+     "default": 600,
+     "title": "Expires In S",
+     "type": "integer"
+    },
+    "impact": {
+     "additionalProperties": true,
+     "title": "Impact",
+     "type": "object"
+    }
+   },
+   "required": [
+    "impact",
+    "confirm_token"
+   ],
+   "title": "DeletePreviewOut",
+   "type": "object"
+  },
+  "summary": "Xem tác động của việc xoá prompt và lấy confirm_token",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "prompt",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "prompt.get",
+  "params_schema": {
+   "properties": {
+    "key": {
+     "title": "Key",
+     "type": "string"
+    },
+    "project_id": {
+     "title": "Project Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "project_id",
+    "key"
+   ],
+   "title": "KeyParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Nội dung một prompt của dự án kèm hợp đồng biến của khoá đó",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "prompt",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "prompt.list",
+  "params_schema": {
+   "properties": {
+    "project_id": {
+     "title": "Project Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "project_id"
+   ],
+   "title": "ProjectParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Prompt của dự án (không kèm nội dung) + các khoá còn thiếu so với hợp đồng",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "prompt",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "prompt.preview",
+  "params_schema": {
+   "properties": {
+    "body": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Thân cần thử (chưa lưu); bỏ trống = prompt đang lưu",
+     "title": "Body"
+    },
+    "clip_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Clip mẫu (image.synced/motion.synced); bỏ trống = clip đầu tiên của dự án",
+     "title": "Clip Id"
+    },
+    "key": {
+     "title": "Key",
+     "type": "string"
+    },
+    "look_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Look mẫu (sheet.*); bỏ trống = look đầu tiên đúng loại",
+     "title": "Look Id"
+    },
+    "project_id": {
+     "title": "Project Id",
+     "type": "integer"
+    },
+    "variables": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Biến thử cho prompt LLM; thiếu biến nào thì dùng chữ giữ chỗ <tên biến>",
+     "title": "Variables"
+    }
+   },
+   "required": [
+    "project_id",
+    "key"
+   ],
+   "title": "PreviewParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Xem trước prompt với dữ liệu thật (clip/look của dự án) hoặc biến thử (LLM)",
+  "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "prompt",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "prompt.set",
+  "params_schema": {
+   "properties": {
+    "body": {
+     "description": "Thân Jinja (lưu nguyên văn)",
+     "title": "Body",
+     "type": "string"
+    },
+    "expected_updated_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "`updated_at` lúc đọc (chống ghi đè)",
+     "title": "Expected Updated At"
+    },
+    "key": {
+     "description": "Khoá trong prompt.contracts, vd. image.synced, story_write_script",
+     "title": "Key",
+     "type": "string"
+    },
+    "project_id": {
+     "title": "Project Id",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "project_id",
+    "key",
+    "body"
+   ],
+   "title": "SetParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Viết/sửa prompt của dự án (kiểm cú pháp Jinja sandbox; cảnh báo biến lạ so với hợp đồng)",
   "viewer": false
  },
  {
@@ -11363,6 +11832,41 @@
   "result_schema": null,
   "summary": "Hàng duyệt: clip cần duyệt theo thứ tự (mặc định pending) kèm take đang chọn",
   "viewer": true
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "sample",
+  "idempotent": false,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "sample.reseed",
+  "params_schema": {
+   "properties": {
+    "keys": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Key/slug dự án mẫu cần tạo lại; bỏ trống = mọi mẫu thiếu",
+     "title": "Keys"
+    }
+   },
+   "title": "SampleReseedParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Tạo lại dự án mẫu cài sẵn đã xoá/thiếu (mẫu đang có giữ nguyên)",
+  "viewer": false
  },
  {
   "costly": false,
@@ -13643,6 +14147,125 @@
   "destructive": false,
   "group": "story",
   "idempotent": false,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "story.submit",
+  "params_schema": {
+   "properties": {
+    "clip_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "integer"
+       },
+       "maxItems": 1000,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "*_prompts / dialogue: chỉ các clip này",
+     "title": "Clip Ids"
+    },
+    "data": {
+     "description": "Kết quả bước, ĐÚNG schema đầu ra của bước (prompt.contracts → output_schema); write_script = chữ kịch bản",
+     "title": "Data"
+    },
+    "episodes": {
+     "anyOf": [
+      {
+       "maximum": 50,
+       "minimum": 1,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "outline: số tập MỚI",
+     "title": "Episodes"
+    },
+    "idea": {
+     "default": "(agent tự viết)",
+     "description": "write_bible: ý tưởng (ghi lại cho lịch sử)",
+     "title": "Idea",
+     "type": "string"
+    },
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "write_bible / outline",
+     "title": "Project Id"
+    },
+    "replace": {
+     "default": true,
+     "description": "split_clips: thay clip cũ của tập",
+     "title": "Replace",
+     "type": "boolean"
+    },
+    "sequence_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "write_script / split_clips / *_prompts / dialogue / memory_summarize",
+     "title": "Sequence Id"
+    },
+    "sequence_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "integer"
+       },
+       "maxItems": 50,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "outline: điền dàn ý cho các tập có sẵn",
+     "title": "Sequence Ids"
+    },
+    "task": {
+     "description": "Bước: write_bible, outline, write_script, split_clips, image_prompts, motion_prompts, dialogue, memory_summarize",
+     "title": "Task",
+     "type": "string"
+    }
+   },
+   "required": [
+    "task",
+    "data"
+   ],
+   "title": "StorySubmitParams",
+   "type": "object"
+  },
+  "read_only": false,
+  "result_schema": null,
+  "summary": "Gửi thẳng KẾT QUẢ một bước viết (bible, dàn ý, kịch bản, chia clip, prompt, thoại, bộ nhớ) — kiểm đúng schema như đường LLM rồi lưu; không gọi LLM của tool, quy trình đang chờ chạy tiếp",
+  "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "story",
+  "idempotent": false,
   "long_running": true,
   "mcp": "tool",
   "name": "story.write_bible",
@@ -13720,6 +14343,38 @@
   "result_schema": null,
   "summary": "AI viết kịch bản tập từ dàn ý + số liệu thể loại + bộ nhớ truyện (chữ chạy dần) → job",
   "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "studio",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "studio.guide",
+  "params_schema": {
+   "properties": {
+    "project_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "description": "Kèm trạng thái của dự án: tập, clip, prompt thiếu, chờ gì",
+     "title": "Project Id"
+    }
+   },
+   "title": "GuideParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Bản đồ quy trình làm phim cho agent: từng bước (mục đích, vào/ra + schema, op tool làm, op agent tự gửi, prompt liên quan, gate) + trạng thái dự án",
+  "viewer": true
  },
  {
   "costly": false,
@@ -14073,148 +14728,6 @@
   "read_only": false,
   "result_schema": null,
   "summary": "Phán quyết take (keep/trim/fix_post/regenerate/reject) kèm lý do; null = xoá (hoàn tác được)",
-  "viewer": false
- },
- {
-  "costly": false,
-  "destructive": false,
-  "group": "template",
-  "idempotent": true,
-  "long_running": false,
-  "mcp": "call",
-  "name": "template.get",
-  "params_schema": {
-   "properties": {
-    "key": {
-     "title": "Key",
-     "type": "string"
-    }
-   },
-   "required": [
-    "key"
-   ],
-   "title": "TemplateKeyParams",
-   "type": "object"
-  },
-  "read_only": true,
-  "result_schema": null,
-  "summary": "Nội dung một template prompt (kèm bản cài sẵn nếu có)",
-  "viewer": true
- },
- {
-  "costly": false,
-  "destructive": false,
-  "group": "template",
-  "idempotent": true,
-  "long_running": false,
-  "mcp": "call",
-  "name": "template.list",
-  "params_schema": {
-   "properties": {
-    "kind": {
-     "anyOf": [
-      {
-       "type": "string"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Kind"
-    }
-   },
-   "title": "TemplateListParams",
-   "type": "object"
-  },
-  "read_only": true,
-  "result_schema": null,
-  "summary": "Danh sách template prompt (không kèm nội dung; dùng template.get)",
-  "viewer": true
- },
- {
-  "costly": false,
-  "destructive": false,
-  "group": "template",
-  "idempotent": true,
-  "long_running": false,
-  "mcp": "call",
-  "name": "template.reset",
-  "params_schema": {
-   "properties": {
-    "key": {
-     "title": "Key",
-     "type": "string"
-    }
-   },
-   "required": [
-    "key"
-   ],
-   "title": "TemplateKeyParams",
-   "type": "object"
-  },
-  "read_only": false,
-  "result_schema": null,
-  "summary": "Đưa template về nội dung cài sẵn",
-  "viewer": false
- },
- {
-  "costly": false,
-  "destructive": false,
-  "group": "template",
-  "idempotent": true,
-  "long_running": false,
-  "mcp": "call",
-  "name": "template.update",
-  "params_schema": {
-   "properties": {
-    "body": {
-     "description": "Nội dung Jinja; lưu nguyên văn",
-     "title": "Body",
-     "type": "string"
-    },
-    "create_if_missing": {
-     "default": false,
-     "description": "Tạo template mới nếu chưa có key này",
-     "title": "Create If Missing",
-     "type": "boolean"
-    },
-    "key": {
-     "maxLength": 64,
-     "pattern": "^[a-z][a-z0-9_.]*$",
-     "title": "Key",
-     "type": "string"
-    },
-    "kind": {
-     "default": "llm",
-     "description": "Loại (chỉ dùng khi tạo mới)",
-     "title": "Kind",
-     "type": "string"
-    },
-    "locked": {
-     "anyOf": [
-      {
-       "type": "boolean"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "description": "Khoá: LLM không được sửa",
-     "title": "Locked"
-    }
-   },
-   "required": [
-    "key",
-    "body"
-   ],
-   "title": "TemplateUpdateParams",
-   "type": "object"
-  },
-  "read_only": false,
-  "result_schema": null,
-  "summary": "Sửa nội dung template prompt (create_if_missing để tạo mới); kiểm tra cú pháp",
   "viewer": false
  },
  {
@@ -16005,5 +16518,23 @@
   "result_schema": null,
   "summary": "Sửa hồ sơ giọng (hoàn tác được)",
   "viewer": false
+ },
+ {
+  "costly": false,
+  "destructive": false,
+  "group": "workflow",
+  "idempotent": true,
+  "long_running": false,
+  "mcp": "tool",
+  "name": "workflow.defaults",
+  "params_schema": {
+   "properties": {},
+   "title": "EmptyParams",
+   "type": "object"
+  },
+  "read_only": true,
+  "result_schema": null,
+  "summary": "Quy trình mặc định của tool (chép vào project.workflows khi tạo dự án)",
+  "viewer": true
  }
 ]

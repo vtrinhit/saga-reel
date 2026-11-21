@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import anyio
 from pydantic import BaseModel, Field, model_validator
 
 from sagareel.core.context import OpContext
@@ -173,3 +174,57 @@ def story_adapt_novel(ctx: OpContext, p: AdaptParams) -> dict:
 def story_memory_summarize(ctx: OpContext, p: SequenceTaskParams) -> dict:
     return submit(ctx, "memory_summarize", {"sequence_id": p.sequence_id, "feedback": p.feedback},
                   sequence_id=p.sequence_id)
+
+
+SUBMIT_TASKS = ("write_bible", "outline", "write_script", "split_clips", "image_prompts", "motion_prompts", "dialogue",
+                "memory_summarize")
+
+
+class StorySubmitParams(BaseModel):
+    task: str = Field(description="Bước: " + ", ".join(SUBMIT_TASKS))
+    data: Any = Field(description="Kết quả bước, ĐÚNG schema đầu ra của bước (prompt.contracts → output_schema); "
+                      "write_script = chữ kịch bản")
+    project_id: int | None = Field(default=None, description="write_bible / outline")
+    sequence_id: int | None = Field(default=None, description="write_script / split_clips / *_prompts / dialogue / "
+                                    "memory_summarize")
+    clip_ids: list[int] | None = Field(default=None, max_length=1000, description="*_prompts / dialogue: chỉ các clip này")
+    sequence_ids: list[int] | None = Field(default=None, max_length=50, description="outline: điền dàn ý cho các tập có sẵn")
+    episodes: int | None = Field(default=None, ge=1, le=50, description="outline: số tập MỚI")
+    idea: str = Field(default="(agent tự viết)", description="write_bible: ý tưởng (ghi lại cho lịch sử)")
+    replace: bool = Field(default=True, description="split_clips: thay clip cũ của tập")
+
+
+@op("story.submit", summary="Gửi thẳng KẾT QUẢ một bước viết (bible, dàn ý, kịch bản, chia clip, prompt, thoại, bộ nhớ) "
+    "— kiểm đúng schema như đường LLM rồi lưu; không gọi LLM của tool, quy trình đang chờ chạy tiếp",
+    params=StorySubmitParams, mcp="tool")
+async def story_submit(ctx: OpContext, p: StorySubmitParams) -> dict:
+    from sagareel.services.story import author, llmio, writer
+
+    if p.task not in SUBMIT_TASKS:
+        raise ValidationFailed(f"task phải là một trong: {', '.join(SUBMIT_TASKS)}.", code="story_task_unknown")
+    fn = writer.TASKS[p.task]
+    need_seq = p.task in ("write_script", "split_clips", "memory_summarize")
+    if need_seq and p.sequence_id is None:
+        raise ValidationFailed(f"Bước {p.task} cần sequence_id.")
+    if p.task in ("write_bible", "outline") and p.project_id is None:
+        raise ValidationFailed(f"Bước {p.task} cần project_id.")
+    if p.task == "write_bible":
+        kw: dict[str, Any] = {"project_id": p.project_id, "idea": p.idea}
+    elif p.task == "outline":
+        kw = {"project_id": p.project_id, "episodes": p.episodes, "sequence_ids": p.sequence_ids}
+        if not p.episodes and not p.sequence_ids:
+            raise ValidationFailed("outline cần episodes hoặc sequence_ids.")
+    elif p.task in ("image_prompts", "motion_prompts", "dialogue"):
+        kw = {"sequence_id": p.sequence_id, "clip_ids": p.clip_ids, "overwrite": True}
+    elif p.task == "split_clips":
+        kw = {"sequence_id": p.sequence_id, "replace": p.replace}
+    else:
+        kw = {"sequence_id": p.sequence_id}
+    token = llmio.GIVEN.set({TASK_KEYS[p.task]: p.data})
+    try:
+        result = await fn(ctx, **kw)
+    finally:
+        llmio.GIVEN.reset(token)
+    seqs = [p.sequence_id] if p.sequence_id is not None else list(p.sequence_ids or [])
+    resumed = await anyio.to_thread.run_sync(author._wake, ctx, seqs) if seqs else []
+    return {"task": p.task, "result": result, "resumed": resumed}

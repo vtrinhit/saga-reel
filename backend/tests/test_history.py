@@ -10,7 +10,7 @@ from sagareel.container import Services
 from sagareel.core import ops
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, Forbidden
-from sagareel.db.models import ChangeSet, GlobalSettings, ProviderConnection, Revision, Template
+from sagareel.db.models import ChangeSet, GlobalSettings, ProviderConnection, Revision, SkillFile
 from sagareel.services import history
 
 # --- Fixture và helper ------------------------------------------------------------------------------------------
@@ -33,7 +33,7 @@ _seq = iter(range(1, 10_000))
 def create_template(ctx, body, *, key=None, op_name="test.create"):
     u = ctx.uow("Tạo template", op_name=op_name)
     with u as s:
-        t = Template(key=key or f"tpl.{next(_seq)}", kind="prompt", body=body)
+        t = SkillFile(path=key or f"tpl.{next(_seq)}", body=body)
         s.add(t)
         s.flush()
         tid = t.id
@@ -43,7 +43,7 @@ def create_template(ctx, body, *, key=None, op_name="test.create"):
 def update_template(ctx, tid, *, op_name="test.update", **values):
     u = ctx.uow("Sửa template", op_name=op_name)
     with u as s:
-        t = s.get(Template, tid)
+        t = s.get(SkillFile, tid)
         for k, v in values.items():
             setattr(t, k, v)
     return u
@@ -51,7 +51,7 @@ def update_template(ctx, tid, *, op_name="test.update", **values):
 
 def get_template(ctx, tid):
     with ctx.services.db.session() as s:
-        return s.get(Template, tid)
+        return s.get(SkillFile, tid)
 
 
 def create_connection(ctx, *, api_key, name=None):
@@ -162,22 +162,22 @@ def test_uow_records_change_set_and_create_revision(ctx):
     ctx = dataclasses.replace(ctx, project_id=None)
     u = ctx.uow("Tạo một template", op_name="test.create")
     with u as s:
-        t = Template(key="k.create", kind="prompt", body="xin chào")
+        t = SkillFile(path="k.create", body="xin chào")
         s.add(t)
-    assert u.change_set_id is not None and u.changed == [("template", t.id)]
+    assert u.change_set_id is not None and u.changed == [("skill_file", t.id)]
     (cs,) = all_change_sets(ctx)
     assert (cs.id, cs.op_name, cs.actor, cs.project_id, cs.summary) == (
         u.change_set_id, "test.create", "user:owner", None, "Tạo một template")
     (rev,) = all_revisions(ctx)
-    assert rev.change_set_id == cs.id and rev.entity_type == "template" and rev.entity_id == t.id
-    assert rev.before_json is None and rev.after_json["body"] == "xin chào" and rev.after_json["key"] == "k.create"
+    assert rev.change_set_id == cs.id and rev.entity_type == "skill_file" and rev.entity_id == t.id
+    assert rev.before_json is None and rev.after_json["body"] == "xin chào" and rev.after_json["path"] == "k.create"
 
 
 def test_uow_without_changes_writes_nothing(ctx):
     tid = create_template(ctx, body="a")
     u = update_template(ctx, tid, body="a")  # gán cùng giá trị
     with ctx.uow(op_name="test.read") as s:
-        s.get(Template, tid)
+        s.get(SkillFile, tid)
     assert u.change_set_id is None and u.changed == []
     assert len(all_change_sets(ctx)) == 1 and len(all_revisions(ctx)) == 1
 
@@ -186,12 +186,12 @@ def test_uow_rolls_back_on_error(ctx):
     u = ctx.uow(op_name="test.create")
     with pytest.raises(RuntimeError):
         with u as s:
-            s.add(Template(key="k.err", kind="prompt", body="x"))
+            s.add(SkillFile(path="k.err", body="x"))
             s.flush()
             raise RuntimeError("hỏng")
     assert u.change_set_id is None and all_change_sets(ctx) == [] and all_revisions(ctx) == []
     with ctx.services.db.session() as s:
-        assert s.scalars(select(Template)).all() == []
+        assert s.scalars(select(SkillFile)).all() == []
 
 
 def test_uow_op_name_from_current_op_and_explicit_wins(ctx):
@@ -199,10 +199,10 @@ def test_uow_op_name_from_current_op_and_explicit_wins(ctx):
     try:
         u1 = ctx.uow()
         with u1 as s:
-            s.add(Template(key="k.op1", kind="prompt", body="x"))
+            s.add(SkillFile(path="k.op1", body="x"))
         u2 = ctx.uow(op_name="test.explicit")
         with u2 as s:
-            s.add(Template(key="k.op2", kind="prompt", body="x"))
+            s.add(SkillFile(path="k.op2", body="x"))
     finally:
         ops.current_op.reset(token)
     assert [c.op_name for c in all_change_sets(ctx)] == ["template.update", "test.explicit"]
@@ -228,12 +228,12 @@ def test_uow_multiple_flushes_keep_first_before_and_create_stays_create(ctx):
     tid = create_template(ctx, body="v0")
     u = ctx.uow(op_name="test.update")
     with u as s:
-        t = s.get(Template, tid)
+        t = s.get(SkillFile, tid)
         t.body = "v1"
         s.flush()
         t.body = "v2"
         s.flush()
-        n = Template(key="k.multi", kind="prompt", body="n0")
+        n = SkillFile(path="k.multi", body="n0")
         s.add(n)
         s.flush()
         n.body = "n1"
@@ -246,7 +246,7 @@ def test_uow_hard_delete_recorded_and_undo_reinserts(ctx):
     tid = create_template(ctx, body="còn")
     u = ctx.uow(op_name="test.delete")
     with u as s:
-        s.delete(s.get(Template, tid))
+        s.delete(s.get(SkillFile, tid))
     rev = all_revisions(ctx)[-1]
     assert rev.before_json["body"] == "còn" and rev.after_json is None
     assert get_template(ctx, tid) is None
@@ -286,7 +286,7 @@ def test_tracked_models_use_snapshot_safe_column_types():
 
     supported = (Boolean, DateTime, Float, Integer, String, Text, _JSONText)
     tracked = [m for m in Base.registry.mappers if getattr(m.class_, "__tracked__", False)]
-    assert {m.local_table.name for m in tracked} >= {"template", "provider_connection", "llm_task"}
+    assert {m.local_table.name for m in tracked} >= {"skill_file", "provider_connection", "llm_task"}
     for mapper in tracked:
         for col in mapper.columns:
             t = col.type
@@ -301,7 +301,7 @@ def test_undo_writes_history_change_set_and_links_undone_by(ctx):
     tid = create_template(ctx, body="a")
     u = update_template(ctx, tid, body="b")
     cs = history.undo(ctx, None)
-    assert cs.id == u.change_set_id and cs.entities[0].type == "template" and cs.entities[0].id == tid
+    assert cs.id == u.change_set_id and cs.entities[0].type == "skill_file" and cs.entities[0].id == tid
     sets = all_change_sets(ctx)
     undo_cs = sets[-1]
     assert undo_cs.op_name == "history.undo" and undo_cs.actor == "user:owner"
@@ -314,7 +314,7 @@ def test_undo_writes_history_change_set_and_links_undone_by(ctx):
 def test_undo_of_soft_delete_clears_deleted_at_and_redo_of_create(ctx):
     tid = create_template(ctx, body="a")
     with ctx.uow(op_name="test.delete") as s:
-        s.get(Template, tid).deleted_at = datetime.now(timezone.utc)
+        s.get(SkillFile, tid).deleted_at = datetime.now(timezone.utc)
     history.undo(ctx, None)
     assert get_template(ctx, tid).deleted_at is None
     create_cs = history.undo(ctx, None)
@@ -358,7 +358,7 @@ def test_conflict_lists_entities_and_changes_nothing(ctx, ctx_agent):
     with pytest.raises(AppError) as e:
         history.undo(ctx, u.change_set_id)
     assert e.value.status == 409
-    assert e.value.extra == {"entities": [{"type": "template", "id": tid, "change_set_id": agent.change_set_id}]}
+    assert e.value.extra == {"entities": [{"type": "skill_file", "id": tid, "change_set_id": agent.change_set_id}]}
     assert get_template(ctx, tid).body == "c"
     assert all(c.undone_at is None for c in all_change_sets(ctx))
 
@@ -429,14 +429,14 @@ def test_restore_entity_to_revision(ctx, ctx_agent):
     update_template(ctx, tid, body="v1")
     update_template(ctx_agent, tid, body="v2")
     first = all_revisions(ctx)[0]
-    out = history.restore(ctx, "template", tid, first.id)
+    out = history.restore(ctx, "skill_file", tid, first.id)
     assert get_template(ctx, tid).body == "v0"
-    assert out.op_name == "history.restore" and [(e.type, e.id) for e in out.entities] == [("template", tid)]
+    assert out.op_name == "history.restore" and [(e.type, e.id) for e in out.entities] == [("skill_file", tid)]
     with pytest.raises(AppError) as e:
-        history.restore(ctx, "template", tid + 1, first.id)
+        history.restore(ctx, "skill_file", tid + 1, first.id)
     assert e.value.code == "revision_mismatch"
     with pytest.raises(AppError) as e:
-        history.restore(ctx, "template", tid, first.id)  # đã ở đúng phiên bản
+        history.restore(ctx, "skill_file", tid, first.id)  # đã ở đúng phiên bản
     assert e.value.code == "no_change"
 
 
@@ -457,7 +457,7 @@ def test_list_filters_and_paginates(ctx):
     assert len(rest.items) == 2 and rest.next_cursor is None
     assert {i.id for i in page.items}.isdisjoint({i.id for i in rest.items})
 
-    by_entity = history.list(ctx, entity_type="template", entity_id=tids[0])
+    by_entity = history.list(ctx, entity_type="skill_file", entity_id=tids[0])
     assert [i.op_name for i in by_entity.items] == ["test.update", "test.create"]
     assert all(i.entities[0].id != other for i in history.list(p1).items)
 
@@ -478,7 +478,7 @@ async def test_history_ops_registered_and_invocable(ctx):
     tid = create_template(dataclasses.replace(ctx, project_id=5), body="a")
     out = await ops.invoke("history.undo", {"project_id": 5}, ctx)
     assert out["op_name"] == "test.create" and out["entities"] == [
-        {"type": "template", "id": tid, "revision_id": all_revisions(ctx)[0].id}]
+        {"type": "skill_file", "id": tid, "revision_id": all_revisions(ctx)[0].id}]
     assert all_change_sets(ctx)[-1].op_name == "history.undo"
     out = await ops.invoke("history.redo", {"change_set_id": out["id"]}, ctx)
     assert out["undone_at"] is None and get_template(ctx, tid).deleted_at is None
@@ -589,7 +589,7 @@ def test_uow_lock_timeout_is_db_busy(settings, tmp_path, monkeypatch):
 
         def holder():
             with db.session(immediate=True) as s:
-                s.scalars(select(Template)).all()  # giữ khoá ghi
+                s.scalars(select(SkillFile)).all()  # giữ khoá ghi
                 locked.set()
                 release.wait(10)
 
@@ -599,7 +599,7 @@ def test_uow_lock_timeout_is_db_busy(settings, tmp_path, monkeypatch):
             assert locked.wait(5)
             with pytest.raises(AppError) as e:
                 with ctx.uow(op_name="test.create") as s:
-                    s.add(Template(key="busy", kind="prompt", body="x"))
+                    s.add(SkillFile(path="busy", body="x"))
             assert e.value.code == "db_busy" and e.value.status == 503
         finally:
             release.set()

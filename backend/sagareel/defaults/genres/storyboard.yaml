@@ -1,0 +1,14 @@
+# Số liệu thể loại tham khảo (chép vào project.genre khi tạo project): storyboard (kịch bản hình ảnh / thử cảnh). Số liệu: docs/research/film-craft/craft-and-prompts.md §7.4.
+key: storyboard
+name: Storyboard
+data:
+  label: Storyboard - bảng phân cảnh
+  description: Chuỗi khung hình ngắn để thử ý tưởng, duyệt hình trước khi làm video đầy đủ.
+  episode_s: [30, 60]
+  clip_s: [3, 4]
+  clips: [8, 15]
+  transition: cut
+  hook: {window_s: 3, visual_in_s: 1.5}
+  structure: {groups: false, scenes: true}
+  dialogue_style: mixed
+  default_platforms: [yt-shorts, fb-reels]

@@ -1,0 +1,22 @@
+# Số liệu thể loại tham khảo (chép vào project.genre khi tạo project): serial (phim bộ nhiều tập, kết treo). Số liệu: docs/research/film-craft/craft-and-prompts.md §7.4 (khối genres:),
+# phụ lục docs/superpowers/specs/2026-11-20-film-craft-addendum.md §5. Các số là mặc định nghề, cần đo lại bằng thử thật (§7.5).
+key: serial
+name: Phim bộ (serial)
+data:
+  label: Serial - phim bộ có tập sau
+  description: Nhiều tập liền mạch, mỗi tập kết bằng điểm treo kéo người xem sang tập sau.
+  episode_s: [60, 90]
+  clip_s: [6, 10]
+  clips: [12, 18]
+  avg_shot_s: [3, 4]
+  transition: cut
+  scene_transition: fadeblack
+  scene_transition_s: 0.3
+  end: cliffhanger
+  max_chars_per_scene: 3
+  music_db_under_voice: -22
+  duck_db: 13
+  hook: {window_s: 3, visual_in_s: 1.5}
+  structure: {groups: true, scenes: true}
+  dialogue_style: mixed
+  default_platforms: [tiktok, fb-reels, yt-shorts]

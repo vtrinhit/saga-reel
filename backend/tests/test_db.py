@@ -5,14 +5,14 @@ from sqlalchemy import inspect, select
 from sqlalchemy.exc import IntegrityError
 
 from sagareel.db.base import Base
-from sagareel.db.models import JobLog, LlmTask, ProviderConnection, Template
+from sagareel.db.models import JobLog, LlmTask, ProviderConnection, SkillFile
 from sagareel.db.session import Database
 
 M0_TABLES = {
     "global_settings",
     "provider_connection",
     "llm_task",
-    "template",
+    "skill_file",
     "job",
     "job_log",
     "media",
@@ -38,9 +38,9 @@ def test_migrate_creates_tables_and_matches_models(db):
 
 def test_json_column_keeps_vietnamese(db):
     with db.session() as s:
-        s.add(Template(key="t", kind="system", body="Ễ ộ ữ ẩ", locked=False, builtin_hash=""))
+        s.add(SkillFile(path="t", body="Ễ ộ ữ ẩ"))
     with db.session() as s:
-        assert s.scalar(select(Template.body)) == "Ễ ộ ữ ẩ"
+        assert s.scalar(select(SkillFile.body)) == "Ễ ộ ữ ẩ"
 
 
 def test_migrate_is_idempotent(db):
@@ -94,13 +94,13 @@ def test_json_columns_track_in_place_changes(db):
 def test_session_rolls_back_on_error(db):
     try:
         with db.session() as s:
-            s.add(Template(key="t", kind="system", body="x", locked=False, builtin_hash=""))
+            s.add(SkillFile(path="t", body="x"))
             s.flush()
             raise RuntimeError("boom")
     except RuntimeError:
         pass
     with db.session() as s:
-        assert s.scalar(select(Template)) is None
+        assert s.scalar(select(SkillFile)) is None
 
 
 def test_foreign_keys_enforced_after_migrate(db):
@@ -113,13 +113,13 @@ def test_updated_at_changes_on_update(db):
     # Mốc cũ cố định: đồng hồ Windows có độ phân giải ~15 ms nên hai lần utcnow() liên tiếp có thể trùng nhau.
     old = datetime(2000, 1, 1, tzinfo=timezone.utc)
     with db.session() as s:
-        t = Template(key="t", kind="system", body="a", locked=False, builtin_hash="", updated_at=old)
+        t = SkillFile(path="t", body="a", updated_at=old)
         s.add(t)
     with db.session() as s:
-        assert s.scalar(select(Template.updated_at)) == old
-        s.scalar(select(Template)).body = "b"
+        assert s.scalar(select(SkillFile.updated_at)) == old
+        s.scalar(select(SkillFile)).body = "b"
     with db.session() as s:
-        t2 = s.scalar(select(Template))
+        t2 = s.scalar(select(SkillFile))
         assert t2.updated_at > old and t2.created_at == t.created_at
         assert t2.updated_at.tzinfo is not None
 
@@ -144,21 +144,21 @@ def _in_txn(s):
 
 def test_immediate_session_takes_write_lock_at_begin(db):
     with db.session(immediate=True) as s:
-        s.scalars(select(Template)).all()  # chỉ đọc nhưng đã giữ khoá ghi
+        s.scalars(select(SkillFile)).all()  # chỉ đọc nhưng đã giữ khoá ghi
         assert _in_txn(s)
         with db.engine.connect() as other:
             other.exec_driver_sql("PRAGMA busy_timeout=0")
             with pytest.raises(Exception, match="locked"):
                 other.exec_driver_sql("BEGIN IMMEDIATE")
             other.exec_driver_sql("SELECT 1").scalar()  # đọc vẫn được (WAL)
-        s.add(Template(key="imm", kind="system", body="x"))
+        s.add(SkillFile(path="imm", body="x"))
     with db.session() as s:
-        assert s.scalar(select(Template.key)) == "imm"
+        assert s.scalar(select(SkillFile.path)) == "imm"
 
 
 def test_normal_session_stays_deferred_and_pragmas_hold(db):
     with db.session() as s:
-        s.scalars(select(Template)).all()
+        s.scalars(select(SkillFile)).all()
         assert not _in_txn(s)
         assert s.connection().exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
     with db.session(immediate=True) as s:
@@ -169,9 +169,9 @@ def test_normal_session_stays_deferred_and_pragmas_hold(db):
 def test_immediate_session_rolls_back_on_error(db):
     with pytest.raises(RuntimeError):
         with db.session(immediate=True) as s:
-            s.add(Template(key="rb", kind="system", body="x"))
+            s.add(SkillFile(path="rb", body="x"))
             s.flush()
             raise RuntimeError
     with db.session() as s:
-        assert s.scalars(select(Template)).all() == []
+        assert s.scalars(select(SkillFile)).all() == []
     db.migrate()  # migrate vẫn chạy được (idempotent) khi đã có listener begin

@@ -1,4 +1,7 @@
-"""Preset `workflow` (dữ liệu, `defaults/presets/workflow/*.yaml`): danh sách bước có thứ tự.
+"""Quy trình (workflow) — **dữ liệu của project** (`project.workflows = {key: {...}}`): danh sách bước có thứ tự.
+
+Quy trình mặc định của tool nằm ở `defaults/workflows/*.yaml` và được chép vào project khi tạo/nhân bản (`defaults()`);
+sửa quy trình = sửa `project.workflows` (project.update), không ảnh hưởng project khác.
 
 ```yaml
 data:
@@ -19,14 +22,18 @@ data:
 
 from __future__ import annotations
 
+import functools
 import re
+from pathlib import Path
 from typing import Any, Literal
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy.orm import Session
 
 from sagareel.core.errors import NotFound, ValidationFailed, clean_validation_errors
-from sagareel.services import presets
+
+WORKFLOWS_DIR = Path(__file__).resolve().parent.parent.parent / "defaults" / "workflows"
 
 LLM_STEPS = ("write_bible", "outline", "write_script", "split_clips", "image_prompts", "motion_prompts", "dialogue",
              "memory_summarize")
@@ -107,18 +114,57 @@ def validate(data: Any) -> dict[str, Any]:
     try:
         return WorkflowData.model_validate(data).model_dump()
     except ValidationError as e:
-        raise ValidationFailed("Preset quy trình không hợp lệ.", code="workflow_invalid",
+        raise ValidationFailed("Quy trình không hợp lệ.", code="workflow_invalid",
                                hint="Xem `extra.errors`.", extra={"errors": clean_validation_errors(e.errors())}
                                ) from None
 
 
+def validate_all(workflows: Any) -> dict[str, Any]:
+    """`project.workflows`: {key: dữ liệu quy trình}; mỗi quy trình kiểm như `validate` (giữ `name`)."""
+    if not isinstance(workflows, dict):
+        raise ValidationFailed("workflows phải là object {khoá: quy trình}.", code="workflow_invalid")
+    out: dict[str, Any] = {}
+    for key, data in workflows.items():
+        if not isinstance(key, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", key):
+            raise ValidationFailed(f"Khoá quy trình '{key}' không hợp lệ.", code="workflow_invalid")
+        validate(data)
+        out[key] = dict(data)
+    return out
+
+
+@functools.lru_cache(maxsize=1)
+def _defaults() -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for path in sorted(WORKFLOWS_DIR.glob("*.yaml")):
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        key = str(raw.get("key") or path.stem)
+        data = dict(raw.get("data") or {})
+        validate(data)
+        out[key] = {"name": str(raw.get("name") or key), **data}
+    return out
+
+
+def defaults() -> dict[str, dict[str, Any]]:
+    """Quy trình mặc định của tool (bản sao mới) — chép vào project mới."""
+    import copy
+
+    return copy.deepcopy(_defaults())
+
+
 def load(s: Session, key: str, project_id: int | None) -> dict[str, Any]:
-    try:
-        data = presets.get_data(s, "workflow", key, project_id)
-    except NotFound:
-        raise NotFound(f"Không có preset quy trình '{key}'.", code="workflow_not_found",
-                       hint="Gọi preset.list kind=workflow để xem các quy trình.") from None
-    return validate(data)
+    """Quy trình `key` của project; chưa có project (ước tính trước khi tạo) → quy trình mặc định của tool."""
+    from sagareel.db.models import Project
+
+    if project_id is not None:
+        p = s.get(Project, project_id)
+        pool = dict(p.workflows or {}) if p is not None else {}
+    else:
+        pool = _defaults()
+    if key not in pool:
+        raise NotFound(f"Không có quy trình '{key}'.", code="workflow_not_found",
+                       hint=f"Quy trình có: {', '.join(sorted(pool)) or '(chưa có)'} — xem project.workflows; "
+                            "thêm/sửa bằng project.update {workflows: …}.")
+    return validate(pool[key])
 
 
 def apply_overrides(wf: dict[str, Any], overrides: dict[str, bool]) -> list[dict[str, Any]]:

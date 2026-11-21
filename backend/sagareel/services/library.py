@@ -867,8 +867,7 @@ def _check_ids(ids: list[int], what: str) -> list[int]:
 
 
 def _llm_lane(s: Session, task_key: str) -> tuple[str, dict]:
-    p = llm.plan(s, task_key, {"input": "-"}, images=True)
-    route, conn = p.candidates[0]
+    route, conn = llm.first_connection(s, task_key, images=True)
     return f"conn:{conn.id}", {"kind": "llm", "units": 1, "task": task_key, "route": route.to_dict(),
                                "connection_id": conn.id}
 
@@ -1087,6 +1086,9 @@ def describe_from_image(ctx: OpContext, media_id: int, kind: str = "character", 
     text = f"Kind: {kind}."
     if hint:
         text += f"\nName or note from the user: {hint}"
+    if project_id is None:  # prompt thuộc dự án: lấy dự án của ảnh khi người gọi không truyền
+        with ctx.services.db.session() as s:
+            project_id = media.get(s, media_id).project_id
     job = llm.submit_run(ctx.services, "describe_asset", {"input": text}, override=None,
                          images_media_ids=[media_id], project_id=project_id)
     return {"job_id": job["id"]}

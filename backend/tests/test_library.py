@@ -218,9 +218,6 @@ def test_clip_preview_prompt_op(client, project):
     assert body["text"] == "  nguyên văn  " and body["refs"] == [] and body["provider_caps"]["max_refs"] == 9
     r = client.post("/api/ops/clip.preview_prompt", json={"clip_id": cid, "part": "video"})
     assert r.json()["text"] == "chuyển động"
-    r = client.post("/api/ops/library.templates", json={})
-    keys = {i["key"]: i for i in r.json()["items"]}
-    # seed khởi động chép bản cài sẵn vào bảng template (giữ sửa của người dùng) → nguồn "db", chưa sửa
-    assert keys["image.synced"]["source"] == "db" and not keys["image.synced"]["modified"]
+    assert client.post("/api/ops/library.templates", json={}).status_code == 404  # không còn template chung
     with services.db.session() as s:
         assert s.scalars(select(Clip).where(Clip.id == cid)).one().image_prompt == "  nguyên văn  "

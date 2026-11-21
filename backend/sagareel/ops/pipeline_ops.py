@@ -27,7 +27,8 @@ class PipelineOverrides(BaseModel):
 
 class PipelineRunParams(BaseModel):
     sequence_ids: list[int] = Field(min_length=1, max_length=500, description="Tập đầu là tập dẫn của lô")
-    workflow_key: str = Field(default=W.DEFAULT_WORKFLOW, description="full_auto / storyboard_first / serial_batch …")
+    workflow_key: str = Field(default=W.DEFAULT_WORKFLOW, description="Khoá quy trình trong project.workflows "
+                              "(full_auto / storyboard_first / serial_batch …)")
     overrides: PipelineOverrides = Field(default_factory=PipelineOverrides)
     restart: bool = Field(default=False, description="Chạy lại từ đầu (bỏ trạng thái + quyết định duyệt cũ)")
     dry_run: bool = Field(default=False, description="Chỉ trả các bước + ước tính, không chạy")
@@ -48,10 +49,13 @@ class SequenceIdParams(BaseModel):
 
 class IdeaParams(BaseModel):
     idea: str = Field(min_length=1, description="Ý tưởng câu chuyện")
-    genre: str = Field(default="serial", description="Key preset thể loại: storyboard, montage, series, serial, narration")
+    genre: str = Field(default="serial", description="Thể loại: storyboard, montage, series, serial, narration "
+                       "(số liệu tham khảo; dự án mới nhân bản từ dự án mẫu cùng thể loại nếu có)")
     episodes: int = Field(default=1, ge=1, le=200)
     clips_per_episode: int = Field(default=14, ge=1, le=60)
     project_id: int | None = Field(default=None, description="Bỏ trống = tạo dự án mới")
+    from_project_id: int | None = Field(default=None, description="Dự án mới nhân bản prompt/phong cách từ dự án này "
+                                        "(mặc định: dự án mẫu cùng thể loại)")
     name: str | None = Field(default=None, description="Tên dự án mới (mặc định lấy từ ý tưởng)")
     workflow_key: str = W.DEFAULT_WORKFLOW
     steps: dict[str, bool] = Field(default_factory=dict, description="Bật/tắt bước của quy trình")
@@ -59,7 +63,7 @@ class IdeaParams(BaseModel):
     dry_run: bool = Field(default=False, description="Chỉ ước tính (số ảnh/video/LLM, giây phim)")
 
 
-@op("pipeline.run", summary="Chạy quy trình theo preset cho các tập (job dài pipeline.run, dừng ở gate/bước chờ nhập, "
+@op("pipeline.run", summary="Chạy quy trình của dự án cho các tập (job dài pipeline.run, dừng ở gate/bước chờ nhập, "
     "nối lại được); dry_run chỉ ước tính", params=PipelineRunParams, costly=True, long_running=True, mcp="tool")
 def pipeline_run(ctx: OpContext, p: PipelineRunParams) -> dict:
     if p.dry_run or ctx.dry_run:
@@ -86,7 +90,7 @@ async def pipeline_cancel(ctx: OpContext, p: SequenceIdParams) -> dict:
 def pipeline_idea_to_video(ctx: OpContext, p: IdeaParams) -> dict:
     kw: dict[str, Any] = {"idea": p.idea, "genre": p.genre, "episodes": p.episodes,
                           "clips_per_episode": p.clips_per_episode, "workflow_key": p.workflow_key,
-                          "project_id": p.project_id, "steps": p.steps}
+                          "project_id": p.project_id, "steps": p.steps, "from_project_id": p.from_project_id}
     if p.dry_run or ctx.dry_run:
         return idea.estimate(ctx, **kw)
     return idea.create(ctx, **kw, name=p.name, platforms=p.platforms)

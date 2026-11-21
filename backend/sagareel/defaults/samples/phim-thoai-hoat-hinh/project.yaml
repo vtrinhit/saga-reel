@@ -1,0 +1,17 @@
+# Dự án mẫu (dữ liệu seed, nhân bản ra dự án mới): phim hoạt hình có thoại — nhân vật tự nói qua model video, không
+# người kể. Số liệu thể loại chép từ defaults/genres/<genre_key>.yaml khi seed (ghi `genre:` ở đây để thay).
+key: mau-phim-thoai-hoat-hinh
+name: "Mẫu · Phim thoại hoạt hình"
+description: >-
+  Phim hoạt hình 2D dễ thương có thoại: mỗi clip là một câu nhân vật nói (giọng riêng từng nhân vật trong
+  asset.custom.voice_desc), không có người kể. Nhân bản để làm series thoại mới.
+genre_key: series
+aspect: "9:16"
+language: vi
+style_block: >-
+  Beautiful cute 2D anime film style, soft cel shading with gentle watercolor backgrounds like a heartwarming Japanese
+  animated movie, big expressive sparkling eyes, rounded soft faces, warm golden light, clean lineart, rich detailed
+  cozy environments, pastel warm palette
+negative_block: >-
+  photorealistic, 3D render, ugly, deformed, creepy, text, watermark, logo, extra fingers, deformed hands
+narrator_voice: ""

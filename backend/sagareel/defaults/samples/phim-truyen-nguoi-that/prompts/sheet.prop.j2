@@ -1,0 +1,21 @@
+{#- sheet.prop — một góc sheet đạo cụ/loại khác. anchor: chỉ từ chữ; góc khác: chỉ ref mỏ neo. -#}
+{%- if view == "anchor" -%}
+Object reference image of {{ name }}. {{ view_text }}. Plain neutral gray background, soft even studio light.
+{%- else -%}
+Image 1 is the anchor reference of {{ name }} (identity reference). Same object, same shape, colors and materials. Do not redesign the object.
+{{ view_text }}. Plain neutral gray background, soft even studio light.
+{%- endif %}
+{{ description }}
+{%- if description_delta %}
+{{ description_delta }}
+{%- endif %}
+{%- if lock_word %}
+Keep exactly: {{ lock_word }}.
+{%- endif %}
+{%- if keep_features %}
+Must keep: {{ keep_features | join(", ") }}.
+{%- endif %}
+{%- if style_block %}
+{{ style_block }}
+{%- endif %}
+Single view only, not a collage. Avoid: {{ negative }}.

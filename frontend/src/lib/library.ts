@@ -21,6 +21,13 @@ export interface Project {
   name: string;
   description: string;
   genre_key: string;
+  /** Số liệu thể loại của dự án (`project.genre`). */
+  genre?: Record<string, unknown>;
+  /** Quy trình của dự án: `{key: {name, label, steps…}}`. */
+  workflows?: Record<string, Record<string, unknown>>;
+  narrator_voice?: string;
+  /** Dự án mẫu: nhân bản ra dự án mới. */
+  is_sample?: boolean;
   aspect: string;
   resolution: string;
   fps: number;
@@ -454,6 +461,8 @@ export interface ProjectForm {
   target_platforms: string[];
   style_block: string;
   negative_block: string;
+  narrator_voice: string;
+  is_sample: boolean;
 }
 
 export function projectToForm(p: Project): ProjectForm {
@@ -467,6 +476,8 @@ export function projectToForm(p: Project): ProjectForm {
     target_platforms: [...(p.target_platforms ?? [])].map(String),
     style_block: p.style_block ?? '',
     negative_block: p.negative_block ?? '',
+    narrator_voice: p.narrator_voice ?? '',
+    is_sample: !!p.is_sample,
   };
 }
 
@@ -491,7 +502,7 @@ export function validateProjectForm(f: ProjectForm): FormIssues {
 export function diffProject(p: Project, f: ProjectForm): Record<string, unknown> {
   const base = projectToForm(p);
   const out: Record<string, unknown> = {};
-  const simple = ['name', 'description', 'genre_key', 'aspect', 'language', 'style_block', 'negative_block'] as const;
+  const simple = ['name', 'description', 'genre_key', 'aspect', 'language', 'style_block', 'negative_block', 'narrator_voice', 'is_sample'] as const;
   for (const k of simple) {
     const v = k === 'name' ? f.name.trim() : f[k];
     if (v !== base[k]) out[k] = v;
@@ -503,7 +514,7 @@ export function diffProject(p: Project, f: ProjectForm): Record<string, unknown>
 }
 
 /** Nền tảng mặc định của thể loại (`data.default_platforms`). */
-export function genreDefaultPlatforms(genre: Preset | undefined): string[] {
+export function genreDefaultPlatforms(genre: Pick<Preset, 'data'> | undefined): string[] {
   const d = genre?.data?.default_platforms;
   return Array.isArray(d) ? d.map(String) : [];
 }

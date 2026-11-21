@@ -1,19 +1,18 @@
 /**
- * Mẫu (preset) — Task M: nhãn loại, trường form cho `platform`/`genre`, đọc/ghi theo đường dẫn, YAML ↔ data.
+ * Mẫu (preset) — Task M: nhãn loại, trường form cho `platform`, đọc/ghi theo đường dẫn, YAML ↔ data.
  * YAML dùng `js-yaml` (đã có trong node_modules qua openapi-typescript; cần khai báo trong package.json — xem báo cáo).
  */
 import yaml from 'js-yaml';
 
+/**
+ * Chỉ preset KỸ THUẬT của tool. Thể loại, phong cách, quy trình và prompt là dữ liệu của dự án (nhân bản theo dự án
+ * mẫu) — sửa trong Cài đặt dự án.
+ */
 export const PRESET_KINDS = [
   { value: 'platform', label: 'Nền tảng' },
-  { value: 'genre', label: 'Thể loại' },
-  { value: 'workflow', label: 'Quy trình' },
   { value: 'subtitle_style', label: 'Kiểu phụ đề' },
-  { value: 'voice', label: 'Giọng' },
   { value: 'transition', label: 'Chuyển cảnh' },
   { value: 'motion', label: 'Chuyển động' },
-  { value: 'style_pack', label: 'Style pack' },
-  { value: 'channel_brand', label: 'Thương hiệu kênh' },
 ] as const;
 
 export type PresetKind = (typeof PRESET_KINDS)[number]['value'];
@@ -46,7 +45,6 @@ export interface FormField {
   hint?: string;
 }
 
-const TRANSITIONS = ['cut', 'crossfade', 'fade', 'fadeblack', 'fadewhite', 'dissolve'];
 
 /** Form gọn cho hai loại có schema chặt; còn lại chỉ có YAML. */
 export const FORM_FIELDS: Partial<Record<string, FormField[]>> = {
@@ -65,17 +63,6 @@ export const FORM_FIELDS: Partial<Record<string, FormField[]>> = {
     { path: ['hashtags', 'max'], label: 'Số hashtag tối đa', type: 'int' },
     { path: ['loudness', 'target_lufs'], label: 'Độ lớn đích (LUFS)', type: 'float' },
     { path: ['checked_at'], label: 'Ngày tra cứu', type: 'text', hint: 'YYYY-MM-DD' },
-  ],
-  genre: [
-    { path: ['label'], label: 'Nhãn', type: 'text' },
-    { path: ['description'], label: 'Mô tả', type: 'text' },
-    { path: ['episode_s'], label: 'Độ dài tập (s)', type: 'range' },
-    { path: ['clip_s'], label: 'Độ dài clip (s)', type: 'range' },
-    { path: ['clips'], label: 'Số clip mỗi tập', type: 'range' },
-    { path: ['transition'], label: 'Chuyển cảnh', type: 'enum', options: TRANSITIONS },
-    { path: ['end'], label: 'Kết tập', type: 'enum', options: ['cliffhanger', 'loop', 'loop_or_cta', 'cta', 'resolve', 'none'] },
-    { path: ['dialogue_style'], label: 'Kiểu lời', type: 'enum', options: ['narration', 'dialogue', 'mixed', 'none'] },
-    { path: ['default_platforms'], label: 'Nền tảng mặc định', type: 'list', hint: 'cách nhau bằng dấu phẩy' },
   ],
 };
 

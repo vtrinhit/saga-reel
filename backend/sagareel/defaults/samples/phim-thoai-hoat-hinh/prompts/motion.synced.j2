@@ -1,0 +1,29 @@
+{#- motion.synced (Mẫu · Phim thoại hoạt hình) — nhân vật tự nói thoại qua model video; giọng riêng từng nhân vật (asset.custom.voice_desc) để đồng nhất giữa các clip. Thoại chèn nguyên văn trong ngoặc kép. -#}
+Start from the provided image; keep identity, outfit, lighting and background unchanged. Cute 2D animated film look, gentle character animation.
+{%- if camera %}
+Camera: {{ camera }}.
+{%- endif %}
+{%- if prompt %}
+{{ prompt }}
+{%- endif %}
+{%- for b in beats %}
+{% if b.stamp %}[{{ b.stamp }}] {% endif %}{{ b.text }}
+{%- endfor %}
+{%- if dialogue %}
+The characters start speaking within the first half second of the clip, keep a natural conversational pace and do not leave long pauses between lines.
+{%- endif %}
+{%- for d in dialogue %}
+{%- if d.narrator %}
+Voice-over (off-screen{% if narrator_voice %}, {{ narrator_voice }}{% endif %}) says in {{ language }}{% if d.emotion %} ({{ d.emotion }}){% endif %}: "{{ d.text }}"
+{%- else %}
+Dialogue: {{ d.name }}{% if d.voice %} ({{ d.voice }}){% endif %} says in {{ language }}{% if d.emotion %} ({{ d.emotion }}){% endif %}, natural lip movement: "{{ d.text }}"
+{%- endif %}
+{%- endfor %}
+{%- if sfx %}
+SFX: {{ sfx }}.
+{%- endif %}
+{%- if ambient %}
+Ambient sound: {{ ambient }}.
+{%- endif %}
+No background music.
+The camera then holds. Stable face, consistent outfit, natural hand movement, single continuous shot, no scene cut, no morphing, no text, no subtitles, no watermark.

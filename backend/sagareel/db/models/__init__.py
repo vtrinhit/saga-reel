@@ -7,12 +7,12 @@ from sagareel.db.models.jobs import Job, JobLog, Spend
 from sagareel.db.models.library import Asset, AssetKind, AssetVariant, VoiceProfile
 from sagareel.db.models.media import Media
 from sagareel.db.models.misc import ChannelStudy, Preset, SkillFile
-from sagareel.db.models.project import GroupNode, Project
+from sagareel.db.models.project import GroupNode, Project, ProjectPrompt
 from sagareel.db.models.providers import LlmTask, ProviderConnection
 from sagareel.db.models.render import ExportPackage, Render, RenderChunk, UploadSession
 from sagareel.db.models.sequence import Clip, DialogueLine, Scene, Sequence
 from sagareel.db.models.story import BibleEvidence, BibleItem
-from sagareel.db.models.system import GlobalSettings, SystemState, Template
+from sagareel.db.models.system import GlobalSettings, SystemState
 from sagareel.db.models.take import Take
 
 __all__ = [
@@ -37,6 +37,7 @@ __all__ = [
     "Media",
     "Preset",
     "Project",
+    "ProjectPrompt",
     "ProviderConnection",
     "Render",
     "RenderChunk",
@@ -48,7 +49,6 @@ __all__ = [
     "Spend",
     "SystemState",
     "Take",
-    "Template",
     "TimelineItem",
     "UploadSession",
     "VoiceProfile",

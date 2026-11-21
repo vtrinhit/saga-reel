@@ -2,8 +2,9 @@
 
 - `verbatim`: `text` là **đúng giá trị cột** (`clip.image_prompt` / `motion_prompt`) — không Jinja, không strip, không
   chuẩn hoá Unicode, không chèn nhãn. Ref chỉ gồm ảnh người dùng gắn rõ (`input_media_id`, `extra_ref_media_ids`).
-- `synced`: template là dữ liệu (bảng `template`, key `image.synced` / `motion.synced` / `sheet.<kind>`; chưa có dòng
-  → bản cài sẵn `defaults/templates/<key với . thay bằng _>.j2`). Mô tả tài sản, `description_delta`, `lock_word`,
+- `synced`: template là prompt của project (bảng `project_prompt`, key `image.synced` / `motion.synced` /
+  `sheet.<kind>`; thiếu → `prompt_missing`; hợp đồng biến ở `compile/prompt_contracts.py`). `override` = thân thay
+  thế để xem trước (op `prompt.preview`). Mô tả tài sản, `description_delta`, `lock_word`,
   `keep_features`, khối phong cách và prompt clip được chèn **nguyên văn** (Jinja không autoescape, không lọc).
 - Ref: nhân vật (mỏ neo + một góc sheet gần cỡ cảnh nhất, ≤ `refs_per_asset`) → bối cảnh → đạo cụ → loại khác → khung
   cuối clip trước (`link=continue`). Nhãn `Image N: <role> of <name>` lập từ danh sách **sau khi** cắt ở `max_refs`
@@ -17,7 +18,6 @@
 from __future__ import annotations
 
 import functools
-import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,7 +43,6 @@ from sagareel.db.models import (
     Scene,
     Sequence,
     Take,
-    Template,
 )
 from sagareel.services.settings import global_layer
 
@@ -51,12 +50,9 @@ if TYPE_CHECKING:
     from sagareel.container import Services
 
 DEFAULTS_DIR = Path(__file__).resolve().parent.parent / "defaults"
-TEMPLATES_DIR = DEFAULTS_DIR / "templates"
 KINDS_PATH = DEFAULTS_DIR / "library" / "asset_kinds.yaml"
 
 IMAGE_TEMPLATE = "image.synced"
-NARRATOR_VOICE_DEFAULT = ("a calm, warm adult Vietnamese man's voice with a northern accent, speaking slowly "
-                          "and gently like recalling a childhood memory")
 MOTION_TEMPLATE = "motion.synced"
 SHEET_TEMPLATES = ("sheet.character", "sheet.location", "sheet.prop")
 TEMPLATE_KINDS = {IMAGE_TEMPLATE: "image", MOTION_TEMPLATE: "motion", **{k: "sheet" for k in SHEET_TEMPLATES}}
@@ -107,34 +103,11 @@ def view_text(kind: str, view: str) -> str | None:
     return kind_info(kind)["views"].get(view)
 
 
-def template_file(key: str) -> Path:
-    return TEMPLATES_DIR / f"{key.replace('.', '_')}.j2"
+def template_body(session: Session, key: str, project: Any) -> str:
+    """Prompt `key` của project (bảng `project_prompt`); thiếu → `prompt_missing`. Không có bộ prompt chung."""
+    from sagareel.services import prompts
 
-
-def builtin_body(key: str) -> str | None:
-    """Bản cài sẵn của template compiler (`\\r\\n` → `\\n`); None nếu không có."""
-    if key not in TEMPLATE_KINDS:
-        return None
-    path = template_file(key)
-    if not path.is_file():
-        return None
-    return path.read_bytes().decode("utf-8").replace("\r\n", "\n")
-
-
-def body_hash(body: str) -> str:
-    return hashlib.sha256(body.encode("utf-8")).hexdigest()
-
-
-def template_body(session: Session, key: str) -> tuple[str, str]:
-    """(nội dung, nguồn "db"|"builtin") — dòng `template` chưa xoá thắng bản cài sẵn."""
-    row = session.scalars(select(Template).where(Template.key == key, Template.deleted_at.is_(None))).first()
-    if row is not None:
-        return row.body, "db"
-    body = builtin_body(key)
-    if body is None:
-        raise NotFound(f"Không có template '{key}'.", code="template_not_found",
-                       hint="Tạo template bằng template.update (create_if_missing) hoặc dùng key cài sẵn.")
-    return body, "builtin"
+    return prompts.body(session, key, project)
 
 
 def _render(body: str, variables: dict[str, Any]) -> str:
@@ -472,7 +445,8 @@ def _verbatim_refs(clip: Clip) -> list[_Ref]:
     return refs
 
 
-def compile_clip_image(session: Session, clip_id: int, *, connection: int | str | None = None) -> CompiledPrompt:
+def compile_clip_image(session: Session, clip_id: int, *, connection: int | str | None = None,
+                       override: str | None = None) -> CompiledPrompt:
     cc = clip_context(session, clip_id)
     clip, project, seq, scene = cc.clip, cc.project, cc.sequence, cc.scene
     caps, warnings = connection_caps(session, "image", connection, project, seq, scene, clip)
@@ -533,7 +507,7 @@ def compile_clip_image(session: Session, clip_id: int, *, connection: int | str 
         "clip": {"key": clip.key, "title": clip.title},
         "continue_frame": any(r.source == "continue" for r in refs),
     }
-    body, _src = template_body(session, IMAGE_TEMPLATE)
+    body = template_body(session, IMAGE_TEMPLATE, project) if override is None else override
     return CompiledPrompt(text=_render(body, variables), refs=items, warnings=warnings, provider_caps=caps)
 
 
@@ -564,7 +538,7 @@ def motion_beats(clip: Clip) -> list[dict[str, str]]:
     return out
 
 
-def compile_clip_motion(session: Session, clip_id: int) -> CompiledPrompt:
+def compile_clip_motion(session: Session, clip_id: int, *, override: str | None = None) -> CompiledPrompt:
     clip = get_clip(session, clip_id)
     if clip.prompt_mode == "verbatim":
         return CompiledPrompt(text=clip.motion_prompt, refs=[], warnings=[], provider_caps={})
@@ -598,10 +572,10 @@ def compile_clip_motion(session: Session, clip_id: int) -> CompiledPrompt:
         "sfx": clip.sfx_desc or "",
         "ambient": str(dict(cc.scene.state or {}).get("ambient") or "") if cc.scene else "",
         # Giọng người kể cố định cho cả dự án (để voice-over của video AI đồng nhất giữa các clip).
-        "narrator_voice": str((project.settings or {}).get("narrator_voice_desc") or NARRATOR_VOICE_DEFAULT),
+        "narrator_voice": project.narrator_voice or "",
         "clip": {"key": clip.key, "duration_s": clip.duration_ms / 1000},
     }
-    body, _src = template_body(session, MOTION_TEMPLATE)
+    body = template_body(session, MOTION_TEMPLATE, project) if override is None else override
     return CompiledPrompt(text=_render(body, variables), refs=[], warnings=warnings, provider_caps=caps)
 
 
@@ -615,8 +589,8 @@ def get_look(session: Session, look_id: int) -> AssetVariant:
     return look
 
 
-def compile_sheet(session: Session, variant_id: int, view: str, *, connection: int | str | None = None
-                  ) -> CompiledPrompt:
+def compile_sheet(session: Session, variant_id: int, view: str, *, connection: int | str | None = None,
+                  override: str | None = None) -> CompiledPrompt:
     """Prompt một góc sheet. `anchor`: chỉ chữ, không ref. Góc khác: **chỉ** ảnh mỏ neo của look làm ref."""
     look = get_look(session, variant_id)
     asset = session.get(Asset, look.asset_id)
@@ -650,7 +624,7 @@ def compile_sheet(session: Session, variant_id: int, view: str, *, connection: i
         "aspect": project.aspect,
         "negative": _negative(session, project),
     }
-    body, _src = template_body(session, info["sheet_template"])
+    body = template_body(session, info["sheet_template"], project) if override is None else override
     return CompiledPrompt(text=_render(body, variables), refs=_ref_items(refs), warnings=warnings,
                           provider_caps=caps)
 

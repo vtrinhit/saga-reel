@@ -9,6 +9,7 @@ from pathlib import Path
 
 from sagareel.core import rank
 from sagareel.db.models import (
+    ProjectPrompt,
     Asset,
     AssetKind,
     AssetVariant,
@@ -55,12 +56,12 @@ def build_demo(ctx, tmp_path: Path, make_clip_tiny=None) -> int:
     with u as s:
         u.project_id = pid
         proj = s.get(Project, pid)
-        pack = Preset(project_id=pid, kind="style_pack", key="noir", name="Noir",
-                      data={"style_block": "film noir, high contrast", "lut": "noir.cube"})
-        s.add(pack)
-        s.add(Preset(project_id=pid, kind="voice", key="calm", name="Giọng trầm", data={"rate": "-5%"}))
+        s.add(Preset(project_id=pid, kind="transition", key="noir-cut", name="Cắt noir",
+                     data={"xfade": None, "duration_ms": 0}))
+        s.add(ProjectPrompt(project_id=pid, key="image.synced", body="NOIR {{ prompt }}"))
         s.flush()
-        proj.style_pack_id = pack.id
+        proj.genre = {"episode_s": [60, 90], "clip_s": [6, 10], "clips": [12, 18], "transition": "cut"}
+        proj.narrator_voice = "giọng trầm"
         proj.style_block = "Ánh sáng lạnh, mưa đêm.\nMàu teal-orange."
         proj.negative_block = "chữ, logo"
         proj.target_platforms = ["tiktok", "youtube_shorts"]

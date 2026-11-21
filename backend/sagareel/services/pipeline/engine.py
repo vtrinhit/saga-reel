@@ -267,8 +267,8 @@ def satisfied(s: Session, task: str, sequence_id: int) -> bool:
 
 
 INPUT_HINT = {
-    "write_bible": "Thêm mục Story Bible (bible.create) hoặc tài sản nhân vật, rồi tiếp tục.",
-    "outline": "Điền dàn ý tập (prompts.submit field=synopsis hoặc sequence.update), rồi tiếp tục.",
+    "write_bible": "Gửi bible (story.submit task=write_bible) hoặc thêm mục Story Bible (bible.create), rồi tiếp tục.",
+    "outline": "Gửi dàn ý (story.submit task=outline) hoặc điền tóm tắt tập (prompts.submit field=synopsis).",
     "write_script": "Gửi kịch bản (prompts.submit field=script).",
     "split_clips": "Tạo clip (clip.bulk_create / import.apply) hoặc prompts.submit field=clips.",
     "image_prompts": "Gửi prompt ảnh cho mọi clip (prompts.submit field=image_prompt).",
@@ -297,7 +297,7 @@ async def run_llm_step(r: Run, step: dict[str, Any]) -> Outcome:
         try:
             res = await writer.memory_summarize(r.ctx, r.sequence_id, feedback=feedback, log=r.log)
         except AppError as e:
-            if e.code in ("llm_not_configured", "script_missing"):
+            if e.code in ("llm_not_configured", "script_missing", "prompt_missing"):
                 return Outcome("skipped", {"reason": e.code, "message": e.detail})
             raise
         return Outcome("done", res)
@@ -307,9 +307,11 @@ async def run_llm_step(r: Run, step: dict[str, Any]) -> Outcome:
     try:
         res = await _call_writer(r, task, feedback, params)
     except AppError as e:
-        if e.code == "llm_not_configured":
+        if e.code in ("llm_not_configured", "prompt_missing"):
+            # Thiếu LLM hoặc thiếu prompt của dự án: không làm hỏng cả quy trình — chờ người/agent gửi kết quả bước
+            # (story.submit / prompts.submit) hoặc viết prompt (prompt.set) rồi chạy tiếp.
             step["awaiting"] = True
-            return Outcome("wait_input", info={"task": task, "mode": "manual", "reason": "llm_not_configured",
+            return Outcome("wait_input", info={"task": task, "mode": "manual", "reason": e.code,
                                                "message": e.detail, "hint": e.hint})
         raise
     if res is None:
@@ -433,6 +435,22 @@ async def spawn_children(r: Run, step: dict[str, Any]) -> tuple[list[int], list[
         ids = await _thread(lambda: _with(r, lambda s: _regen_targets(s, sid, part, bool(feedback))))
         if not ids:
             return Outcome("done", {"already": True})
+        key = "image.synced" if part == "image" else "motion.synced"
+
+        def missing_prompt(s: Session) -> bool:  # clip synced cần prompt ráp của dự án; verbatim thì không
+            from sagareel.db.models import Clip
+            from sagareel.services import prompts
+
+            synced = s.scalar(select(Clip.id).where(Clip.id.in_(ids), Clip.prompt_mode != "verbatim").limit(1))
+            return synced is not None and prompts.row(s, r.project_id, key) is None
+
+        if await _thread(lambda: _with(r, missing_prompt)):
+            step["awaiting"] = True
+            return Outcome("wait_input", info={
+                "task": name, "mode": "manual", "reason": "prompt_missing",
+                "message": f"Dự án chưa có prompt ráp '{key}' cho clip chế độ synced.",
+                "hint": f"Viết prompt '{key}' (prompt.set), hoặc đặt clip prompt_mode=verbatim với prompt cuối do bạn/agent "
+                        "viết (clip.update), rồi chạy tiếp pipeline.run."})
         all_jobs: list[int] = []
         all_takes: list[int] = []
         results = []
@@ -871,6 +889,15 @@ def plan(ctx: OpContext, sequence_ids: list[int], workflow_key: str, overrides: 
         totals["clips_estimated"] = estimated_any
     out = {"dry_run": True, "workflow": workflow_key, "steps": step_out, "step_keys": enabled, "sequences": per,
            "estimate": totals}
+    if project_id is not None:  # cảnh báo prompt (tĩnh, không chặn): bước thiếu prompt sẽ dừng chờ nhập
+        from sagareel.services import prompts
+
+        with ctx.services.db.session() as s:
+            pc = prompts.check_session(s, project_id)
+        out["prompt_warnings"] = [w for w in pc["warnings"]
+                                  if w["code"] != "prompt_missing" or any(st in enabled for st, ks in
+                                                                          pc["steps_without_prompt"].items()
+                                                                          if w["key"] in ks)]
     if estimated_any:
         out["note"] = (f"Tập chưa chia clip được ước tính theo thể loại (~{per_clip_est} clip/tập); số thật biết sau "
                        "bước Chia clip.")
@@ -878,14 +905,12 @@ def plan(ctx: OpContext, sequence_ids: list[int], workflow_key: str, overrides: 
 
 
 def _genre_clips(s: Session, project_id: int | None, genre_overrides: dict[str, Any]) -> tuple[int, bool]:
-    """(số clip/tập ước tính, thể loại chỉ dùng still_motion) theo preset thể loại của dự án."""
+    """(số clip/tập ước tính, thể loại chỉ dùng still_motion) theo số liệu thể loại của dự án (`project.genre`)."""
     from sagareel.db.models import Project
-    from sagareel.services import presets
 
     p = s.get(Project, project_id) if project_id is not None else None
     genre = p.genre_key if p is not None else "series"
-    row = presets.find_row(s, "genre", genre, project_id)
-    data = {**(dict(row.data) if row is not None else {}), **genre_overrides}
+    data = {**(dict(p.genre or {}) if p is not None else {}), **genre_overrides}
     lo, hi = writer._span(data.get("clips"), (12, 16))
     return max(1, round((lo + hi) / 2)), genre in writer.STILL_GENRES
 

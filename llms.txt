@@ -7,6 +7,7 @@
 - [mcp_server/README.md](mcp_server/README.md): chạy MCP server (`sagareel mcp`), cấu hình Claude Code/Desktop, danh sách tool
 - [Skill vận hành](.claude/skills/sagareel-operator/SKILL.md): quy tắc + playbook (video ghép, phim bộ, dài tập, clone, lồng tiếng, lỗi provider); sửa qua op `skill.update`
 - [Schema file khai báo project](docs/schema/project-spec.schema.json): `project.export_spec` → sửa → `project.plan` → `project.apply(plan_fingerprint)`
+- Hai chế độ: LLM của tool (prompt là dữ liệu của dự án, `prompt.*`) hoặc agent tự gửi kết quả từng bước (`story.submit`, `prompts.submit`…); bản đồ quy trình: op `studio.guide`; hợp đồng prompt: `prompt.contracts`
 - Catalog op sống: `GET /api/ops` (JSON Schema params + cờ); OpenAPI: `/openapi.json`
 
 ## Thiết kế

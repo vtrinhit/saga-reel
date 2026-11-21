@@ -308,23 +308,6 @@ async def clip_preview_prompt(ctx: OpContext, p: ClipPreviewParams) -> dict:
     return await anyio.to_thread.run_sync(run)
 
 
-class TemplatesParams(BaseModel):
-    pass
-
-
-@op("library.templates", summary="Template prompt của compiler (image/motion/sheet): nội dung hiệu lực + bản cài sẵn",
-    params=TemplatesParams, read_only=True, idempotent=True)
-def library_templates(ctx: OpContext, p: TemplatesParams) -> dict:
-    items = []
-    with ctx.services.db.session() as s:
-        for key, kind in compiler.TEMPLATE_KINDS.items():
-            body, source = compiler.template_body(s, key)
-            builtin = compiler.builtin_body(key)
-            items.append({"key": key, "kind": kind, "body": body, "source": source, "builtin_body": builtin,
-                          "modified": builtin is not None and body != builtin})
-    return {"items": items, "hint": "Sửa bằng template.update(key, body, create_if_missing=true, kind=<kind>)."}
-
-
 # --- Drift + chấm take --------------------------------------------------------------------------------------------
 
 

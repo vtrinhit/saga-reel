@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { callOp } from '../../api/ops';
 import { errorMessage, gateLabel } from '../../lib/activity';
 import { toast } from '../../stores/toast';
+import { fetchWorkflows } from '../shell/useShellData';
 import { Button } from '../ui/Button';
 import { ErrorState } from '../ui/ErrorState';
 import { Input } from '../ui/Input';
@@ -54,11 +55,12 @@ export function IdeaToVideoDialog({ open, onClose, projectId = null, defaultIdea
   }, [open, defaultIdea]);
 
   const presets = useQuery({
-    queryKey: ['pipeline', 'idea-presets'],
+    queryKey: ['pipeline', 'idea-presets', projectId],
     queryFn: async () => {
-      const [g, w] = await Promise.all([callOp('preset.list', { kind: 'genre' }), callOp('preset.list', { kind: 'workflow' })]);
+      // Thể loại: số liệu tham khảo; quy trình: của dự án (dự án mới → quy trình mặc định, nhân bản từ dự án mẫu).
+      const [g, workflows] = await Promise.all([callOp('genre.list', {}), fetchWorkflows(projectId)]);
       type Row = { key: string; name: string };
-      return { genres: (g as unknown as { items: Row[] }).items, workflows: (w as unknown as { items: Row[] }).items };
+      return { genres: (g as unknown as { items: Row[] }).items, workflows: workflows as Row[] };
     },
     enabled: open,
     staleTime: 5 * 60_000,

@@ -113,6 +113,7 @@ class JobRun:
         self.job_id: int = data["id"]
         self.type: str = data["type"]
         self.lane: str = data["lane"]
+        self.project_id: int | None = data.get("project_id")
         self.params: dict = dict(data["params"])
         self.client_ref: str | None = data["client_ref"]
         self.external_id: str | None = data["external_id"]

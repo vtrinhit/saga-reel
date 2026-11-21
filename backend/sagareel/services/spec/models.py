@@ -8,7 +8,7 @@ Nguyên tắc:
   lời thoại `<clip>#<n>` theo thứ tự trong clip, mục timeline `<track>@<clip neo>#<n>` theo `offset_ms`. Âm thanh
   (`sound`) cũng chưa có key: nhận diện theo (kind, sha256 media) — `key` trong spec chỉ để mục timeline tham chiếu.
 - Trường bỏ trống = giá trị mặc định (khai báo trạng thái đầy đủ của phần được đưa vào). Mục nhóm (`library`,
-  `groups`, `sequences`, `presets`) để trống (null) = không đụng tới phần đó.
+  `groups`, `sequences`, `presets`, `prompts`) để trống (null) = không đụng tới phần đó.
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ from sagareel.services.presets import KEY_RE as PRESET_KEY_RE
 from sagareel.services.projects import KEY_RE as ENTITY_KEY_RE
 
 SPEC_VERSION = 1
-SECTIONS = ("presets", "library", "groups", "sequences")
-Section = Literal["presets", "library", "groups", "sequences"]
+SECTIONS = ("prompts", "presets", "library", "groups", "sequences")
+Section = Literal["prompts", "presets", "library", "groups", "sequences"]
 
 MediaRef = str  # khoá trong `media`
 
@@ -62,7 +62,10 @@ class ProjectBlock(_Strict):
     name: str = Field(min_length=1)
     description: str = ""
     genre_key: str = "series"
-    style_pack: str | None = Field(default=None, description="Key preset style_pack (của project hoặc toàn cục)")
+    genre: dict[str, Any] = Field(default_factory=dict, description="Số liệu thể loại của dự án")
+    workflows: dict[str, Any] = Field(default_factory=dict, description="Quy trình của dự án {key: {steps…}}")
+    narrator_voice: str = ""
+    is_sample: bool = Field(default=False, description="Dự án mẫu (nhân bản ra dự án mới)")
     aspect: str = "9:16"
     resolution: str = "1080p"
     fps: int = 30
@@ -77,9 +80,9 @@ class ProjectBlock(_Strict):
     @model_validator(mode="before")
     @classmethod
     def _drop_legacy(cls, data: Any) -> Any:
-        """Spec cũ còn khối `budget` (tính năng ngân sách đã bỏ) → bỏ qua, không báo lỗi."""
-        if isinstance(data, dict) and "budget" in data:
-            data = {k: v for k, v in data.items() if k != "budget"}
+        """Spec cũ còn khối `budget` (tính năng ngân sách đã bỏ) / `style_pack` (preset đã bỏ) → bỏ qua."""
+        if isinstance(data, dict) and ("budget" in data or "style_pack" in data):
+            data = {k: v for k, v in data.items() if k not in ("budget", "style_pack")}
         return data
 
 
@@ -287,7 +290,9 @@ class ProjectSpec(_Strict):
     providers: dict[str, str] = Field(
         default_factory=dict, description="Kết nối provider theo loại (image/video/tts/…) — tên kết nối, không có khoá")
     media: dict[str, MediaEntry] = Field(default_factory=dict, description="Media được tham chiếu, theo khoá")
-    presets: list[PresetSpec] | None = Field(default=None, description="Preset riêng của project; null = không đụng")
+    prompts: dict[str, str] | None = Field(default=None, description="Prompt của dự án {khoá: thân Jinja} (hợp đồng: "
+                                           "op prompt.contracts); null = không đụng")
+    presets: list[PresetSpec] | None = Field(default=None, description="Preset kỹ thuật riêng của project; null = không đụng")
     library: LibrarySpec | None = None
     groups: list[GroupSpec] | None = None
     sequences: list[SequenceSpec] | None = None

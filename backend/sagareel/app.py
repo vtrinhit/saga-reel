@@ -27,12 +27,12 @@ from sagareel.api.static import build_static_router
 from sagareel.config import AppSettings, load_settings
 from sagareel.container import Services
 from sagareel.core.errors import AppError, internal_error, payload, validation_failed
-from sagareel.core.resolver import SCHEMA_PATH, Resolver, load_schema
 from sagareel.core.events import EventBus
+from sagareel.core.resolver import SCHEMA_PATH, Resolver, load_schema
 from sagareel.db.session import Database
 from sagareel.services import auth, seed, skills
-from sagareel.services.worker import Worker
 from sagareel.services.providers import ProviderService
+from sagareel.services.worker import Worker
 
 __all__ = ["APP_NAME", "create_app"]
 
@@ -115,9 +115,11 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         try:
             # Truy cập DB từ code async luôn qua thread (không chặn event loop).
             await anyio.to_thread.run_sync(services.db.migrate)
-            # Dữ liệu mặc định (công việc LLM, template) rồi kết nối từ .env.local (lần đầu). Chỉ ghi DB, không gọi
+            # Dữ liệu mặc định (công việc LLM, dự án mẫu) rồi kết nối từ .env.local (lần đầu). Chỉ ghi DB, không gọi
             # provider nào.
             await anyio.to_thread.run_sync(seed.seed_defaults, services.db)
+            if services.settings.seed_samples:
+                await anyio.to_thread.run_sync(seed.seed_samples, services.db)
             await anyio.to_thread.run_sync(_seed_env, services)
             # File skill vận hành ↔ DB (skill.list/get chỉ đọc; lỗi chỉ cảnh báo).
             await anyio.to_thread.run_sync(skills.sync_on_startup, services)

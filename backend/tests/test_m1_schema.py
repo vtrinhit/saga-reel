@@ -76,7 +76,8 @@ def test_upgrade_from_0003_keeps_existing_data(tmp_path):
             ))
         database.migrate()
         with database.engine.connect() as conn:
-            assert conn.execute(text("SELECT body FROM template WHERE key='cũ'")).scalar() == "Nội dung có dấu"
+            # bảng template (prompt chung của tool) bị bỏ ở 0011 — prompt là dữ liệu của project
+            assert "template" not in set(inspect(database.engine).get_table_names())
             assert conn.execute(text("SELECT count(*) FROM api_token")).scalar() == 1
         assert M1_M7_TABLES <= set(inspect(database.engine).get_table_names())
         with database.session() as s:

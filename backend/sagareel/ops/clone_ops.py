@@ -45,7 +45,7 @@ async def from_video(ctx: OpContext, p: CloneParams) -> dict:
 
     def prepare() -> int:  # chưa cấu hình LLM vision -> llm_not_configured trước khi tạo job
         with services.db.session() as s:
-            return llm.plan(s, clone.TASK, {"input": "-"}, images=True).candidates[0][1].id
+            return llm.first_connection(s, clone.TASK, images=True)[1].id
 
     conn_id = await anyio.to_thread.run_sync(prepare)
     params = p.model_dump(exclude={"dry_run"})

@@ -214,7 +214,7 @@ async def run(services: Services, p: dict[str, Any], *, progress: Callable[[floa
                 progress((i - 1) / n * 100, f"Viết lại cảnh {i}/{n}")
             frame = await sc.extract_frame(path, x.mid_s, work / f"scene_{i:03d}.jpg", cancel=cancel)
             outcome = await llm.run_task(services, TASK, {"input": scene_input(i, n, x, line, style_block, rmap)},
-                                         images=[frame], log=log)
+                                         images=[frame], log=log, project_id=project_id)
             f = clean_scene(outcome.data, rmap)
             eng, dur = engine_and_duration(x.duration_s, p.get("engine") or "auto")
             rows.append({**f, "engine": eng, "duration_ms": dur, "prompt_mode": "synced",

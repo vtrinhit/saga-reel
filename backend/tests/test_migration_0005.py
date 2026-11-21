@@ -91,7 +91,7 @@ def old_db(tmp_path):
             ids["chunk"] = _ins(conn, "render_chunk", sequence_id=sid, variant="final", index=0, fingerprint="fp",
                                 media_id=1, duration_ms=1000)
         for _ in range(2):  # preset toàn cục trùng (NULL project không bị uq 0004 chặn)
-            ids["preset"] = _ins(conn, "preset", **_tracked(project_id=None, kind="genre", key="dup", name="Dup",
+            ids["preset"] = _ins(conn, "preset", **_tracked(project_id=None, kind="transition", key="dup", name="Dup",
                                                             data="{}", builtin=0, builtin_hash=""))
     yield database, ids
     database.dispose()
@@ -126,7 +126,7 @@ def test_soft_deleted_key_can_be_reused_and_globals_unique(old_db):
     with pytest.raises(IntegrityError), database.session() as s:  # loại tài sản toàn cục trùng key
         s.add(AssetKind(project_id=None, key="character", label="Nhân vật 2"))
     with pytest.raises(IntegrityError), database.session() as s:
-        s.add(Preset(project_id=None, kind="genre", key="dup", name="x"))
+        s.add(Preset(project_id=None, kind="transition", key="dup", name="x"))
     with database.session() as s:  # project khác vẫn dùng cùng key; xoá mềm project rồi tạo lại cùng key
         p = s.scalars(select(Project).where(Project.key == "demo")).one()
         p.deleted_at = utcnow()

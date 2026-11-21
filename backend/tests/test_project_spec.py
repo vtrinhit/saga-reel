@@ -59,7 +59,9 @@ def test_export_contents(owner_ctx, demo):
     text = export_text(owner_ctx, demo)
     data = yaml.safe_load(text)
     assert data["spec_version"] == 1
-    assert data["project"]["key"] == "saga" and data["project"]["style_pack"] == "noir"
+    assert data["project"]["key"] == "saga" and "style_pack" not in data["project"]
+    assert data["project"]["genre"]["clips"] == [12, 18] and data["project"]["narrator_voice"] == "giọng trầm"
+    assert data["prompts"] == {"image.synced": "NOIR {{ prompt }}"}
     assert data["providers"] == {"image": "maivideo", "video": "groktele"}
     assert "image.connection" not in data["project"]["settings"]
     hero = next(a for a in data["library"]["assets"] if a["key"] == "hero")

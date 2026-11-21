@@ -215,7 +215,8 @@ async def llm_metadata(services: Any, *, project: Mapping[str, Any], sequence: M
         lines.append(f"Write EVERY field (title, caption, hashtags, keywords, pinned_comment, cover_title) in {lang}. "
                      f"Translate the episode title into {lang}; keep proper names of people and places.")
     try:
-        outcome = await llm.run_task(services, TASK_KEY, {"input": "\n".join(lines), "lang": lang})
+        outcome = await llm.run_task(services, TASK_KEY, {"input": "\n".join(lines), "lang": lang},
+                                     project_id=project.get("id"))
     except Exception as e:  # noqa: BLE001 — LLM chưa cấu hình/lỗi mạng: dùng mẫu cố định
         logger.info("Công việc caption không chạy được (%s); dùng mẫu cố định", getattr(e, "code", type(e).__name__))
         return None
