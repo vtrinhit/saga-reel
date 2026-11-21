@@ -40,10 +40,11 @@ function opReply(op: string, body: Record<string, unknown>): unknown {
     case 'project.list': return { items: [project], next_cursor: null };
     case 'project.get': return project;
     case 'project.update': return { ...project, ...(body.values as object), updated_at: '2026-11-20T01:00:00' };
+    // Thể loại: số liệu tham khảo (`genre.list`), không còn là preset.
+    case 'genre.list':
+      return { items: [{ key: 'serial', name: 'Phim bộ (serial)', data: { default_platforms: ['tiktok'] } }] };
     case 'preset.list':
-      return body.kind === 'genre'
-        ? { items: [{ id: 1, kind: 'genre', key: 'serial', name: 'Phim bộ (serial)', data: { default_platforms: ['tiktok'] } }] }
-        : { items: [{ id: 2, kind: 'platform', key: 'tiktok', name: 'TikTok', data: {} }, { id: 3, kind: 'platform', key: 'yt-shorts', name: 'YouTube Shorts', data: {} }] };
+      return { items: [{ id: 2, kind: 'platform', key: 'tiktok', name: 'TikTok', data: {} }, { id: 3, kind: 'platform', key: 'yt-shorts', name: 'YouTube Shorts', data: {} }] };
     case 'asset_kind.list': return { items: kinds };
     case 'asset.list': return { items: [asset, prop], next_cursor: null };
     case 'asset.get': return asset;

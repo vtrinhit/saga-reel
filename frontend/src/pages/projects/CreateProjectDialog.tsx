@@ -8,7 +8,7 @@ import { Input } from '../../components/ui/Input';
 import { Modal } from '../../components/ui/Modal';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { Select } from '../../components/ui/Select';
-import { cn, focusRing } from '../../lib/cn';
+import { cn } from '../../lib/cn';
 import { ASPECTS, genreDefaultPlatforms, type Project } from '../../lib/library';
 
 export type CreateMode = 'idea' | 'novel' | 'channel' | 'blank';
@@ -131,25 +131,30 @@ export function CreateProjectDialog({
               const value = x ? String(x.id) : BLANK;
               const on = sourceKey === value;
               return (
-                <button
+                // Radio gốc (ẩn) trong nhãn thẻ: phím mũi tên, Space và trình đọc màn hình hoạt động sẵn.
+                <label
                   key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={on}
-                  onClick={() => setSource(value)}
                   className={cn(
-                    'grid min-w-0 content-start gap-1 rounded-md border px-3 py-2 text-left transition-colors duration-fast ease-out',
+                    'grid min-w-0 cursor-pointer content-start gap-1 rounded-md border px-3 py-2 transition-colors duration-fast ease-out',
+                    'has-[:focus-visible]:outline has-[:focus-visible]:outline-focus has-[:focus-visible]:outline-offset-focus has-[:focus-visible]:outline-accent',
                     on ? 'border-accent bg-bg-2' : 'border-line-2 hover:border-line-3 hover:bg-bg-1',
-                    focusRing,
                   )}
                 >
+                  <input
+                    type="radio"
+                    name="project-source"
+                    value={value}
+                    checked={on}
+                    onChange={() => setSource(value)}
+                    className="sr-only"
+                  />
                   <span className="truncate text-sm font-semibold">{x ? x.name : 'Dự án trống'}</span>
                   <span className="line-clamp-3 text-xs text-fg-2">
                     {x
                       ? x.description || 'Nhân bản bộ prompt, phong cách, số liệu thể loại và quy trình.'
                       : 'Chưa có prompt nào. Tự viết trong Cài đặt dự án → Prompt, hoặc để AI viết qua MCP.'}
                   </span>
-                </button>
+                </label>
               );
             })}
           </div>
