@@ -55,7 +55,7 @@ function readMode(): ViewMode {
   }
 }
 
-const isModal = () => !!document.querySelector('[aria-modal="true"], dialog[open]:modal');
+const isModal = () => !!document.querySelector('[aria-modal="true"], dialog[open]:modal, dialog[open][data-modal="true"]');
 const anyFailed = (c: Clip) => clipView(c, 'image').status === 'failed' || clipView(c, 'video').status === 'failed';
 const anyStale = (c: Clip) => !!(c.flags?.stale_image || c.flags?.stale_video);
 

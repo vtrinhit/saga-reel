@@ -31,7 +31,7 @@ export function isTypingTarget(t: EventTarget | null): boolean {
   return t.getAttribute('role') === 'textbox' || t.getAttribute('role') === 'combobox';
 }
 
-const modalOpen = () => !!document.querySelector('[aria-modal="true"], dialog[open]:modal');
+const modalOpen = () => !!document.querySelector('[aria-modal="true"], dialog[open]:modal, dialog[open][data-modal="true"]');
 
 export function useShellKeys(h: ShellKeyHandlers): void {
   const ref = useRef(h);

@@ -160,6 +160,27 @@ describe('Task H — smoke', () => {
     expect(calls.some((c) => c.op === 'clip.update' && (c.body.values as { review?: string }).review === 'approved')).toBe(true);
   });
 
+  it('duyệt: bấm lại take đang xem mở trình xem lớn; phím duyệt tạm tắt khi trình xem mở', async () => {
+    await render('/p/1/review?seq=4&part=image', '/p/:projectId/review', <Review />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 150));
+    });
+    const cur = container.querySelector<HTMLButtonElement>('[aria-label="Các take"] [role=option][aria-selected=true]')!;
+    await act(async () => {
+      cur.click();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    const dlg = container.querySelector('dialog');
+    expect(dlg?.hasAttribute('open')).toBe(true);
+    expect(dlg?.textContent).toContain('Clip c0001');
+    calls.length = 0;
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(calls.some((c) => c.op === 'take.verdict')).toBe(false);
+  });
+
   it('nhập hàng loạt: bước nguồn có dán chữ / file / thư mục ảnh', async () => {
     await render('/p/1/import?seq=4', '/p/:projectId/import', <ImportWizard />);
     expect(container.textContent).toContain('Nhập hàng loạt');
