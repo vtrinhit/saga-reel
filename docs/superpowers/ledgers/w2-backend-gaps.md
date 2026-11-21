@@ -51,3 +51,10 @@
 - Metadata gói ngôn ngữ khác (en): tiêu đề, mô tả, từ khoá phải theo ngôn ngữ gói (hiện tiêu đề/từ khoá còn tiếng Việt).
 - Drift check báo nhầm đạo cụ chủ ý của clip ("bọc vải") → đưa prompt/đạo cụ của clip vào ngữ cảnh kiểm tra.
 - Motion prompt clip 6 s vẫn dùng mốc giờ (quy tắc: chỉ clip 10–15 s).
+
+## Từ sản xuất thật "Mái Ấm Ngày Xưa" (2026-11-21, chế độ agent)
+- `story.submit split_clips` đòi tập phải có script trước (`script_missing`) → agent đã tự viết clip không nên bị ép nộp kịch bản; cho phép nộp clip trực tiếp (script tuỳ chọn, hoặc tự dựng từ clip).
+- Tài sản tạo từ `story.submit write_bible` không có look mặc định (asset_create thường có) → thống nhất tạo look mặc định.
+- `write_script` submit nhận chuỗi trần (data là string) — tài liệu/`studio.guide` cần ghi rõ.
+- Template sheet.character/sheet.prop của các dự án mẫu: thêm câu "động vật đứng bốn chân" và "đạo cụ chỉ có đồ vật, không người/cảnh" (đã sửa cho project 8, chưa sửa các mẫu).
+- Ảnh MaiVideo 1440p tốn ~12 đơn vị/ảnh, 1080p 1 đơn vị → `estimate` nên hiện đơn vị thật theo độ phân giải.
