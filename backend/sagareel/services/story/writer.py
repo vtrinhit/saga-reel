@@ -571,7 +571,7 @@ def _resolve_look(cast: Cast, asset: Asset, look_key: str) -> int | None:
 
 def plan_clips(split: S.SplitOut, cast: Cast, genre_key: str, g: dict[str, Any]) -> tuple[list[dict], list[dict],
                                                                                           list[dict]]:
-    """SplitOut → (cảnh, clip [trường + thoại], cảnh báo). Kẹp độ dài theo thể loại, kiểm hook/kết/số clip."""
+    """SplitOut → (cảnh, clip [trường + thoại], cảnh báo). Giữ độ dài người viết chọn; kiểm hook/kết/số clip."""
     warnings: list[dict] = []
     lo_s, hi_s = _span(g.get("clip_s"), (6, 10))
     engine = "still_motion" if genre_key in STILL_GENRES else "ai_video"
@@ -593,11 +593,11 @@ def plan_clips(split: S.SplitOut, cast: Cast, genre_key: str, g: dict[str, Any])
         link = c.link if c.link in clip_svc.FIELD_ENUMS["link"] else "cut"
         beat = _norm_token(c.beat)
         beat = beat if beat in BEATS else ""
+        # Thời lượng do người viết chọn theo nội dung — giữ nguyên (không kẹp theo thể loại), chỉ nhắc nhẹ.
         dur = float(c.duration_s)
-        clamped = min(max(dur, lo_s), hi_s)
-        if abs(clamped - dur) > 0.5:
-            _warn(warnings, "duration_clamped", f"Clip {i}: {dur:g} s ngoài khoảng {lo_s:g}–{hi_s:g} s của thể loại; "
-                  f"dùng {clamped:g} s (cắt bằng trim nếu cần).", clip=i)
+        if dur < lo_s - 0.5 or dur > hi_s + 0.5:
+            _warn(warnings, "duration_outside_genre", f"Clip {i}: {dur:g} s ngoài khoảng tham khảo {lo_s:g}–{hi_s:g} s "
+                  "của thể loại (giữ nguyên).", clip=i)
         assets: list[dict[str, Any]] = []
         unknown = []
         for key in c.characters:
@@ -640,12 +640,12 @@ def plan_clips(split: S.SplitOut, cast: Cast, genre_key: str, g: dict[str, Any])
                     sid = a.id
             lines.append({"speaker_asset_id": sid, "text": ln.text.strip(), "emotion": ln.emotion})
             chars += speech.syllables(ln.text)
-        limit = speech.max_syllables(clamped)
+        limit = speech.max_syllables(dur)
         if lines and chars > limit:
             _warn(warnings, "dialogue_too_long",
                   f"Clip {i}: thoại {chars} âm tiết > {limit} (≈ (giây − 2) × 4,5 âm tiết/giây).", clip=i)
         fields = {
-            "title": T.clip_text(c.action, 80), "duration_ms": round(clamped * 1000), "engine": engine,
+            "title": T.clip_text(c.action, 80), "duration_ms": max(100, round(dur * 1000)), "engine": engine,
             "link": link, **enums, "first_frame_desc": c.first_frame_desc, "last_frame_desc": c.last_frame_desc,
             "sfx_desc": c.sfx_desc, "assets": assets,
             "custom": {**{k: v for k, v in custom_enums.items() if v}, "beat": beat, "action": c.action,

@@ -326,27 +326,30 @@ def _line_duration(s: Session, line: DialogueLine) -> int | None:
     return int(m.duration_ms) if m is not None and m.duration_ms else None
 
 
-def ai_durations(services: Any) -> list[int]:
-    """Thời lượng ai_video hỗ trợ theo caps của kết nối video mặc định (lỗi/thiếu → 6/10/15)."""
+def ai_durations(services: Any, connection: str | None = None) -> list[int]:
+    """Mức giây ai_video theo caps của kết nối (`connection`, không thì kết nối video mặc định). Không có kết nối/caps
+    → `[]` (không ép mức nào; tạo video làm tròn lên giây)."""
+    from sagareel.core import durations as dur
+
     try:
         from sagareel.providers import registry
         from sagareel.services.provider_jobs import provider_service
 
         ps = provider_service(services)
-        conn, _ = ps.find(ps.setting("video.connection"))
-        caps = registry.get(conn.adapter)(conn).capabilities()
-        ds = caps.get("durations")
-        if isinstance(ds, list) and ds:
-            return sorted(int(d) for d in ds)
-    except Exception:  # noqa: BLE001 — không có kết nối video: dùng mặc định
-        return list(timing.DEFAULT_AI_DURATIONS)
-    return list(timing.DEFAULT_AI_DURATIONS)
+        ref = connection or ps.setting("video.connection")
+        conn, _ = ps.find(int(ref) if str(ref).isdigit() else ref)
+        if conn.kind != "video":
+            conn, _ = ps.find(ps.setting("video.connection"))
+        return dur.sanitize(registry.get(conn.adapter)(conn).capabilities().get("durations"))
+    except Exception:  # noqa: BLE001 — không có kết nối video: không ép mức nào
+        return []
 
 
 def duration_plan(ctx: OpContext, sequence_id: int, clip_ids: list[int] | None = None,
                   mode: str | None = None) -> dict[str, Any]:
     """Đề xuất thời lượng từng clip theo `audio.duration_sync` (hoặc `mode`)."""
     durations = ai_durations(ctx.services)
+    caps_of: dict[str, list[int]] = {}
     with ctx.services.db.session() as s:
         clips = clips_of_sequence(s, sequence_id)
         seq = s.get(Sequence, sequence_id)
@@ -371,8 +374,10 @@ def duration_plan(ctx: OpContext, sequence_id: int, clip_ids: list[int] | None =
                     continue
                 lines.append({"offset_ms": line.offset_ms, "duration_ms": d})
             need = timing.voice_need_ms(lines)
+            if c.connection and c.connection not in caps_of:  # kết nối riêng của clip có caps riêng
+                caps_of[c.connection] = ai_durations(ctx.services, c.connection)
             plan = timing.plan_clip(mode=mode, engine=c.engine, current_ms=c.duration_ms, need_ms=need,
-                                    ai_durations=durations)
+                                    ai_durations=caps_of.get(c.connection, durations))
             if missing:
                 plan["warnings"].append({"code": "missing_audio", "message":
                                          f"{len(missing)} câu chưa có âm thanh (chạy audio.generate trước).",

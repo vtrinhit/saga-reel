@@ -197,7 +197,7 @@ async def test_split_clips_coverage_fields_dialogue_and_looks(owner_ctx, proj, s
     out = await writer.split_clips(owner_ctx, seq)
     assert out["clips"] == 2 and out["scenes"] == 1 and out["dialogue_lines"] == 3
     codes = [w["code"] for w in out["warnings"]]
-    for c in ("enum_unknown", "duration_clamped", "asset_unknown", "speaker_unknown", "clip_count"):
+    for c in ("enum_unknown", "duration_outside_genre", "asset_unknown", "speaker_unknown", "clip_count"):
         assert c in codes, c
     v = fake_llm.calls_of("story_split_clips")[0]["variables"]
     assert "establishing" in v["rules"] and "`wedding`" in v["cast"] and "`old`" not in v["cast"]
@@ -207,7 +207,8 @@ async def test_split_clips_coverage_fields_dialogue_and_looks(owner_ctx, proj, s
         assert (c1.shot_size, c1.angle, c1.camera_move, c1.lens, c1.composition, c1.eyeline, c1.screen_dir) == \
             ("cu", "eye", "push_in", "85mm", "", "screen_right", "L→R")
         assert c1.axis_side == "A" and c1.cut_out == "smash" and c1.custom["beat"] == "hook"  # cột (0005)
-        assert c1.duration_ms == 6000 and c2.duration_ms == 6000 and c1.engine == "ai_video"
+        # thời lượng người viết chọn được giữ nguyên (3 s ngoài khoảng 6–10 s chỉ cảnh báo, không kẹp)
+        assert c1.duration_ms == 6000 and c2.duration_ms == 3000 and c1.engine == "ai_video"
         assets = {a.key: a.id for a in s.scalars(select(Asset).where(Asset.project_id == proj))}
         wedding = s.scalars(select(AssetVariant).where(AssetVariant.key == "wedding")).one()
         assert c1.assets == [{"asset_id": assets["linh"], "variant_id": wedding.id}, {"asset_id": assets["villa"]},

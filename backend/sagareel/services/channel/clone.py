@@ -1,8 +1,8 @@
 """Clone từ video (spec §14.6): tách cảnh, LLM vision viết lại prompt ảnh/chuyển động thay nhân vật, tạo clip.
 
 Chỉ phân tích: khung hình giữa cảnh chỉ đi tới LLM rồi bị xoá — không đăng ký thành media, không vào đầu ra.
-Nhịp được giữ: thời lượng cảnh -> thời lượng clip (ai_video chốt về 6/10/15 s của provider, còn lại still_motion giữ
-đúng thời lượng). STT chưa có: lời thoại nhận từ `transcript` dán tay, chia theo tỉ lệ thời lượng các cảnh.
+Nhịp được giữ: thời lượng cảnh -> thời lượng clip (mọi engine giữ đúng độ dài cảnh; ai_video xin mức provider ≥ độ
+dài đó rồi bản dựng cắt sát). STT chưa có: lời thoại nhận từ `transcript` dán tay, chia theo tỉ lệ thời lượng các cảnh.
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ from sagareel.services.jobs import JobFailed
 
 JOB_TYPE = "clone.from_video"
 TASK = "clone_scene"
-PROVIDER_DURATIONS_S = (6, 10, 15)
 AUTO_MIN_S = 4.5  # ngắn hơn -> still_motion giữ đúng thời lượng
 AUTO_MAX_S = 17.0
 MAX_SCENES = 60
@@ -40,13 +39,11 @@ _SENT_RE = re.compile(r"[^.!?…\n]+[.!?…]*", re.UNICODE)
 
 
 def engine_and_duration(dur_s: float, engine: str = "auto") -> tuple[str, int]:
-    """Cảnh dur_s -> (engine, duration_ms). ai_video chốt về 6/10/15; still_motion giữ đúng (làm tròn ms)."""
+    """Cảnh dur_s -> (engine, duration_ms). Thời lượng clip = đúng độ dài cảnh (làm tròn ms, ≥ 0,5 s) cho mọi engine;
+    ai_video tự xin mức provider ≥ thời lượng đó lúc tạo rồi bản dựng cắt sát (core.durations)."""
     if engine == "auto":
         engine = "ai_video" if AUTO_MIN_S <= dur_s <= AUTO_MAX_S else "still_motion"
-    if engine == "ai_video":
-        snapped = min(PROVIDER_DURATIONS_S, key=lambda d: (abs(d - dur_s), d))
-        return "ai_video", snapped * 1000
-    return "still_motion", max(500, round(dur_s * 1000))
+    return engine, max(500, round(dur_s * 1000))
 
 
 def split_transcript(text: str, scene_list: list[sc.Scene]) -> list[str]:

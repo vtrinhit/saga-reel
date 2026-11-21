@@ -109,12 +109,12 @@ def test_pick_times_and_contact_sheet(tmp_path):
 
 
 def test_engine_duration_and_transcript_split():
-    assert clone.engine_and_duration(5.0) == ("ai_video", 6000)
-    assert clone.engine_and_duration(9.0) == ("ai_video", 10000)
-    assert clone.engine_and_duration(14.0) == ("ai_video", 15000)
+    assert clone.engine_and_duration(5.0) == ("ai_video", 5000)
+    assert clone.engine_and_duration(9.0) == ("ai_video", 9000)
+    assert clone.engine_and_duration(14.0) == ("ai_video", 14000)
     assert clone.engine_and_duration(2.0) == ("still_motion", 2000)
     assert clone.engine_and_duration(30.0) == ("still_motion", 30000)
-    assert clone.engine_and_duration(2.0, "ai_video") == ("ai_video", 6000)
+    assert clone.engine_and_duration(2.0, "ai_video") == ("ai_video", 2000)
     scenes = [sc.Scene(0, 2), sc.Scene(2, 4), sc.Scene(4, 6)]
     parts = clone.split_transcript("Một câu. Hai câu. Ba câu.", scenes)
     assert parts == ["Một câu.", "Hai câu.", "Ba câu."]
@@ -217,7 +217,7 @@ def test_clone_dry_run_and_validation(client, clone_setup):
     assert [s["engine"] for s in plan["scenes"]] == ["still_motion"] * 3  # 2 s < 4.5 s
     assert [s["dialogue"] for s in plan["scenes"]] == ["Một.", "Hai.", "Ba."]
     ai = ok(client, "clone.from_video", {**base, "dry_run": True, "engine": "ai_video"})
-    assert [s["duration_ms"] for s in ai["scenes"]] == [6000] * 3
+    assert all(1800 <= s["duration_ms"] <= 2200 for s in ai["scenes"])  # đúng độ dài cảnh, không chốt mức provider
     r = call(client, "clone.from_video", {**base, "replace_map": {"x": "NOPE"}, "dry_run": True})
     assert r.status_code == 422 and r.json()["error_code"] == "asset_not_found"
     r = call(client, "clone.from_video", {**base, "media_id": 999999, "dry_run": True})
@@ -250,7 +250,7 @@ def test_clone_creates_clips(client, svc, clone_setup):
     assert not (svc.settings.cache_dir / "clone" / f"job{job['id']}").exists()
 
 
-def test_clone_ai_video_snaps_durations(client, svc, tmp_path, clone_setup):
+def test_clone_ai_video_keeps_scene_durations(client, svc, tmp_path, clone_setup):
     long_video = _upload(svc, make_three_colors(tmp_path / "long.mp4", seg=5.0, colors=("red", "blue")),
                          clone_setup["project"])
     _llm(svc, {"clone_scene": json.dumps(CLONE_REPLY)})
@@ -258,4 +258,4 @@ def test_clone_ai_video_snaps_durations(client, svc, tmp_path, clone_setup):
     assert job["status"] == "succeeded", job
     assert job["result"]["engines"] == {"ai_video": 2}
     with svc.db.session() as s:
-        assert [c.duration_ms for c in s.scalars(select(Clip).order_by(Clip.rank))] == [6000, 6000]
+        assert all(4700 <= c.duration_ms <= 5300 for c in s.scalars(select(Clip).order_by(Clip.rank)))

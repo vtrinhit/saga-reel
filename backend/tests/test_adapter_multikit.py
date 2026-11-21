@@ -150,7 +150,7 @@ def test_registered_as_video_with_capabilities():
     cls = registry.get("multikit")
     assert cls.kind == "video"
     assert cls.default_capabilities == {
-        "durations": [6, 10, 15], "resolutions": ["480p", "720p", "1080p"], "aspects": ["9:16", "16:9"],
+        "durations": [3, 5, 6, 7, 8, 10, 12, 15], "resolutions": ["480p", "720p", "1080p"], "aspects": ["9:16", "16:9"],
         "needs_image": True, "has_audio": True,
     }
     assert [f.name for f in cls.config_fields if f.type == "secret"] == ["api_key"]
@@ -190,7 +190,7 @@ async def test_health_alive_with_usable_account(adapter):
         "summary": {"total": 1, "usable": 1}}))
     h = await adapter.check_health()
     assert h.status == "alive"
-    assert h.capabilities["durations"] == [6, 10, 15]
+    assert h.capabilities["durations"] == [3, 5, 6, 7, 8, 10, 12, 15]
     assert TG_USER not in h.detail
 
 
@@ -318,7 +318,7 @@ async def test_unparseable_aspect_is_capability_error(adapter, run_ctx, req):
 async def test_unsupported_duration_is_capability_error(adapter, run_ctx, req):
     from sagareel.providers.base import CapabilityError
 
-    req.duration_s = 8
+    req.duration_s = 9
     with pytest.raises(CapabilityError):
         await adapter.generate(req, run_ctx)
     assert run_ctx.saves == []

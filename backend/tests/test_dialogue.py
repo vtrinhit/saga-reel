@@ -193,15 +193,15 @@ def test_duration_plan_modes_and_apply(client, owner_ctx, project):
         s.get(Clip, clips[1]).engine = "still_motion"
         s.get(Clip, clips[2]).duration_ms = 1000
     # fake_tts: 70 ms/ký tự
-    dialogue.create(owner_ctx, clips[0], "x" * 100)                      # 7,0 s → ai_video 10 s
+    dialogue.create(owner_ctx, clips[0], "x" * 100)                      # 7,0 s (+ thở + đệm cắt) → ai_video 8 s
     dialogue.create(owner_ctx, clips[1], "y" * 30, offset_ms=500)         # 0,5 + 2,1 s
     dialogue.create(owner_ctx, clips[2], "z" * 20)                        # 1,4 s trong clip 1 s
     wait_jobs(client, rest(client, "audio.generate", {"sequence_id": seq_id})["job_ids"])
 
     plan = rest(client, "audio.duration_plan", {"sequence_id": seq_id})
-    assert plan["mode"] == "voice_drives" and plan["ai_durations"] == [6, 10, 15]
+    assert plan["mode"] == "voice_drives" and plan["ai_durations"] == []  # không có kết nối video: không ép mức
     by = {x["clip_id"]: x for x in plan["items"]}
-    assert by[clips[0]]["voice_ms"] >= 7000 and by[clips[0]]["ai_duration_s"] == 10
+    assert by[clips[0]]["voice_ms"] >= 7000 and by[clips[0]]["ai_duration_s"] == 8
     assert by[clips[1]]["proposed_ms"] == timing._round_up(by[clips[1]]["voice_ms"])
     assert by[clips[1]]["voice_ms"] >= 2600
 
@@ -216,22 +216,26 @@ def test_duration_plan_modes_and_apply(client, owner_ctx, project):
     with db.session() as s:
         c0 = s.get(Clip, clips[0])
         assert c0.duration_ms == by[clips[0]]["proposed_ms"]
-        assert c0.settings["audio_sync"]["ai_duration_s"] == 10
+        assert c0.settings["audio_sync"]["ai_duration_s"] == 8
     history.undo(dataclasses.replace(owner_ctx, project_id=project))
     with db.session() as s:
         assert s.get(Clip, clips[0]).duration_ms == 6000
 
 
 def test_plan_clip_pure_rules():
-    p = timing.plan_clip(mode="voice_drives", engine="ai_video", current_ms=6000, need_ms=16_500)
+    caps = [6, 10, 15]
+    p = timing.plan_clip(mode="voice_drives", engine="ai_video", current_ms=6000, need_ms=16_500, ai_durations=caps)
     assert p["ai_duration_s"] == 15 and p["video_speed"] == pytest.approx(15000 / 16500, rel=1e-3)
-    p = timing.plan_clip(mode="voice_drives", engine="ai_video", current_ms=6000, need_ms=25_000)
+    p = timing.plan_clip(mode="voice_drives", engine="ai_video", current_ms=6000, need_ms=25_000, ai_durations=caps)
     assert p["video_speed"] == 0.8 and p["hold_last_frame_ms"] == 25_000 - 18_750
     assert p["warnings"][0]["code"] == "voice_exceeds_max_duration"
     p = timing.plan_clip(mode="clip_drives", engine="ai_video", current_ms=6000, need_ms=7000)
     assert p["atempo"] == pytest.approx(7000 / 6000, rel=1e-3) and p["warnings"] == []
-    assert timing.choose_ai_duration(6000, [6, 10, 15]) == (6, True)
-    assert timing.choose_ai_duration(6001, [10, 6]) == (10, True)
+    # mức nhỏ nhất ≥ giọng + 0,3 s đệm cắt; caps rỗng → làm tròn lên giây
+    assert timing.choose_ai_duration(5700, caps) == (6, True)
+    assert timing.choose_ai_duration(5701, [10, 6]) == (10, True)
+    assert timing.choose_ai_duration(16_000, caps) == (15, False)
+    assert timing.choose_ai_duration(6000, []) == (7, True)
 
 
 

@@ -25,7 +25,7 @@ class CloneParams(BaseModel):
     transcript: str | None = Field(default=None, description="Lời dán tay (chưa có STT); chia theo thời lượng cảnh")
     engine: Literal["auto", "ai_video", "still_motion"] = Field(
         default="auto",
-        description="auto: cảnh 4.5-17 s -> ai_video (6/10/15 s), còn lại still_motion đúng thời lượng")
+        description="auto: cảnh 4.5-17 s -> ai_video, còn lại still_motion; clip giữ đúng độ dài cảnh")
     dry_run: bool = Field(default=False, description="Chỉ tách cảnh và trả kế hoạch (không gọi LLM, không tạo job)")
 
 

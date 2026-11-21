@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar
 
+from sagareel.core import durations
 from sagareel.media import ffmpeg
 from sagareel.providers.base import CapabilityError, ConfigField, Health, VideoAdapter, VideoRequest, VideoResult
 from sagareel.providers.fake import ASPECTS, HEALTH_FIELD, aspect_size, fake_health
@@ -18,10 +19,13 @@ class FakeVideoAdapter(VideoAdapter):
     config_fields: ClassVar[list[ConfigField]] = [
         ConfigField("short_side", "Cạnh ngắn (px)", "int", False, 240, help="Kích thước video giả; nhỏ cho nhanh."),
         ConfigField("fps", "Khung hình/giây", "int", False, 12),
+        ConfigField("durations", "Thời lượng hỗ trợ (giây)", "json", False, [],
+                    help="Để trống = tạo đúng số giây được xin; nhập danh sách (vd. [5, 10]) để giả lập provider "
+                         "chỉ có vài mức."),
         HEALTH_FIELD,
     ]
     default_capabilities: ClassVar[dict] = {
-        "durations": [6, 10, 15],
+        "durations": [],  # rỗng = mọi số giây nguyên
         "resolutions": ["480p", "720p", "1080p"],
         "aspects": ASPECTS,
         "needs_image": True,
@@ -36,10 +40,9 @@ class FakeVideoAdapter(VideoAdapter):
 
     async def generate(self, req: VideoRequest, run=None) -> VideoResult:
         caps = self.capabilities()
-        if req.duration_s not in caps["durations"]:
-            raise CapabilityError(
-                f"Thời lượng {req.duration_s} s không được hỗ trợ.", hint=f"Chọn một trong {caps['durations']} giây."
-            )
+        if not durations.supported(caps.get("durations"), req.duration_s):
+            raise CapabilityError(f"Thời lượng {req.duration_s} s không được hỗ trợ.",
+                                  hint=f"Chọn một trong {durations.sanitize(caps.get('durations'))} giây.")
         w, h = aspect_size(req.aspect, int(self.conn.options.get("short_side", 240)))
         fps = max(1, int(self.conn.options.get("fps", 12)))
         d = int(req.duration_s)

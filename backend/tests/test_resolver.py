@@ -23,7 +23,7 @@ M0_DEFAULTS = {
     "image.aspect": ("enum", "9:16", ["9:16", "16:9", "1:1", "4:5", "3:4"]),
     "video.connection": ("str", "groktele", None),
     "video.engine": ("enum", "ai_video", ["ai_video", "still_motion"]),
-    "video.duration": ("enum", 6, [6, 10, 15]),
+    "video.duration": ("int", 6, None),
     "video.resolution": ("enum", "720p", ["480p", "720p", "1080p"]),
     "tts.connection": ("str", "edge-tts", None),
     "tts.voice": ("str", "vi-VN-HoaiMyNeural", None),
@@ -69,7 +69,7 @@ def test_later_layer_wins_and_reports_source():
 
 def test_rejects_value_outside_choices(ctx):
     with pytest.raises(AppError) as e:
-        settings.set_global(ctx, {"video.duration": 7})
+        settings.set_global(ctx, {"video.resolution": "999p"})
     assert e.value.code == "validation_failed"
 
 
@@ -222,7 +222,7 @@ def test_set_global_change_set_has_no_project(ctx):
 
 async def test_set_global_op_checks_run_overrides_before_writing(ctx):
     ops_pkg.load_all()
-    ctx.run_overrides = {"video.duration": 7}
+    ctx.run_overrides = {"video.duration": "bảy"}
     with pytest.raises(AppError) as e:
         await ops.invoke("settings.set_global", {"values": {"prompt.mode": "verbatim"}}, ctx)
     assert e.value.code == "validation_failed"
@@ -266,7 +266,7 @@ def test_explain_with_run_overrides(ctx):
     assert (m["prompt.mode"].value, m["prompt.mode"].source) == ("verbatim", "run")
     assert m["video.duration"].value == 15
     with pytest.raises(AppError) as e:
-        settings.explain(ctx, {"video.duration": 7})
+        settings.explain(ctx, {"video.duration": "bảy"})
     assert e.value.code == "validation_failed"
 
 
@@ -316,7 +316,7 @@ def test_schema_op_via_rest(client):
     by_key = {r["key"]: r for r in rows}
     assert set(by_key) >= set(M0_DEFAULTS)  # task sau thêm khoá (w1 brief)
     assert by_key["video.duration"] == {
-        "key": "video.duration", "type": "enum", "default": 6, "choices": [6, 10, 15],
+        "key": "video.duration", "type": "int", "default": 6, "choices": None,
         "description": by_key["video.duration"]["description"], "secret": False,
     }
     assert client.get("/api/ops").status_code == 200
@@ -330,7 +330,7 @@ def test_set_global_and_explain_via_rest(client):
     rows = client.post("/api/ops/settings.explain", json={"run_overrides": {"video.engine": "ai_video"}}).json()
     assert next(x for x in rows if x["key"] == "video.engine")["source"] == "run"
 
-    bad = client.post("/api/ops/settings.set_global", json={"values": {"video.duration": 7}})
+    bad = client.post("/api/ops/settings.set_global", json={"values": {"video.duration": "bảy"}})
     assert (bad.status_code, bad.json()["error_code"]) == (422, "validation_failed")
     unknown = client.post("/api/ops/settings.explain", json={"run_overrides": {"nope.key": 1}})
     assert (unknown.status_code, unknown.json()["error_code"]) == (400, "unknown_setting")
