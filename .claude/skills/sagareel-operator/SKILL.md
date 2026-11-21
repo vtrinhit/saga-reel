@@ -47,10 +47,10 @@ catalog op). Đọc `AGENTS.md` ở gốc repo nếu cần chi tiết cửa REST
 
 ## Thời lượng clip + tự cắt ("quay dài, cắt gọn")
 
-- `clip.duration_ms` = độ dài **mong muốn trên màn hình**, số bất kỳ (vd. 2300) — bạn chọn theo nội dung (thoại +
+- clip `duration_ms` = độ dài **mong muốn trên màn hình**, số bất kỳ (vd. 2300) — bạn chọn theo nội dung (thoại +
   hành động); không có mức cố định 6 s, thể loại chỉ là tham khảo (lệch chỉ cảnh báo).
-- Tạo video: app xin mức nhỏ nhất ≥ mong muốn + 0,3 s trong `capabilities.durations` của kết nối được chọn
-  (`sr_provider_list`/`provider.check`; sửa bằng `options.durations`). Take ghi `inputs.duration_s` + `desired_ms`.
+- Tạo video: app xin mức nhỏ nhất ≥ mong muốn + 0,3 s trong `durations` trong capabilities của kết nối được chọn
+  (`sr_provider_list`/`provider.check`; sửa bằng `durations` trong options). Take ghi `duration_s` trong inputs + `desired_ms`.
 - Bản dựng tự cắt sát nội dung: clip có câu `source=grok` → từ 0,2 s trước tiếng đầu tới 0,3 s sau tiếng cuối; clip
   không thoại → bỏ đầu/đuôi đứng yên, giữ thời lượng mong muốn; clip lồng tiếng TTS giữ khớp theo giọng. Xem trước:
   `sr_clip_get`/`clip.list` → `auto_trim{in_ms, out_ms, dur_ms, reason}`; phân tích ngay: `clip.analyze_trim(ids)`
