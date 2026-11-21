@@ -1,27 +1,32 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
+import { cardColumns, cardGap, cardRowHeight, type CardState } from '../../lib/clipCard';
 import type { Clip, Scene } from '../../lib/episodeTypes';
-import { buildRows, formatTotalDuration, gridColumns, gridRowHeight, type ClipView } from '../../lib/episodeView';
-import { ClipCard } from './ClipCard';
+import { buildRows, formatTotalDuration } from '../../lib/episodeView';
+import { ClipCard, type CardActions, type CardFlip } from './ClipCard';
 import type { DropTarget } from './useDragReorder';
 
 export const SCENE_ROW_H = 40;
 
-export interface BoardViewProps {
+export interface CardLine {
+  speaker: string;
+  text: string;
+  more: number;
+}
+
+export interface ClipGridProps {
   clips: Clip[];
   scenes: Map<number, Scene>;
   aspect: string;
-  viewOf: (c: Clip) => ClipView;
+  stateOf: (c: Clip) => CardState;
+  lineOf: (c: Clip) => CardLine | null;
+  flipOf: (c: Clip) => CardFlip | null;
   selected: Set<number>;
-  activeId: number | null;
   focusIndex: number;
   draggingIds: Set<number>;
   dropTarget: DropTarget | null;
-  onActivate: (e: React.MouseEvent | React.KeyboardEvent, clip: Clip, index: number) => void;
-  onToggle: (clip: Clip, index: number, shift: boolean) => void;
-  onRetry: (clip: Clip) => void;
-  onGrab: (e: React.PointerEvent<HTMLElement>, clip: Clip) => void;
+  actions: CardActions;
   onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
   /** Báo dải đang hiện (đếm "đang hiện 41–80"). */
   onRange?: (from: number, to: number) => void;
@@ -43,24 +48,37 @@ export function sceneNumbers(clips: Clip[]): Map<number | null, string> {
   return m;
 }
 
+/** "C1 · Clip 3" (clip chưa thuộc cảnh: "Clip 3"). */
+export function clipTitle(sceneNo: string | undefined, index: number): string {
+  return sceneNo && sceneNo !== '—' ? `${sceneNo} · Clip ${index + 1}` : `Clip ${index + 1}`;
+}
+
 /**
- * Lưới storyboard ảo hoá theo HÀNG (DESIGN §4.6): chiều cao hàng tính trước từ bề rộng (không đo DOM → không nhảy
- * bố cục), tiêu đề cảnh là hàng riêng 40px, dính trên khung. Khung cuộn riêng (`role=grid`, tabIndex 0).
+ * Lưới card sản xuất ảo hoá theo HÀNG (DESIGN §4.6): chiều cao hàng tính trước từ bề rộng (không đo DOM → không nhảy
+ * bố cục), hàng có thoại cao thêm đúng một dòng; tiêu đề cảnh là hàng riêng 40px, dính trên khung. Hàng đang có menu
+ * mở (focus bên trong) nổi lên trên hàng kế để menu không bị che.
  */
-export const ClipGrid = forwardRef<BoardHandle, BoardViewProps>(function ClipGrid(p, ref) {
+export const ClipGrid = forwardRef<BoardHandle, ClipGridProps>(function ClipGrid(p, ref) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth - 24));
+    const pad = () => (el.clientWidth < 480 ? 0 : 24);
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth - pad()));
     ro.observe(el);
-    setWidth(el.clientWidth - 24);
+    setWidth(el.clientWidth - pad());
     return () => ro.disconnect();
   }, []);
-  const cols = gridColumns(width, p.aspect);
+  const cols = cardColumns(width, p.aspect);
+  const gap = cardGap(width);
   const rows = useMemo(() => buildRows(p.clips, p.scenes, cols), [p.clips, p.scenes, cols]);
-  const rowH = width > 0 ? gridRowHeight(width, cols, p.aspect) : 320;
+  const lineOf = p.lineOf;
+  const rowHasLine = useMemo(
+    () => rows.map((r) => r.kind === 'clips' && r.clips.some((c) => lineOf(c) != null)),
+    [rows, lineOf],
+  );
+  const rowH = (withLine: boolean) => (width > 0 ? cardRowHeight(width, cols, p.aspect, withLine) : 420);
   const sceneNo = useMemo(() => sceneNumbers(p.clips), [p.clips]);
   const rowOfIndex = useMemo(() => {
     const m: number[] = [];
@@ -69,16 +87,18 @@ export const ClipGrid = forwardRef<BoardHandle, BoardViewProps>(function ClipGri
     });
     return m;
   }, [rows]);
+  const compact = width > 0 && (width - gap * (cols - 1)) / cols < 200;
 
   const v = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => (rows[i]?.kind === 'scene' ? SCENE_ROW_H : rowH),
+    estimateSize: (i) => (rows[i]?.kind === 'scene' ? SCENE_ROW_H : rowH(rowHasLine[i])),
     overscan: 3,
     useFlushSync: false,
     getItemKey: (i) => rows[i]?.key ?? i,
   });
-  useEffect(() => v.measure(), [rowH, v]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => v.measure(), [width, cols, rowHasLine, v]);
 
   useImperativeHandle(ref, () => ({
     el: scrollRef.current,
@@ -110,6 +130,7 @@ export const ClipGrid = forwardRef<BoardHandle, BoardViewProps>(function ClipGri
   // tiêu đề cảnh dính: cảnh của hàng đầu đang hiện
   const firstVisible = items.find((it) => it.end > (v.scrollOffset ?? 0));
   const stickyRow = firstVisible ? rows.slice(0, firstVisible.index + 1).reverse().find((r) => r.kind === 'scene') : undefined;
+  const selecting = p.selected.size > 0;
 
   return (
     <div
@@ -119,11 +140,11 @@ export const ClipGrid = forwardRef<BoardHandle, BoardViewProps>(function ClipGri
       aria-rowcount={rows.length}
       tabIndex={-1}
       onKeyDown={p.onKeyDown}
-      className="relative min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain px-3 [contain:strict]"
+      className="relative min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain [contain:strict] sm:px-3"
       style={{ height: '100%' }}
     >
       {stickyRow && stickyRow.kind === 'scene' ? (
-        <div aria-hidden className="pointer-events-none sticky top-0 z-sticky -mx-3 h-0">
+        <div aria-hidden className="pointer-events-none sticky top-0 z-sticky h-0 sm:-mx-3">
           <SceneHeader row={stickyRow} sceneNo={sceneNo} className="bg-bg-0/95" passive />
         </div>
       ) : null}
@@ -135,16 +156,13 @@ export const ClipGrid = forwardRef<BoardHandle, BoardViewProps>(function ClipGri
               key={it.key}
               role="row"
               aria-rowindex={it.index + 1}
-              className="absolute inset-x-0 top-0"
+              className="absolute inset-x-0 top-0 focus-within:z-dropdown"
               style={{ transform: `translateY(${it.start}px)`, height: it.size }}
             >
               {r.kind === 'scene' ? (
                 <SceneHeader row={r} sceneNo={sceneNo} dropActive={p.dropTarget?.scene !== undefined && p.dropTarget.index === r.firstIndex} />
               ) : (
-                <div
-                  className="grid gap-3 pb-3"
-                  style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-                >
+                <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap, paddingBottom: gap }}>
                   {r.clips.map((c, k) => {
                     const i = r.firstIndex + k;
                     return (
@@ -152,17 +170,18 @@ export const ClipGrid = forwardRef<BoardHandle, BoardViewProps>(function ClipGri
                         key={c.id}
                         clip={c}
                         index={i}
-                        sceneNo={sceneNo.get(c.scene_id) ?? '—'}
-                        view={p.viewOf(c)}
+                        title={clipTitle(sceneNo.get(c.scene_id), i)}
+                        state={p.stateOf(c)}
                         aspect={p.aspect}
                         selected={p.selected.has(c.id)}
-                        active={p.activeId === c.id}
+                        selecting={selecting}
                         focused={p.focusIndex === i}
                         dragging={p.draggingIds.has(c.id)}
-                        onActivate={p.onActivate}
-                        onToggle={p.onToggle}
-                        onRetry={p.onRetry}
-                        onGrab={p.onGrab}
+                        compact={compact}
+                        lineSlot={rowHasLine[it.index]}
+                        line={lineOf(c)}
+                        flip={p.flipOf(c)}
+                        actions={p.actions}
                       />
                     );
                   })}
@@ -195,7 +214,7 @@ export function SceneHeader({
       data-scene-first={passive ? undefined : row.firstIndex}
       data-scene-id={passive ? undefined : (row.sceneId ?? '')}
       className={cn(
-        'flex h-10 min-w-0 items-center gap-2 px-3 text-sm',
+        'flex h-10 min-w-0 items-center gap-2 px-1 text-sm sm:px-3',
         dropActive && 'shadow-[inset_0_-2px_0_rgb(var(--c-accent))]',
         className,
       )}
@@ -203,7 +222,7 @@ export function SceneHeader({
       <span className="flex-none font-mono text-xs text-fg-3">{sceneNo.get(row.sceneId) ?? ''}</span>
       <h3 className="min-w-0 truncate py-px font-semibold">{row.title}</h3>
       <span className="flex-none whitespace-nowrap text-xs text-fg-2 tnum">
-        Clip {row.firstIndex + 1}–{row.firstIndex + row.count} · {formatTotalDuration(row.durationMs)}
+        {row.count} clip · {formatTotalDuration(row.durationMs)}
       </span>
     </div>
   );

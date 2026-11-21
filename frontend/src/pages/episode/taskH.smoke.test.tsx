@@ -56,6 +56,10 @@ function backend(): AxiosAdapter {
           return { items: [take(12), take(11)], selected: { image: 11 } };
         case 'pipeline.status':
           return { items: [] };
+        case 'dialogue.list':
+          return { items: body.sequence_id || body.clip_id === 1 ? [{ id: 5, clip_id: 1, speaker_asset_id: null, text: 'Đêm nay trăng máu.', emotion: '', offset_ms: 0, updated_at: '' }] : [] };
+        case 'provider.list':
+        case 'provider.adapters':
         case 'asset.list':
         case 'export.list':
         case 'job.list':
@@ -104,11 +108,39 @@ describe('Task H — smoke', () => {
   it('bảng clip: toolbar, lint, nạp clip qua review.queue mọi trạng thái duyệt', async () => {
     await render('/p/1/s/4', '/p/:projectId/s/:seqId', <Episode />);
     expect(container.textContent).toContain('Lưới');
-    expect(container.textContent).toContain('Xuất shot list');
+    // nhập/xuất gom vào một menu (bớt nút trên thanh công cụ)
+    expect(container.textContent).toContain('Nhập · xuất');
+    expect(container.textContent).not.toContain('Xuất shot list');
+    // không còn công tắc Ảnh/Video chung cho cả trang: mỗi card tự đổi
+    expect(container.querySelector('[aria-label="Phần đang xem"]')).toBeNull();
     expect(container.textContent).toContain('1 cảnh báo nhịp');
     const q = calls.find((c) => c.op === 'review.queue')!;
     expect((q.body.filter as { review: string[] }).review).toEqual(['pending', 'approved', 'rejected', 'skipped']);
     expect(container.textContent).toContain('3 clip');
+    // dòng thoại nạp một lượt cho cả tập, không gọi theo từng clip
+    expect(calls.filter((c) => c.op === 'dialogue.list').map((c) => c.body)).toEqual([{ sequence_id: 4 }]);
+  });
+
+  it('bảng clip: ?clip=<id> mở trình xem lớn (dialog gốc) với prompt, shot dễ hiểu và thoại', async () => {
+    await render('/p/1/s/4?clip=1', '/p/:projectId/s/:seqId', <Episode />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    const dlg = container.querySelector('dialog');
+    expect(dlg?.hasAttribute('open')).toBe(true);
+    expect(dlg?.textContent).toContain('C1 · Clip 1');
+    expect(dlg?.textContent).toContain('1/3');
+    expect(dlg?.textContent).toContain('Prompt 1');
+    expect(dlg?.textContent).toContain('Trung cảnh');
+    expect(dlg?.textContent).toContain('Nâng cao');
+    expect([...dlg!.querySelectorAll('input')].some((i) => i.value === 'Đêm nay trăng máu.')).toBe(true);
+    // → sang clip kế
+    await act(async () => {
+      dlg!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(container.querySelector('dialog')?.textContent).toContain('2/3');
+    expect(container.querySelector('dialog')?.textContent).toContain('Prompt 2');
   });
 
   it('duyệt: hàng đợi, take, thanh quyết định và phím A gọi take.verdict keep', async () => {

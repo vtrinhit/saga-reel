@@ -3,16 +3,37 @@ import { Bot, GripVertical } from 'lucide-react';
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
 import type { AssetBrief, Clip } from '../../lib/episodeTypes';
-import { useEnumOptions } from '../../lib/episodeData';
-import { buildRows, ENGINE_LABEL, formatClipSeconds, shotShort, type ClipView } from '../../lib/episodeView';
+import { buildRows, ENGINE_LABEL, formatClipSeconds, type ClipView } from '../../lib/episodeView';
+import type { Scene } from '../../lib/episodeTypes';
+import { shotOptionText, shotOptions } from '../../lib/shotLabels';
+import { useShotMeta } from './ShotFields';
 import { StatusPill } from '../ui/StatusPill';
 import { thumbUrl } from './ClipCard';
-import { SceneHeader, sceneNumbers, type BoardHandle, type BoardViewProps } from './ClipGrid';
+import { SceneHeader, sceneNumbers, type BoardHandle } from './ClipGrid';
+import type { DropTarget } from './useDragReorder';
+
+export interface BoardViewProps {
+  clips: Clip[];
+  scenes: Map<number, Scene>;
+  aspect: string;
+  viewOf: (c: Clip) => ClipView;
+  selected: Set<number>;
+  activeId: number | null;
+  focusIndex: number;
+  draggingIds: Set<number>;
+  dropTarget: DropTarget | null;
+  onActivate: (e: React.MouseEvent | React.KeyboardEvent, clip: Clip, index: number) => void;
+  onToggle: (clip: Clip, index: number, shift: boolean) => void;
+  onRetry: (clip: Clip) => void;
+  onGrab: (e: React.PointerEvent<HTMLElement>, clip: Clip) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
+  onRange?: (from: number, to: number) => void;
+}
 
 export const TABLE_ROW_H = 56;
 const HEAD_H = 36;
 /** Cột: kéo · chọn · thumb · # · prompt · nhân vật · cỡ · thời lượng · engine · trạng thái */
-const COLS = '28px 32px 40px 44px minmax(200px,1fr) 120px 96px 72px 84px 120px';
+const COLS = '28px 32px 40px 44px minmax(200px,1fr) 120px 136px 72px 84px 120px';
 
 export interface TableEditProps {
   assets: Map<number, AssetBrief>;
@@ -216,7 +237,7 @@ interface RowProps {
 }
 
 const TableRow = memo(function TableRow(p: RowProps) {
-  const enums = useEnumOptions();
+  const meta = useShotMeta();
   const { clip: c, view } = p;
   const src = thumbUrl(view.take?.media?.id ?? view.take?.media_id, 96);
   const agent = (c.image_prompt_src?.source === 'agent' || String(c.image_prompt_src?.actor ?? '').startsWith('agent:'))
@@ -327,12 +348,12 @@ const TableRow = memo(function TableRow(p: RowProps) {
           aria-label={`Cỡ cảnh clip ${p.index + 1}`}
           value={c.shot_size}
           onChange={(e) => p.onShot(c, e.target.value)}
-          className="h-7 w-full rounded-sm border border-line-2 bg-bg-2 px-1 font-mono text-xs hover:border-line-3"
+          className="h-7 w-full rounded-sm border border-line-2 bg-bg-2 px-1 text-xs hover:border-line-3"
         >
-          <option value="">—</option>
-          {enums.shot.shot_size.map(([k, label]) => (
-            <option key={k} value={k} title={label}>
-              {shotShort(k)}
+          <option value="">Chưa đặt</option>
+          {shotOptions('shot_size', meta).map((o) => (
+            <option key={o.value} value={o.value} title={shotOptionText(o)}>
+              {o.label}
             </option>
           ))}
         </select>
