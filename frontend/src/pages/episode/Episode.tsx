@@ -24,12 +24,12 @@ import { Modal } from '../../components/ui/Modal';
 import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { SkeletonCardGrid } from '../../components/ui/Skeleton';
 import { isTypingTarget } from '../../components/shell/useShellKeys';
-import { cardState, hasImage, type CardState } from '../../lib/clipCard';
+import { cardState, hasImage, totalLength, type CardState } from '../../lib/clipCard';
 import { patchClip, epKeys, useAssets, useEnumOptions, useEpisodeClips, useEpisodeLive, useLint, useScenes } from '../../lib/episodeData';
 import { applyPlan, moveAnnouncement, planMove, planStep, type MovePlan } from '../../lib/episodeOrder';
 import type { Clip, DialogueLine, Take } from '../../lib/episodeTypes';
 import { undoAction } from '../../lib/episodeUndo';
-import { clipView, type ActiveJob, type ViewPart } from '../../lib/episodeView';
+import { clipView, formatTotalDuration, type ActiveJob, type ViewPart } from '../../lib/episodeView';
 import { boardKeyAction } from '../../lib/reviewKeys';
 import { shotOptions, shotOptionText, SHOT_KEY_LABEL, type ShotKey } from '../../lib/shotLabels';
 import { toast } from '../../stores/toast';
@@ -580,7 +580,7 @@ export function Episode() {
           )}
         />
         <span className="text-xs text-fg-2 tnum">
-          {clipsQ.data ? `${clips.length.toLocaleString('vi-VN')} clip` : ''}
+          {clipsQ.data ? `${clips.length.toLocaleString('vi-VN')} clip · ${formatTotalDuration(totalLength(clips))}` : ''}
           {clipsQ.data && filter === 'all' && noImage ? ` · ${noImage.toLocaleString('vi-VN')} chưa có ảnh` : ''}
           <span ref={rangeRef} hidden={clips.length <= 40} />
         </span>

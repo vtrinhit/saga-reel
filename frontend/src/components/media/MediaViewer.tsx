@@ -125,7 +125,7 @@ export function MediaViewer({
                   <IconButton icon={ChevronRight} label="Clip kế (→)" disabled={index >= count - 1} onClick={() => go('next')} />
                 </>
               ) : null}
-              <IconButton icon={X} label="Đóng (Esc)" onClick={onClose} data-autofocus />
+              <IconButton icon={X} label="Đóng (Esc)" onClick={onClose} autoFocus />
             </div>
           </header>
           <div className="grid min-h-0 grid-cols-1 overflow-y-auto overscroll-contain lg:grid-cols-[minmax(0,1fr)_var(--w-viewer-aside)] lg:overflow-hidden">

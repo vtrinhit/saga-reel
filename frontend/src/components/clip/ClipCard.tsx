@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { cn, focusRing } from '../../lib/cn';
-import type { CardState } from '../../lib/clipCard';
+import { effectiveLength, type CardState } from '../../lib/clipCard';
 import type { Clip } from '../../lib/episodeTypes';
 import { formatClipSeconds, type ViewPart } from '../../lib/episodeView';
 import { Button } from '../ui/Button';
@@ -86,6 +86,7 @@ export const ClipCard = memo(function ClipCard({
   const v = state.view;
   const press = useRef<{ t: ReturnType<typeof setTimeout>; fired: boolean } | null>(null);
   const prompt = state.part === 'video' && c.motion_prompt ? c.motion_prompt : c.image_prompt;
+  const len = effectiveLength(c);
 
   // Giữ lâu (cảm ứng) = chọn nhiều; trong chế độ chọn, chạm = chọn/bỏ chọn.
   const onPointerDown = (e: React.PointerEvent) => {
@@ -413,7 +414,10 @@ export const ClipCard = memo(function ClipCard({
           <GripVertical className="h-3.5 w-3.5" aria-hidden />
         </span>
         <span className="min-w-0 flex-1 truncate py-px pl-1 text-xs text-fg-2">{compact ? title.replace(/^C\d+ · /, '') : title}</span>
-        <span className="flex-none pr-1 font-mono text-xs text-fg-3 tnum">{formatClipSeconds(c.duration_ms)}</span>
+        <span className="flex-none whitespace-nowrap pr-1 text-xs text-fg-3" title={len.note ? `${formatClipSeconds(len.ms)} · ${len.note} (mong muốn ${formatClipSeconds(c.duration_ms)})` : undefined}>
+          <span className="font-mono tnum">{formatClipSeconds(len.ms)}</span>
+          {len.note && !compact ? <span> · {len.note}</span> : null}
+        </span>
         {primary && state.kind !== 'empty' && state.hasImage ? (
           <Button
             variant="secondary"

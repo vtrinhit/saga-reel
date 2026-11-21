@@ -81,6 +81,36 @@ export function cardState(c: Clip, wanted: ViewPart | null | undefined, job?: Ac
 }
 
 /* ---------------------------------------------------------------- */
+/* Độ dài hiệu lực (tự cắt)                                          */
+/* ---------------------------------------------------------------- */
+
+export interface ClipLength {
+  ms: number;
+  /** Ghi chú ngắn cạnh số giây: "tự cắt" / "nguyên take" / ''. */
+  note: string;
+}
+
+/**
+ * Độ dài clip trong bản dựng: có video + chế độ tự cắt đã áp dụng → `auto_trim.dur_ms`; "nguyên take" → độ dài take;
+ * còn lại (thủ công, chưa có video, chưa phân tích) → `duration_ms`.
+ */
+export function effectiveLength(c: Clip): ClipLength {
+  const mode = c.trim_mode ?? 'auto';
+  const at = c.auto_trim;
+  if (hasVideo(c) && mode === 'auto' && at?.applied && at.dur_ms != null) return { ms: at.dur_ms, note: 'tự cắt' };
+  if (hasVideo(c) && mode === 'none') {
+    const take = at?.take_ms ?? c.source_duration_ms;
+    if (take) return { ms: take, note: 'nguyên take' };
+  }
+  return { ms: c.duration_ms, note: '' };
+}
+
+/** Tổng độ dài (ms) của các clip theo độ dài hiệu lực. */
+export function totalLength(clips: Clip[]): number {
+  return clips.reduce((s, c) => s + effectiveLength(c).ms, 0);
+}
+
+/* ---------------------------------------------------------------- */
 /* Lưới card                                                         */
 /* ---------------------------------------------------------------- */
 

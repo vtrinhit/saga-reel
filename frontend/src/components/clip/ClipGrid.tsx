@@ -1,7 +1,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
-import { cardColumns, cardGap, cardRowHeight, type CardState } from '../../lib/clipCard';
+import { cardColumns, cardGap, cardRowHeight, totalLength, type CardState } from '../../lib/clipCard';
 import type { Clip, Scene } from '../../lib/episodeTypes';
 import { buildRows, formatTotalDuration } from '../../lib/episodeView';
 import { ClipCard, type CardActions, type CardFlip } from './ClipCard';
@@ -72,7 +72,14 @@ export const ClipGrid = forwardRef<BoardHandle, ClipGridProps>(function ClipGrid
   }, []);
   const cols = cardColumns(width, p.aspect);
   const gap = cardGap(width);
-  const rows = useMemo(() => buildRows(p.clips, p.scenes, cols), [p.clips, p.scenes, cols]);
+  // Tổng mỗi cảnh theo độ dài hiệu lực (tự cắt) như bản dựng, không theo độ dài mong muốn.
+  const rows = useMemo(
+    () =>
+      buildRows(p.clips, p.scenes, cols).map((r) =>
+        r.kind === 'scene' ? { ...r, durationMs: totalLength(p.clips.slice(r.firstIndex, r.firstIndex + r.count)) } : r,
+      ),
+    [p.clips, p.scenes, cols],
+  );
   const lineOf = p.lineOf;
   const rowHasLine = useMemo(
     () => rows.map((r) => r.kind === 'clips' && r.clips.some((c) => lineOf(c) != null)),

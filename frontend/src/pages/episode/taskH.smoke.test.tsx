@@ -133,7 +133,7 @@ describe('Task H — smoke', () => {
     expect(dlg?.textContent).toContain('Prompt 1');
     expect(dlg?.textContent).toContain('Trung cảnh');
     expect(dlg?.textContent).toContain('Nâng cao');
-    expect([...dlg!.querySelectorAll('input')].some((i) => i.value === 'Đêm nay trăng máu.')).toBe(true);
+    expect(Array.from(dlg!.querySelectorAll('input')).some((i) => i.value === 'Đêm nay trăng máu.')).toBe(true);
     // → sang clip kế
     await act(async () => {
       dlg!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));

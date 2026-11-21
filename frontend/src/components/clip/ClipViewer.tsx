@@ -6,11 +6,12 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router';
 import { callOp } from '../../api/ops';
 import { cn, focusRing } from '../../lib/cn';
-import { cardState, hasImage, hasVideo } from '../../lib/clipCard';
+import { cardState, effectiveLength, hasImage, hasVideo } from '../../lib/clipCard';
 import { useEnumOptions } from '../../lib/episodeData';
 import type { AssetBrief, Clip, DialogueLine, PromptPreview, Take } from '../../lib/episodeTypes';
 import { undoAction } from '../../lib/episodeUndo';
 import { formatClipSeconds, type ActiveJob, type ViewPart } from '../../lib/episodeView';
+import { TRIM_REASON } from '../../lib/studioData';
 import { toast } from '../../stores/toast';
 import { MediaViewer } from '../media/MediaViewer';
 import { Button } from '../ui/Button';
@@ -69,7 +70,8 @@ export function ClipViewer(p: ClipViewerProps) {
       meta={
         <>
           <span className="font-mono tnum">{c.key}</span>
-          <span className="font-mono tnum">{formatClipSeconds(c.duration_ms)}</span>
+          <span className="font-mono tnum">{formatClipSeconds(effectiveLength(c).ms)}</span>
+          {effectiveLength(c).note ? <span>{effectiveLength(c).note}</span> : null}
           {state.view.status !== 'empty' && state.view.status !== 'done' ? (
             <StatusPill status={state.view.status} label={state.view.label} />
           ) : null}
@@ -139,19 +141,8 @@ function Stage({
     );
   }
   if (part === 'video' && (!peek || peek.part === 'video')) {
-    return (
-      <video
-        key={media}
-        src={`/media/${media}`}
-        poster={`/media/${media}/thumb?w=720`}
-        controls
-        autoPlay
-        playsInline
-        preload="metadata"
-        className="max-h-full max-w-full rounded-sm bg-stage object-contain"
-        aria-label={`Video ${c.key}`}
-      />
-    );
+    // Xem thử take khác: không áp đoạn cắt của take đang chọn.
+    return <TrimmedVideo key={media} media={media} clipKey={c.key} range={peek ? null : keptRange(c)} />;
   }
   return (
     <img
@@ -161,6 +152,170 @@ function Stage({
       decoding="async"
       className="max-h-full max-w-full rounded-sm object-contain"
     />
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Cắt video: đoạn giữ lại trên thanh thời gian + chế độ cắt         */
+/* ---------------------------------------------------------------- */
+
+interface KeptRange {
+  inMs: number;
+  outMs: number;
+  takeMs: number;
+  label: string;
+}
+
+/** Đoạn giữ lại của take đang chọn theo chế độ cắt (null = dùng cả take / chưa biết độ dài take). */
+export function keptRange(c: Clip): KeptRange | null {
+  const mode = c.trim_mode ?? 'auto';
+  const at = c.auto_trim;
+  const take = at?.take_ms ?? c.source_duration_ms ?? null;
+  if (!take) return null;
+  if (mode === 'auto' && at?.applied) return { inMs: at.in_ms, outMs: take - at.out_ms, takeMs: take, label: 'Tự cắt' };
+  if (mode === 'manual' && ((c.trim_in_ms ?? 0) > 0 || (c.trim_out_ms ?? 0) > 0)) {
+    return { inMs: c.trim_in_ms ?? 0, outMs: Math.max(c.trim_in_ms ?? 0, take - (c.trim_out_ms ?? 0)), takeMs: take, label: 'Cắt tay' };
+  }
+  return null;
+}
+
+/**
+ * Video có điều khiển gốc; khi clip có đoạn cắt: bắt đầu ở điểm vào, phát vòng trong đoạn giữ lại, và dưới video là thanh
+ * thời gian của cả take với đoạn giữ lại tô sáng (phần bị cắt mờ) + vạch đang phát. Bấm thanh để tua.
+ */
+function TrimmedVideo({ media, clipKey, range }: { media: number; clipKey: string; range: KeptRange | null }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [t, setT] = useState(range ? range.inMs : 0);
+  const pct = (ms: number) => `${Math.min(100, Math.max(0, (ms / (range?.takeMs || 1)) * 100))}%`;
+  return (
+    <div className="grid h-full w-full min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-2">
+      <video
+        ref={ref}
+        src={`/media/${media}`}
+        poster={`/media/${media}/thumb?w=720`}
+        controls
+        autoPlay
+        playsInline
+        preload="metadata"
+        className="h-full min-h-0 w-full rounded-sm bg-stage object-contain"
+        aria-label={`Video ${clipKey}`}
+        onLoadedMetadata={(e) => {
+          if (range) e.currentTarget.currentTime = range.inMs / 1000;
+        }}
+        onTimeUpdate={(e) => {
+          const v = e.currentTarget;
+          const ms = v.currentTime * 1000;
+          if (range && !v.paused && (ms > range.outMs || ms < range.inMs - 250)) v.currentTime = range.inMs / 1000;
+          setT(ms);
+        }}
+      />
+      {range ? (
+        <div className="grid gap-1">
+          <button
+            type="button"
+            aria-label={`Thanh thời gian của take: giữ ${(range.inMs / 1000).toFixed(1)}–${(range.outMs / 1000).toFixed(1)} giây. Bấm để tua.`}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              const ms = ((e.clientX - r.left) / r.width) * range.takeMs;
+              if (ref.current) ref.current.currentTime = ms / 1000;
+            }}
+            className={cn('relative h-3 w-full overflow-hidden rounded-sm bg-bg-3', focusRing)}
+          >
+            <span aria-hidden className="absolute inset-y-0 bg-fg-2/70" style={{ left: pct(range.inMs), width: `calc(${pct(range.outMs)} - ${pct(range.inMs)})` }} />
+            <span aria-hidden className="absolute inset-y-0 w-0.5 bg-fg-1" style={{ left: pct(t) }} />
+          </button>
+          <p className="flex justify-between font-mono text-2xs text-fg-2 tnum">
+            <span>
+              {range.label}: giữ {fmtS(range.inMs)}–{fmtS(range.outMs)}
+            </span>
+            <span>take {fmtS(range.takeMs)}</span>
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const fmtS = (ms: number) => `${(ms / 1000).toLocaleString('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} s`;
+
+const TRIM_MODES: { value: NonNullable<Clip['trim_mode']>; label: string }[] = [
+  { value: 'auto', label: 'Tự cắt' },
+  { value: 'manual', label: 'Thủ công' },
+  { value: 'none', label: 'Nguyên take' },
+];
+
+/** Cắt video của clip (giống Studio): tự cắt sát nội dung (đề xuất + lý do, phân tích ngay), trim tay, nguyên take. */
+function TrimBlock({ clip: c, onSave }: { clip: Clip; onSave: (v: Partial<Clip>) => void }) {
+  const qc = useQueryClient();
+  const mode = c.trim_mode ?? 'auto';
+  const at = c.auto_trim ?? null;
+  const take = at?.take_ms ?? c.source_duration_ms ?? null;
+  const [busy, setBusy] = useState(false);
+  const setMode = (m: NonNullable<Clip['trim_mode']>) => {
+    if (m === mode) return;
+    if (m === 'auto') onSave({ trim_mode: 'auto', trim_in_ms: 0, trim_out_ms: 0 });
+    else if (m === 'manual') onSave({ trim_mode: 'manual', ...(at?.applied ? { trim_in_ms: at.in_ms, trim_out_ms: at.out_ms } : {}) });
+    else onSave({ trim_mode: 'none' });
+  };
+  const analyze = async () => {
+    setBusy(true);
+    try {
+      const j = (await callOp('clip.analyze_trim', { ids: [c.id] })) as unknown as { id: number };
+      await callOp('job.wait', { ids: [j.id], timeout_s: 120 });
+      await qc.invalidateQueries({ queryKey: ['episode', c.sequence_id] });
+      toast({ message: `Đã phân tích video ${c.key} để tự cắt.`, tone: 'success' });
+    } catch (e) {
+      toast({ message: `Không phân tích được video: ${errText(e)}`, tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Section title="Cắt video" extra={take ? `take ${fmtS(take)}` : undefined}>
+      <SegmentedControl label="Cách cắt video" options={TRIM_MODES} value={mode} onChange={setMode} />
+      {mode === 'auto' ? (
+        <div className="grid gap-1.5 text-sm">
+          {at?.applied && take ? (
+            <p>
+              Giữ <span className="font-mono tnum">{fmtS(at.in_ms)}–{fmtS(take - at.out_ms)}</span>
+              {at.dur_ms != null ? <span className="text-fg-2"> · còn {fmtS(at.dur_ms)}</span> : null}
+            </p>
+          ) : null}
+          <p className="text-xs text-fg-2">{TRIM_REASON[at?.reason ?? 'not_analyzed'] ?? at?.reason}</p>
+          {!at || at.reason === 'not_analyzed' ? (
+            <Button className="justify-self-start" loading={busy} onClick={() => void analyze()}>
+              Phân tích video (miễn phí)
+            </Button>
+          ) : null}
+        </div>
+      ) : mode === 'manual' ? (
+        <div className="grid grid-cols-2 gap-2">
+          <MsField key={`in:${c.trim_in_ms ?? 0}`} label="Cắt đầu (giây)" ms={c.trim_in_ms ?? 0} onCommit={(ms) => onSave({ trim_in_ms: ms })} />
+          <MsField key={`out:${c.trim_out_ms ?? 0}`} label="Cắt cuối (giây)" ms={c.trim_out_ms ?? 0} onCommit={(ms) => onSave({ trim_out_ms: ms })} />
+        </div>
+      ) : (
+        <p className="text-xs text-fg-2">Dùng cả take{take ? ` (${fmtS(take)})` : ''}, không cắt và không khớp độ dài mong muốn.</p>
+      )}
+    </Section>
+  );
+}
+
+function MsField({ label, ms, onCommit }: { label: string; ms: number; onCommit: (ms: number) => void }) {
+  const id = useId();
+  const [v, setV] = useState(String(ms / 1000).replace('.', ','));
+  const commit = () => {
+    const s = Number(v.replace(',', '.'));
+    if (!Number.isFinite(s) || s < 0) return setV(String(ms / 1000).replace('.', ','));
+    const next = Math.round(s * 1000);
+    if (next !== ms) onCommit(next);
+  };
+  return (
+    <div className="grid min-w-0 gap-1">
+      <label htmlFor={id} className="text-xs text-fg-2">
+        {label}
+      </label>
+      <input id={id} inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} className={cn(box, 'h-control py-0 font-mono tnum')} />
+    </div>
   );
 }
 
@@ -320,6 +475,8 @@ function Details(
 
       <PromptBlock clip={c} part={part} onSave={p.onSave} />
       <DialogueBlock clip={c} assets={p.assets} />
+
+      {p.hasVid ? <TrimBlock clip={c} onSave={save} /> : null}
 
       <Section title="Shot">
         <ShotFields clip={c} onSave={save} extraAdvanced={<EngineLink clip={c} onSave={save} />} />

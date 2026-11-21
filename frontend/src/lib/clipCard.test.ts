@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardColumns, cardRowHeight, cardState, defaultPart } from './clipCard';
+import { cardColumns, cardRowHeight, cardState, defaultPart, effectiveLength, totalLength } from './clipCard';
 import type { Clip } from './episodeTypes';
 import { shotOption, shotOptions, shotOptionText, shotText } from './shotLabels';
 import { stepIndex, swipeAction, viewerKeyAction } from './viewerNav';
@@ -76,6 +76,23 @@ describe('cardState — máy trạng thái card', () => {
     expect(cardState(clip({ image_take_id: 3, flags: { stale_image: true } }), null).view.status).toBe('stale');
     expect(cardState(clip({ image_take_id: 3, flags: { drift: true } }), null).view.status).toBe('drifted');
     expect(cardState(clip({ image_take_id: 3, review: 'approved' }), null).view.status).toBe('approved');
+  });
+});
+
+describe('độ dài hiệu lực (tự cắt)', () => {
+  const at = { applied: true, in_ms: 400, out_ms: 2200, dur_ms: 3400, reason: 'speech', take_ms: 6000 };
+  const vid = { image_take_id: 3, video_take_id: 4, video_media_id: 40, source_duration_ms: 6042 };
+  it('tự cắt đã áp dụng → dur_ms của đề xuất, ghi "tự cắt"', () => {
+    expect(effectiveLength(clip({ ...vid, auto_trim: at }))).toEqual({ ms: 3400, note: 'tự cắt' });
+  });
+  it('chưa phân tích / thủ công / chưa có video → duration_ms', () => {
+    expect(effectiveLength(clip({ ...vid, auto_trim: { ...at, applied: false, dur_ms: null } })).ms).toBe(6000);
+    expect(effectiveLength(clip({ ...vid, auto_trim: at, trim_mode: 'manual' })).note).toBe('');
+    expect(effectiveLength(clip({ auto_trim: at })).ms).toBe(6000);
+  });
+  it('nguyên take → độ dài take; tổng tập cộng theo độ dài hiệu lực', () => {
+    expect(effectiveLength(clip({ ...vid, auto_trim: at, trim_mode: 'none' }))).toEqual({ ms: 6000, note: 'nguyên take' });
+    expect(totalLength([clip({ ...vid, auto_trim: at }), clip()])).toBe(9400);
   });
 });
 
