@@ -40,7 +40,7 @@ catalog op). Đọc `AGENTS.md` ở gốc repo nếu cần chi tiết cửa REST
   ảnh/chuyển động, thoại, bộ nhớ), `sr_prompts_submit`, `sr_clip_update`, `sr_dialogue_bulk_set`, `sr_bible_create`,
   `sr_export_create(metadata=…)`. SagaReel chỉ tạo ảnh/video/giọng, dựng, xuất. Không cần prompt của dự án.
   Playbook: `playbooks/agent-only.md`.
-- **Agent điều khiển LLM của tool:** gọi `sr_story_*`, `sr_pipeline_run` — tool dùng prompt CỦA DỰ ÁN + tự nối khối
+- **Agent điều khiển LLM của tool:** gọi `sr_story_write_bible`, `sr_story_split_clips`…, `sr_pipeline_run` — tool dùng prompt CỦA DỰ ÁN + tự nối khối
   định dạng đầu ra rồi kiểm schema. Thiếu prompt → bước dừng `waiting_input` (không hỏng quy trình): gửi kết quả bằng
   `sr_story_submit` hoặc viết prompt bằng `sr_prompt_set` rồi chạy tiếp. `sr_prompt_check(project_id)` cảnh báo trước
   (không LLM, không chặn).

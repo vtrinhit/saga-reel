@@ -6,7 +6,7 @@ và xuất. Không cần LLM của tool, không cần prompt của dự án, kh�
 1. `sr_studio_guide(project_id)` — mỗi bước: `agent_op` + `output_schema`/`output_format` (hoặc `sr_prompt_contracts`).
 2. Dự án: `sr_project_create(name)` (trống được) hoặc nhân bản dự án mẫu để lấy phong cách/số liệu.
 3. Library: `sr_asset_create` / `sr_look_create` (mô tả khoá do bạn viết).
-4. Viết và gửi từng bước (kiểm đúng schema như đường LLM; sai → `submit_invalid` kèm `extra.errors`):
+4. Viết và gửi từng bước (kiểm đúng schema như đường LLM; sai → `submit_invalid` kèm extra.errors):
    - Bible: `sr_story_submit(task="write_bible", project_id, data=<BibleOut>)` (hoặc `sr_bible_create` từng mục).
    - Dàn ý: `sr_story_submit(task="outline", project_id, episodes=N, data=<OutlineOut>)`.
    - Kịch bản: `sr_story_submit(task="write_script", sequence_id, data="<chữ kịch bản>")`.
