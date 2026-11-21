@@ -1,8 +1,11 @@
-import { Columns2, ImagePlus, RefreshCw } from 'lucide-react';
+import { Check, Columns2, ImagePlus, Maximize2, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { callOp } from '../../api/ops';
 import { cn } from '../../lib/cn';
 import { isTakeRunning, mediaUrl, viewLabel, type Look, type SheetTake } from '../../lib/library';
+
+const isReady = (t: SheetTake) => t.status === 'succeeded' && t.media_id != null;
+import { MediaViewer } from '../media/MediaViewer';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { StatusPill } from '../ui/StatusPill';
@@ -39,6 +42,8 @@ export function TakesDialog({
   regenerating?: boolean;
 }) {
   const [compare, setCompare] = useState<number[]>([]);
+  /** Take đang xem lớn (chỉ số trong các take đã xong). */
+  const [big, setBig] = useState<number | null>(null);
   // Hai take trùng ảnh (cùng media) đều được server đánh `selected` — chỉ coi take đầu là đang dùng.
   const selId = rawTakes.find((t) => t.selected)?.id ?? null;
   const takes = rawTakes.map((t) => (t.selected && t.id !== selId ? { ...t, selected: false } : t));
@@ -53,6 +58,8 @@ export function TakesDialog({
     setCompare((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id].slice(-2)));
   const pair = compare.map((id) => takes.find((t) => t.id === id)).filter((t): t is SheetTake => !!t?.media_id);
   const blocked = view !== 'anchor' && !hasAnchor;
+  const readyTakes = takes.filter(isReady);
+  const bigTake = big != null ? readyTakes[big] : null;
 
   return (
     <Modal
@@ -84,9 +91,9 @@ export function TakesDialog({
           <section aria-label="So sánh hai take" className="grid grid-cols-2 gap-2">
             {pair.map((t) => (
               <figure key={t.id} className="grid min-w-0 gap-1">
-                <a href={mediaUrl(t.media_id!)} target="_blank" rel="noreferrer" className="block">
+                <button type="button" onClick={() => setBig(readyTakes.indexOf(t))} aria-label={`Xem lớn take ${takes.indexOf(t) + 1}`} className="block rounded-sm focus-visible:outline focus-visible:outline-focus focus-visible:outline-offset-focus focus-visible:outline-accent">
                   <MediaThumb mediaId={t.media_id} alt={`Take ${takes.indexOf(t) + 1}`} width={640} fit="contain" className="aspect-[3/4] w-full rounded-sm" />
-                </a>
+                </button>
                 <figcaption className="flex items-center justify-between gap-2 text-xs text-fg-2">
                   <TakeBadge n={takes.indexOf(t) + 1} selected={t.selected} />
                   {!t.selected ? (
@@ -118,6 +125,18 @@ export function TakesDialog({
                   <li key={t.id} className="grid min-w-0 content-start gap-1.5">
                     <div className={cn('relative overflow-hidden rounded-sm border', t.selected ? 'border-accent' : 'border-line-1')}>
                       <MediaThumb mediaId={ready ? t.media_id : null} alt={`Take ${i + 1}`} width={260} className="aspect-[3/4] w-full" />
+                      {ready ? (
+                        <button
+                          type="button"
+                          onClick={() => setBig(readyTakes.indexOf(t))}
+                          aria-label={`Xem lớn take ${i + 1}`}
+                          className="absolute inset-0 grid place-items-end p-1.5 text-fg-1 focus-visible:outline focus-visible:outline-focus focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+                        >
+                          <span className="sr-pill-on-media grid h-6 w-6 place-items-center rounded-sm">
+                            <Maximize2 className="h-3.5 w-3.5" aria-hidden />
+                          </span>
+                        </button>
+                      ) : null}
                       <span className="absolute left-1.5 top-1.5">
                         <TakeBadge n={i + 1} selected={t.selected} />
                       </span>
@@ -161,6 +180,34 @@ export function TakesDialog({
           </>
         )}
       </div>
+      <MediaViewer
+        open={bigTake != null}
+        onClose={() => setBig(null)}
+        title={bigTake ? `${viewLabel(view)} · ${look.name} · Take ${takes.indexOf(bigTake) + 1}` : ''}
+        index={big ?? 0}
+        count={readyTakes.length}
+        onNavigate={setBig}
+        stage={
+          bigTake ? <img src={mediaUrl(bigTake.media_id!)} alt={`Take ${takes.indexOf(bigTake) + 1} của góc ${viewLabel(view)}`} decoding="async" /> : null
+        }
+        aside={
+          bigTake ? (
+            <div className="grid gap-3 p-4">
+              {bigTake.selected ? (
+                <p className="flex items-center gap-1.5 text-sm text-accent">
+                  <Check className="sr-ico" aria-hidden />
+                  Đang dùng cho góc này
+                </p>
+              ) : (
+                <Button variant="primary" icon={Check} loading={select.isPending} onClick={() => select.mutate(bigTake)}>
+                  Dùng take này
+                </Button>
+              )}
+              <p className="text-xs text-fg-2">←/→ để xem take khác. Esc để đóng.</p>
+            </div>
+          ) : null
+        }
+      />
     </Modal>
   );
 }

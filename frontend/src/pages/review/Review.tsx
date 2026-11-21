@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { callOp } from '../../api/ops';
 import type { ProjectInfo, SequencePage } from '../../api/types';
+import { ClipViewer } from '../../components/clip/ClipViewer';
 import { errText, useRegenerate } from '../../components/clip/useRegenerate';
 import { DecisionBar, SuggestBand } from '../../components/review/DecisionBar';
 import { ReviewQueue, type Decision, type QueueItem } from '../../components/review/ReviewQueue';
@@ -17,7 +18,8 @@ import { SkeletonRows } from '../../components/ui/Skeleton';
 import { isTypingTarget } from '../../components/shell/useShellKeys';
 import { fetchQueue, useAssets, useCost } from '../../lib/episodeData';
 import type { Clip, SuggestChange, Take, Verdict } from '../../lib/episodeTypes';
-import { formatClipSeconds, isFlagged, shotShort } from '../../lib/episodeView';
+import { formatClipSeconds, isFlagged, type ViewPart } from '../../lib/episodeView';
+import { shotOption } from '../../lib/shotLabels';
 import { reviewKeyAction, type ReviewAction } from '../../lib/reviewKeys';
 import { changeSetOf, undoAction, undoChangeSet } from '../../lib/episodeUndo';
 import { toast } from '../../stores/toast';
@@ -48,7 +50,7 @@ function filterParams(f: FilterKey, part: 'image' | 'video'): Record<string, unk
   }
 }
 
-const isModal = () => !!document.querySelector('[aria-modal="true"], dialog[open]:modal');
+const isModal = () => !!document.querySelector('[aria-modal="true"], dialog[open]:modal, dialog[open][data-modal="true"]');
 
 function useMedia(q: string): boolean {
   const [m, setM] = useState(() => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(q).matches : true));
@@ -139,6 +141,8 @@ export function Review() {
   const busy = false;
   const [queueOpen, setQueueOpen] = useState(false);
   const [inspOpen, setInspOpen] = useState(false);
+  /** Trình xem lớn (bấm take đang xem / Xem lớn): phần đang xem, null = đóng. */
+  const [viewer, setViewer] = useState<ViewPart | null>(null);
   const undoStack = useRef<UndoEntry[]>([]);
   // Lý do tạo lại (giữ trong phiên): cùng lý do lặp lại → server trả `suggest_change`.
   const [reason, setReason] = useState('');
@@ -585,7 +589,11 @@ export function Review() {
                   <h2 className="font-semibold">
                     {seqIds.length > 1 && seqOf(clip) ? `Tập ${seqOf(clip)!.number} · ` : ''}Clip {clip.key}
                   </h2>
-                  {clip.shot_size ? <span className="font-mono text-xs text-fg-2">{shotShort(clip.shot_size)}</span> : null}
+                  {clip.shot_size ? (
+                    <span className="text-xs text-fg-2" title={shotOption('shot_size', clip.shot_size).hint}>
+                      {shotOption('shot_size', clip.shot_size).label}
+                    </span>
+                  ) : null}
                   <span className="font-mono text-xs text-fg-2 tnum">{formatClipSeconds(clip.duration_ms)}</span>
                   <span className="min-w-0 flex-1 truncate py-px text-xs text-fg-2">{part === 'image' ? clip.image_prompt : clip.motion_prompt}</span>
                 </div>
@@ -608,6 +616,10 @@ export function Review() {
                     anchor={anchor}
                     compare={compare || !tablet}
                     onCursor={(i) => setCursor(i + Math.max(0, cells.length - 9))}
+                    onOpen={(i) => {
+                      setCursor(i + Math.max(0, cells.length - 9));
+                      setViewer(part);
+                    }}
                   />
                 ) : null}
                 <DecisionBar
@@ -634,6 +646,28 @@ export function Review() {
           </Drawer>
         </>
       ) : null}
+      <ClipViewer
+        clips={clips}
+        index={viewer && clip ? index : null}
+        onIndex={(i) => go(i)}
+        onClose={() => setViewer(null)}
+        titleOf={(c) => `${seqIds.length > 1 && seqOf(c) ? `Tập ${seqOf(c)!.number} · ` : ''}Clip ${c.key}`}
+        aspect={project.data?.aspect ?? '9:16'}
+        assets={assets}
+        part={viewer}
+        onPart={(_c, p) => setViewer(p)}
+        onSave={async (c, values) => {
+          try {
+            const out = (await callOp('clip.update', { id: c.id, values, expected_updated_at: c.updated_at })) as unknown as Clip;
+            patchLocal(c.id, { ...values, updated_at: out.updated_at, flags: out.flags });
+          } catch (e) {
+            toast({ message: `Không lưu được clip ${c.key}: ${errText(e)}`, tone: 'error' });
+            throw e;
+          }
+        }}
+        onGenerate={(c, p) => void regen({ ids: [c.id], part: p, label: c.key })}
+        onTakeSelected={() => void takesQ.refetch()}
+      />
       {regenDialog}
     </div>
   );

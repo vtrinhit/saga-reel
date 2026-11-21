@@ -3,6 +3,7 @@
  * `sequence.cost_summary`, `import.*` trong `schema.d.ts` là `Record<string, unknown>` (op trả dict tự do) nên viết tay
  * theo `backend/sagareel/services/{clips,takes,sequences,importer}.py`.
  */
+import type { AutoTrim, TrimMode } from './timeline';
 
 export interface TakeMedia {
   id: number;
@@ -72,6 +73,18 @@ export interface Clip {
   composition: string;
   eyeline: string;
   screen_dir: string;
+  /** Trường cắt/trục (`meta.enums.cut`). */
+  axis_side?: string;
+  cut_in?: string;
+  cut_out?: string;
+  /** Kết nối/model riêng của clip ('' = theo cài đặt). Chỉ một loại (ảnh hoặc video) — xem `takes.regenerate`. */
+  connection?: string;
+  model?: string;
+  /** Cắt video (`clip.get/list`): auto = tự cắt sát nội dung, manual = trim tay, none = nguyên take. */
+  trim_mode?: TrimMode;
+  auto_trim?: AutoTrim | null;
+  trim_in_ms?: number;
+  trim_out_ms?: number;
   custom: Record<string, unknown>;
   updated_at: string;
   /** chỉ có khi đọc qua `review.queue` */

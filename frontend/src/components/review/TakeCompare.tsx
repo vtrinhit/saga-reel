@@ -1,4 +1,4 @@
-import { CircleCheck, ScanFace } from 'lucide-react';
+import { CircleCheck, Maximize2, ScanFace } from 'lucide-react';
 import { forwardRef, useImperativeHandle, useRef } from 'react';
 import { cn } from '../../lib/cn';
 import type { Take } from '../../lib/episodeTypes';
@@ -34,7 +34,9 @@ export const TakeCompare = forwardRef<CompareHandle, {
   anchor?: { url: string; label: string } | null;
   compare: boolean;
   onCursor: (i: number) => void;
-}>(function TakeCompare({ cells, cursor, selectedId, aspect, anchor, compare, onCursor }, ref) {
+  /** Bấm lần nữa vào take đang xem (hoặc nút Xem lớn) → trình xem lớn. */
+  onOpen?: (i: number) => void;
+}>(function TakeCompare({ cells, cursor, selectedId, aspect, anchor, compare, onCursor, onOpen }, ref) {
   const root = useRef<HTMLDivElement>(null);
   useImperativeHandle(ref, () => ({
     togglePlay: () => {
@@ -79,7 +81,7 @@ export const TakeCompare = forwardRef<CompareHandle, {
               role="option"
               aria-selected={isCursor}
               aria-label={`Take ${no}${isSel ? ', đang chọn cho clip' : ''}`}
-              onClick={() => onCursor(i)}
+              onClick={() => (isCursor && onOpen ? onOpen(i) : onCursor(i))}
               className={cn(
                 'relative mx-auto block max-h-[56dvh] w-full overflow-hidden rounded-md border bg-stage focus-visible:outline focus-visible:outline-focus focus-visible:outline-offset-focus focus-visible:outline-accent',
                 ratio,
@@ -116,6 +118,16 @@ export const TakeCompare = forwardRef<CompareHandle, {
                 {model ? <span className="truncate font-mono">{model}</span> : null}
                 <span className="font-mono tnum">{(t.cost || 0).toLocaleString('vi-VN')} lượt</span>
                 {t.verdict ? <span>· {VERDICT_LABEL[t.verdict] ?? t.verdict}</span> : null}
+                {onOpen && ready ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpen(i)}
+                    className="ml-auto inline-flex items-center gap-1 rounded-sm px-1 text-fg-2 hover:text-fg-1 focus-visible:outline focus-visible:outline-focus focus-visible:outline-accent"
+                  >
+                    <Maximize2 className="h-3 w-3" aria-hidden />
+                    Xem lớn
+                  </button>
+                ) : null}
               </span>
               {d.score != null || d.reason ? (
                 <span className="flex items-center gap-1 text-state-drifted">

@@ -1,7 +1,8 @@
 import { X } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../lib/cn';
+import { portalRoot } from '../../lib/portalRoot';
 import { DialogDepthContext, useDialogA11y } from '../../lib/useDialogA11y';
 import { IconButton } from './IconButton';
 
@@ -73,6 +74,8 @@ export function Modal({
   const titleId = useId();
   const layer = usePriorityLayer(open && priority);
   const depth = useDialogA11y(open && (!priority || layer != null), panelRef, onClose, { priority });
+  // Gắn vào trình xem media đang mở (nếu có) để không bị trơ dưới top layer; chốt lúc mở.
+  const target = useMemo(() => (open ? portalRoot() : null), [open]);
   if (!open) return null;
   if (priority && !layer) return null;
 
@@ -107,6 +110,6 @@ export function Modal({
       </div>
     </div>
     </DialogDepthContext.Provider>,
-    priority && layer ? layer : document.body,
+    priority && layer ? layer : (target ?? document.body),
   );
 }

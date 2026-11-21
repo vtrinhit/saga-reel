@@ -1,7 +1,8 @@
 import { X } from 'lucide-react';
-import { useId, useRef, useState, type PointerEvent, type ReactNode } from 'react';
+import { useId, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../lib/cn';
+import { portalRoot } from '../../lib/portalRoot';
 import { DialogDepthContext, useDialogA11y } from '../../lib/useDialogA11y';
 import { IconButton } from './IconButton';
 
@@ -26,6 +27,8 @@ export function Drawer({ open, onClose, title, children, footer, className }: Dr
   const drag = useRef<{ x: number; y: number } | null>(null);
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const depth = useDialogA11y(open, panelRef, onClose);
+  // Gắn vào trình xem media đang mở (nếu có) để không bị trơ dưới top layer; chốt lúc mở.
+  const target = useMemo(() => (open ? portalRoot() : null), [open]);
   if (!open) return null;
 
   const isSheet = () => window.matchMedia('(max-width: 767px)').matches;
@@ -105,6 +108,6 @@ export function Drawer({ open, onClose, title, children, footer, className }: Dr
       </div>
     </div>
     </DialogDepthContext.Provider>,
-    document.body,
+    target ?? document.body,
   );
 }
