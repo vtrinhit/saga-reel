@@ -435,6 +435,22 @@ async def spawn_children(r: Run, step: dict[str, Any]) -> tuple[list[int], list[
         ids = await _thread(lambda: _with(r, lambda s: _regen_targets(s, sid, part, bool(feedback))))
         if not ids:
             return Outcome("done", {"already": True})
+        key = "image.synced" if part == "image" else "motion.synced"
+
+        def missing_prompt(s: Session) -> bool:  # clip synced cần prompt ráp của dự án; verbatim thì không
+            from sagareel.db.models import Clip
+            from sagareel.services import prompts
+
+            synced = s.scalar(select(Clip.id).where(Clip.id.in_(ids), Clip.prompt_mode != "verbatim").limit(1))
+            return synced is not None and prompts.row(s, r.project_id, key) is None
+
+        if await _thread(lambda: _with(r, missing_prompt)):
+            step["awaiting"] = True
+            return Outcome("wait_input", info={
+                "task": name, "mode": "manual", "reason": "prompt_missing",
+                "message": f"Dự án chưa có prompt ráp '{key}' cho clip chế độ synced.",
+                "hint": f"Viết prompt '{key}' (prompt.set), hoặc đặt clip prompt_mode=verbatim với prompt cuối do bạn/agent "
+                        "viết (clip.update), rồi chạy tiếp pipeline.run."})
         all_jobs: list[int] = []
         all_takes: list[int] = []
         results = []

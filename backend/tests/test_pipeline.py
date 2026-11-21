@@ -11,7 +11,7 @@ import anyio
 import pytest
 from sagareel.core.errors import AppError
 from sagareel.core.ops import invoke
-from sagareel.db.models import Clip, Job, Project, Sequence
+from sagareel.db.models import Clip, Job, Project, ProviderConnection, Sequence
 from sagareel.ops import load_all
 from sagareel.services import jobs, projects
 from sagareel.services import sequences as seq_svc
@@ -407,3 +407,27 @@ async def test_outline_step_in_lead_outlines_whole_batch(services, owner_ctx, pr
         assert state.read(s, ids[1], "run")["status"] == "queued"  # đã được thả sau bước outline
     out = await engine.advance(services, ids[1])
     assert out["status"] == "done" and len(fake_llm.calls_of("story_outline")) == 1
+
+
+async def test_missing_prompts_wait_for_input_not_fail(services, owner_ctx, proj):
+    """Thiếu prompt của dự án (bước AI viết hoặc ráp prompt ảnh) → dừng chờ nhập, không hỏng cả quy trình."""
+    from sagareel.db.models import ProjectPrompt
+    from sagareel.services.seed import seed_defaults
+
+    seed_defaults(services.db)
+    with services.db.session() as s:
+        for r in s.scalars(select(ProjectPrompt).where(ProjectPrompt.project_id == proj,
+                                                       ProjectPrompt.key.in_(["story_write_script", "image.synced"]))):
+            s.delete(r)
+        s.add(ProviderConnection(kind="llm", adapter="fake_llm", name="f", options={}, concurrency=1, enabled=True))
+    sid = make_seq(owner_ctx, proj)
+    key = workflow(owner_ctx, proj, "tp", [{"step": "write_script"}, {"step": "generate_images"}])
+    await anyio.to_thread.run_sync(engine.start, owner_ctx, [sid], key, {})
+    out = await engine.advance(services, sid)
+    assert out["status"] == "waiting_input" and out["waiting"]["reason"] == "prompt_missing"
+    seq_svc.update(owner_ctx, sid, {"script": "Kịch bản agent tự viết"})  # agent gửi kết quả bước
+    with services.db.session() as s:
+        s.add(Clip(sequence_id=sid, key="c1", rank="a0", image_prompt="cô bé", duration_ms=6000))
+    out = await engine.advance(services, sid)
+    assert out["status"] == "waiting_input" and out["waiting"]["reason"] == "prompt_missing"
+    assert "image.synced" in out["waiting"]["message"]

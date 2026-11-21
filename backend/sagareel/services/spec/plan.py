@@ -142,6 +142,9 @@ def canon(spec: m.ProjectSpec) -> Canon:
         return e.sha256 if e is not None else f"?{ref}"
 
     proj = _fields(spec.project, {"key"})
+    for k in ("genre", "workflows"):  # rỗng = không nói gì (giữ của dự án; dự án mới nhận mặc định) — không phải "xoá"
+        if not proj.get(k):
+            proj.pop(k, None)
     proj["cover"] = mr(spec.project.cover)
     proj["providers"] = dict(sorted(spec.providers.items()))
     out.entities[("project", spec.project.key)] = proj
@@ -720,11 +723,22 @@ def _write(w: _Writer, spec: m.ProjectSpec) -> int:
         "resolution": pb.resolution, "fps": pb.fps, "language": pb.language, "languages": list(pb.languages),
         "target_platforms": list(pb.target_platforms), "style_block": pb.style_block,
         "negative_block": pb.negative_block, "settings": export.join_settings(pb.settings, spec.providers),
-        "cover_media_id": w.media(pb.cover), "genre": dict(pb.genre), "workflows": dict(pb.workflows),
-        "narrator_voice": pb.narrator_voice, "is_sample": pb.is_sample,
+        "cover_media_id": w.media(pb.cover), "narrator_voice": pb.narrator_voice, "is_sample": pb.is_sample,
     }
+    if pb.genre:
+        pvals["genre"] = dict(pb.genre)
+    if pb.workflows:
+        pvals["workflows"] = dict(pb.workflows)
     project = w.upsert(Project, [Project.key == pb.key], pvals, key=pb.key)
     pid = project.id
+    if not project.workflows or not project.genre:  # dự án mới từ spec không ghi → mặc định như project.create
+        from sagareel.services import genres
+        from sagareel.services.pipeline import workflow as W
+
+        if not project.workflows:
+            project.workflows = W.defaults()
+        if not project.genre:
+            project.genre = genres.reference(pb.genre_key) or {}
 
     if spec.presets is not None:
         for p in spec.presets:

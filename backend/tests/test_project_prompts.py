@@ -345,3 +345,23 @@ def test_prompt_check_and_guide(client):
     assert "story.submit task=split_clips" in steps["split_clips"]["agent_op"]
     assert steps["split_clips"]["prompts"][0]["output_schema"]["title"] == "SplitOut"
     assert g["state"]["prompts"]["missing"] and g["state"]["project"]["id"] == pid
+
+
+async def test_spec_without_workflows_gets_defaults_and_reapply_is_noop(owner_ctx):
+    import yaml as _yaml
+
+    from sagareel.core.ops import invoke
+    from sagareel.services.spec import plan as sp
+
+    text = _yaml.safe_dump({"spec_version": 1, "project": {"key": "tu-spec", "name": "Từ spec", "genre_key": "serial"},
+                            "sequences": [{"key": "e1", "title": "Tập 1"}]}, allow_unicode=True)
+    p = sp.plan(owner_ctx, text)
+    out = sp.apply(owner_ctx, text, p["plan_fingerprint"])
+    with owner_ctx.services.db.session() as s:
+        proj = s.get(Project, out["project_id"])
+        assert "full_auto" in proj.workflows and proj.genre["clips"]
+        sid = s.scalar(select(Sequence.id).where(Sequence.project_id == proj.id))
+    again = sp.plan(owner_ctx, text)
+    assert again["updates"] == [] and again["creates"] == []  # spec không ghi workflows/genre = giữ nguyên
+    dry = await invoke("pipeline.run", {"sequence_ids": [sid], "dry_run": True}, owner_ctx)
+    assert dry["dry_run"] and any(w["code"] == "prompt_missing" for w in dry["prompt_warnings"])
