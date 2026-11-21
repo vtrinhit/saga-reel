@@ -41,6 +41,7 @@ export function MediaViewer({
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const touch = useRef<{ x: number; y: number } | null>(null);
+  const closeBtn = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const d = ref.current;
@@ -48,6 +49,8 @@ export function MediaViewer({
     if (open && !d.open) {
       if (typeof d.showModal === 'function') d.showModal();
       else d.setAttribute('open', '');
+      // Focus đầu tiên vào nút Đóng (an toàn, không chuyển clip ngoài ý muốn).
+      requestAnimationFrame(() => closeBtn.current?.focus());
       announceTopLayer();
     } else if (!open && d.open) {
       if (typeof d.close === 'function') d.close();
@@ -64,8 +67,16 @@ export function MediaViewer({
       announceTopLayer();
       closeRef.current();
     };
+    // Esc khi có Modal (ước tính, xác nhận) đang mở bên trong: chỉ Modal đóng, trình xem ở lại.
+    const onCancel = (e: Event) => {
+      if (d.querySelector('[aria-modal="true"]')) e.preventDefault();
+    };
     d.addEventListener('close', onNativeClose);
-    return () => d.removeEventListener('close', onNativeClose);
+    d.addEventListener('cancel', onCancel);
+    return () => {
+      d.removeEventListener('close', onNativeClose);
+      d.removeEventListener('cancel', onCancel);
+    };
   }, []);
 
   // Rời trang khi đang mở: đóng để không bỏ lại top layer.
@@ -125,7 +136,7 @@ export function MediaViewer({
                   <IconButton icon={ChevronRight} label="Clip kế (→)" disabled={index >= count - 1} onClick={() => go('next')} />
                 </>
               ) : null}
-              <IconButton icon={X} label="Đóng (Esc)" onClick={onClose} autoFocus />
+              <IconButton ref={closeBtn} icon={X} label="Đóng (Esc)" noTip onClick={onClose} />
             </div>
           </header>
           <div className="grid min-h-0 grid-cols-1 overflow-y-auto overscroll-contain lg:grid-cols-[minmax(0,1fr)_var(--w-viewer-aside)] lg:overflow-hidden">
@@ -147,7 +158,7 @@ export function MediaViewer({
                 }}
               >
                 {/* khung tuyệt đối: ảnh/video `max-h-full` co đúng theo chiều cao còn lại, không tràn */}
-                <div className="absolute inset-2 grid place-items-center lg:inset-4 [&>img]:h-full [&>img]:w-full [&>img]:object-contain [&>video]:h-full [&>video]:w-full [&>video]:object-contain">
+                <div className="absolute inset-2 flex items-center justify-center lg:inset-4 [&>img]:max-h-full [&>img]:max-w-full [&>img]:object-contain [&>video]:h-full [&>video]:w-full [&>video]:object-contain">
                   {stage}
                 </div>
               </div>

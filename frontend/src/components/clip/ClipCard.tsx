@@ -184,7 +184,10 @@ export const ClipCard = memo(function ClipCard({
                 type="button"
                 tabIndex={tab}
                 data-card-focus={index}
-                onClick={() => setEditing(true)}
+                onClick={(e) => {
+                  if (e.shiftKey || e.ctrlKey || e.metaKey || selecting) actions.toggle(c, index, e.shiftKey);
+                  else setEditing(true);
+                }}
                 aria-label={`${title}: sửa prompt ảnh${c.image_prompt ? ` — ${c.image_prompt.slice(0, 80)}` : ''}`}
                 className={cn('flex min-h-0 items-start overflow-hidden rounded-sm p-1 text-left hover:bg-bg-2', focusRing)}
               >
@@ -268,7 +271,7 @@ export const ClipCard = memo(function ClipCard({
         ) : null}
 
         {/* ô chọn nhiều: hover (chuột) hoặc khi đang chọn */}
-        {state.kind !== 'empty' || selecting ? (
+        {!editing ? (
           <label
             className={cn(
               'absolute left-0 top-0 grid h-10 w-10 cursor-pointer place-items-center [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
