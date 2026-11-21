@@ -162,10 +162,15 @@ def test_layout_uses_auto_trimmed_duration_and_subtitles_follow_speech(world):
     assert abs(sa.dur_ms - 2000) <= 120  # 4,5 s take → đoạn nói 1,5 s + 0,2 + 0,3
     assert sb.start_ms == sa.end_ms  # clip sau dời theo thời lượng đã cắt
     assert sa.src["trim"]["reason"] == "speech"
-    cue = tl.dialogue[0]
+    line = tl.dialogue[0]
     onset = sa.start_ms + (1000 - sa.src["clip"].trim_in_ms)  # tiếng bắt đầu ở 1,0 s của take
-    assert abs(cue.start_ms - onset) <= 150
-    assert cue.src["words"] and cue.src["words"][0][1] == 0
+    assert abs(line.start_ms - onset) <= 150
+    assert line.src["words"] and line.src["words"][0][1] == 0
+    from sagareel.services.audio import subtitles
+
+    cues = subtitles.build_cues([{"text": line.text, "start_ms": line.start_ms, "end_ms": line.end_ms,
+                                  "words": line.src["words"]}])
+    assert cues and abs(cues[0].start_ms - onset) <= 150  # phụ đề hiện đúng lúc có tiếng
 
 
 def test_manual_trim_overrides_auto(world):
@@ -174,6 +179,17 @@ def test_manual_trim_overrides_auto(world):
     s = tl.clip(a)
     assert s.src["trim"]["reason"] == "manual" and s.src["clip"].trim_in_ms == 100
     assert abs(s.dur_ms - 3000) <= 40  # cách cũ: khớp clip.duration_ms
+
+
+def test_split_auto_trimmed_clip_uses_on_screen_time(world, owner_ctx):
+    a = _speech_clip(world, "a")
+    trimming.analyze_clips(world.services, [a])
+    at = clip_svc.get(owner_ctx, a)["auto_trim"]
+    out = clip_svc.split(owner_ctx, a, 1000)  # 1 s tính từ đầu đoạn đã tự cắt
+    first, second = out["first"], out["second"]
+    assert first["trim_in_ms"] == at["in_ms"] and second["trim_in_ms"] == at["in_ms"] + 1000
+    assert first["duration_ms"] == 1000 and second["duration_ms"] == at["dur_ms"] - 1000
+    assert first["settings"]["trim_mode"] == "manual" and second["settings"]["trim_mode"] == "manual"
 
 
 def test_trim_mode_none_uses_whole_take(world, owner_ctx):

@@ -72,7 +72,7 @@ def analyses(services: Any, media_ids: list[int], *, compute: bool = True) -> di
         except Exception as e:  # noqa: BLE001 — phân tích hỏng không chặn dựng: clip giữ cách cũ
             logger.warning("trim analysis failed for media %s: %s", t["id"], e)
     store = {t["id"]: t["result"] for t in todo if t.get("result") is not None}
-    if store:
+    if store and compute:  # chỉ đọc (ước tính) → không ghi DB
         with services.db.session() as s:
             for m in _media_rows(s, list(store)):
                 m.meta = {**(m.meta or {}), "content": store[m.id]}

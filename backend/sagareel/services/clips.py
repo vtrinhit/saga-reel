@@ -565,9 +565,16 @@ def copy_values(obj: Any, **overrides: Any) -> dict[str, Any]:
 def split(ctx: OpContext, clip_id: int, at_ms: int) -> dict[str, Any]:
     """Tách clip tại `at_ms` (tính từ đầu clip): clip gốc giữ phần đầu, clip mới phần sau. Cả hai trỏ cùng take
     (không tạo/xoá take) và cắt bằng `trim_in_ms/trim_out_ms`; lời thoại có `offset_ms ≥ at_ms` sang clip mới."""
+    from sagareel.services import trimming
+
     u = entities.uow(ctx, f"Tách clip #{clip_id}", "clip.split")
     with u as s:
         c = get_clip(s, clip_id)
+        auto = (trimming.info_for(s, [c]).get(c.id) or {}).get("auto_trim") if c.video_take_id else None
+        if c.video_take_id and (auto or {}).get("applied") and (auto or {}).get("dur_ms") and                 (c.settings or {}).get("trim_mode") not in ("manual", "none") and not c.trim_in_ms and not c.trim_out_ms:
+            # Clip đang tự cắt: thời gian trên màn hình tính từ điểm vào tự cắt → chuyển cả hai nửa sang trim tay.
+            c.trim_in_ms, c.trim_out_ms, c.duration_ms = int(auto["in_ms"]), int(auto["out_ms"]), int(auto["dur_ms"])
+            c.settings = {**(c.settings or {}), "trim_mode": "manual"}
         if not (0 < at_ms < c.duration_ms):
             raise ValidationFailed(f"Điểm tách phải nằm trong (0, {c.duration_ms}) ms.",
                                    extra={"errors": [{"loc": ["at_ms"], "msg": "ngoài khoảng", "type": "range"}]})
