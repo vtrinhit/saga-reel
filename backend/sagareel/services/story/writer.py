@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import anyio
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -1006,7 +1007,13 @@ async def adapt_novel(ctx: OpContext, project_id: int, *, text: str | None = Non
                       target_episode_s: int = 75, max_episodes: int = 200, feedback: str = "",
                       on_delta: Delta = None, log: Log = None,
                       progress: Callable[[float, str], None] | None = None) -> dict[str, Any]:
-    """Tách truyện dài thành tập theo độ dài mục tiêu; mỗi tập kết ở câu treo LLM chọn (`cut_after`)."""
+    """Tách truyện dài thành tập theo độ dài mục tiêu; mỗi tập kết ở câu treo LLM chọn (`cut_after`).
+
+    Agent gửi thẳng (`story.submit` task=adapt_novel, `data = {"episodes": [...]}`): không gọi LLM, mỗi tập kiểm bằng
+    đúng schema AdaptOut (+ `script`, `source_text` tuỳ chọn) rồi lưu như đường LLM."""
+    given = llmio.GIVEN.get()
+    if given is not None and "story_adapt_novel" in given:
+        return await _adapt_given(ctx, project_id, given["story_adapt_novel"], text)
     body = (await _thread(_read_text, ctx.services, text, upload_id)).replace("\r\n", "\n").strip()
     if not body:
         raise ValidationFailed("Truyện rỗng.")
@@ -1052,32 +1059,8 @@ async def adapt_novel(ctx: OpContext, project_id: int, *, text: str | None = Non
         lctx = llm_ctx(ctx, out.model)
 
         def save(a=a, ep_text=ep_text, number=number, pos=pos, cut=cut, lctx=lctx, model=out.model) -> int:
-            q = seq_svc.create(lctx, project_id, a.title, number=number, synopsis=a.synopsis)
-            state.merge(ctx.services.db, q["id"], "source", {"text": ep_text, "start": pos, "end": cut})
-            state.merge(ctx.services.db, q["id"], "memory", {"outline": {
-                "cliffhanger": a.cliffhanger, "characters": [c.key for c in a.characters], "model": model,
-                "at": now_iso()}})
-            u = entities.uow(lctx, f"Chuyển thể tập {number}: Story Bible", "story.adapt_novel")
-            with u as s:
-                u.project_id = project_id
-                for c in a.characters:
-                    asset, _ = _upsert_asset(s, project_id, "character", c.key, c.name, c.description,
-                                             {"role": c.role, "traits": c.traits})
-                    item, act = bible.upsert_proposal(
-                        s, project_id, "character", c.key, f"{c.name} — {c.role}. {c.description}".strip(),
-                        attributes={"name": c.name, "role": c.role, "traits": c.traits}, story_order=number,
-                        asset_id=asset.id if asset else None, status="confirmed")
-                    if act == "created":
-                        item.locked = True  # nhãn nhân thiết khoá
-                for f in a.facts:
-                    type_ = f.type if f.type in bible.TYPES else "fact"
-                    pos_q = body.find(f.quote, pos) if f.quote else -1
-                    bible.upsert_proposal(
-                        s, project_id, type_, f.key or f.summary, f.summary, story_order=number,
-                        evidence=[{"quote": f.quote, "source": "novel", "sequence_id": q["id"],
-                                   "start": pos_q if pos_q >= 0 else None,
-                                   "end": pos_q + len(f.quote) if pos_q >= 0 else None}] if f.quote else [])
-            return q["id"]
+            return _save_episode(ctx, lctx, project_id, a, number=number, model=model, source=ep_text,
+                                 start=pos, end=cut, body=body)
 
         created.append(await _thread(save))
         for c in a.characters:
@@ -1089,6 +1072,77 @@ async def adapt_novel(ctx: OpContext, project_id: int, *, text: str | None = Non
         _warn(warnings, "truncated", f"Dừng ở {max_episodes} tập; còn {total - pos} ký tự chưa chuyển thể.")
     return {"project_id": project_id, "sequence_ids": created, "episodes": len(created), "chars": total,
             "warnings": warnings}
+
+
+def _save_episode(ctx: OpContext, lctx: OpContext, project_id: int, a: S.AdaptOut, *, number: int, model: str,
+                  source: str, start: int | None, end: int | None, body: str, script: str = "") -> int:
+    """Tạo tập + nguồn + dàn ý + nhân vật/sự thật vào Story Bible (chung cho đường LLM và agent gửi thẳng)."""
+    q = seq_svc.create(lctx, project_id, a.title, number=number, synopsis=a.synopsis, script=script)
+    if source:
+        state.merge(ctx.services.db, q["id"], "source", {"text": source, "start": start, "end": end})
+    state.merge(ctx.services.db, q["id"], "memory", {"outline": {
+        "cliffhanger": a.cliffhanger, "characters": [c.key for c in a.characters], "model": model,
+        "at": now_iso()}})
+    u = entities.uow(lctx, f"Chuyển thể tập {number}: Story Bible", "story.adapt_novel")
+    with u as s:
+        u.project_id = project_id
+        for c in a.characters:
+            asset, _ = _upsert_asset(s, project_id, "character", c.key, c.name, c.description,
+                                     {"role": c.role, "traits": c.traits})
+            item, act = bible.upsert_proposal(
+                s, project_id, "character", c.key, f"{c.name} — {c.role}. {c.description}".strip(),
+                attributes={"name": c.name, "role": c.role, "traits": c.traits}, story_order=number,
+                asset_id=asset.id if asset else None, status="confirmed")
+            if act == "created":
+                item.locked = True  # nhãn nhân thiết khoá
+        for f in a.facts:
+            type_ = f.type if f.type in bible.TYPES else "fact"
+            pos_q = body.find(f.quote, start or 0) if f.quote and body else -1
+            bible.upsert_proposal(
+                s, project_id, type_, f.key or f.summary, f.summary, story_order=number,
+                evidence=[{"quote": f.quote, "source": "novel", "sequence_id": q["id"],
+                           "start": pos_q if pos_q >= 0 else None,
+                           "end": pos_q + len(f.quote) if pos_q >= 0 else None}] if f.quote else [])
+    return q["id"]
+
+
+async def _adapt_given(ctx: OpContext, project_id: int, value: Any, text: str | None) -> dict[str, Any]:
+    """Đường agent của adapt_novel: danh sách tập đã viết sẵn → tạo tập (một change set mỗi tập như đường LLM)."""
+    from sagareel.core.errors import clean_validation_errors
+
+    raw = {"episodes": value} if isinstance(value, list) else value
+    try:
+        data = S.AdaptSubmit.model_validate(raw)
+    except ValidationError as e:
+        raise ValidationFailed("Kết quả 'story_adapt_novel' sai cấu trúc (cần {episodes: [AdaptOut + script?, "
+                               "source_text?]}).", code="submit_invalid",
+                               hint="Xem prompt.contracts (output_schema của story_adapt_novel) cho từng tập.",
+                               extra={"errors": clean_validation_errors(e.errors())}) from None
+    body = (text or "").replace("\r\n", "\n")
+
+    def top() -> int:
+        with ctx.services.db.session() as s:
+            get_project(s, project_id)
+            return int(s.scalar(select(func.coalesce(func.max(Sequence.number), 0)).where(
+                Sequence.project_id == project_id, Sequence.deleted_at.is_(None))) or 0)
+
+    number = await _thread(top)
+    lctx = llm_ctx(ctx, llmio.GIVEN_MODEL)
+    created: list[int] = []
+    for ep in data.episodes:
+        number += 1
+        src_text = ep.source_text.strip()
+        start = body.find(src_text) if src_text and body else -1
+
+        def save(ep=ep, number=number, src_text=src_text, start=start) -> int:
+            return _save_episode(ctx, lctx, project_id, ep, number=number, model=llmio.GIVEN_MODEL, source=src_text,
+                                 start=start if start >= 0 else None,
+                                 end=start + len(src_text) if start >= 0 else None, body=body,
+                                 script=ep.script.strip())
+
+        created.append(await _thread(save))
+    return {"project_id": project_id, "sequence_ids": created, "episodes": len(created), "chars": len(body),
+            "warnings": []}
 
 
 # --- memory_summarize ------------------------------------------------------------------------------------------------

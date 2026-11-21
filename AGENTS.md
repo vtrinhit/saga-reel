@@ -92,6 +92,14 @@ phim bộ, dài tập, clone, lồng tiếng, lỗi provider). Đọc/sửa qua 
 6. **Không đụng dữ liệu ngoài phạm vi**: không sửa file trong `data/` trực tiếp, không sửa `.env*`, không đổi kết nối
    provider/token khi người dùng không yêu cầu.
 
+## Thời lượng + tự cắt
+
+`clip.duration_ms` là độ dài mong muốn trên màn hình (số tự do, agent/người/LLM của tool đặt theo nội dung). Tạo video
+xin mức nhỏ nhất ≥ mong muốn + 0,3 s trong `capabilities.durations` của kết nối (ghi đè `options.durations`). Bản dựng
+tự cắt sát nội dung (thoại Grok → theo đoạn nói; không thoại → bỏ đầu/đuôi đứng yên); xem `clip.get/list` →
+`auto_trim`, phân tích ngay `clip.analyze_trim(ids)`; ghi đè bằng `clip.update {trim_in_ms, trim_out_ms}` hoặc
+`{trim_mode: auto|manual|none}`. Chi tiết: `studio.guide` → `durations`.
+
 ## Luồng (số việc chạy cùng lúc)
 
 `sr_queue_concurrency` → mỗi loại provider (`image`/`video`/`llm`/`tts`/`stt`/`render`): `cap`, `running`, `queued` và

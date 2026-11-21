@@ -18,7 +18,7 @@ import hashlib
 import secrets
 import shutil
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +48,7 @@ from sagareel.render import (
     normalize,
     presets,
     still_motion,
+    trim,
 )
 from sagareel.render.builders import DEFAULT, Builders
 from sagareel.render.layout import ClipIn, ItemIn, LineIn, SequenceIn, Timeline
@@ -131,8 +132,14 @@ def load(
     variant: str = "draft",
     platform: str | None = None,
     lang: str | None = None,
+    *,
+    analyze: bool = True,
 ) -> Loaded:
-    """Đồng bộ (gọi qua `to_thread`): đọc sequence, clip, thoại, item; giải media; dựng `SequenceIn`."""
+    """Đồng bộ (gọi qua `to_thread`): đọc sequence, clip, thoại, item; giải media; dựng `SequenceIn`.
+
+    Clip ai_video có video: tự cắt theo nội dung (`render/trim.py`, phân tích cache theo sha media). `analyze=False`
+    (ước tính, op chỉ đọc) chỉ dùng phân tích đã có — chưa có thì clip giữ cách khớp cũ."""
+    analyses = _trim_analyses(services, sequence_id, compute=analyze and variant != "animatic")
     with services.db.session() as s:
         sequence = s.get(Sequence, sequence_id)
         if sequence is None or sequence.deleted_at is not None:
@@ -193,7 +200,8 @@ def load(
             video = None if variant == "animatic" else take_media(c.video_take_id)
             image = take_media(c.image_take_id) or (media_by_id.get(c.input_media_id) if c.input_media_id else None)
             vpath, ipath = media_file(video), media_file(image)
-            grok_keep = any(ln.source == "grok" for ln in lines_by_clip.get(c.id, []))
+            clip_lines = lines_by_clip.get(c.id, [])
+            grok_keep = any(ln.source == "grok" for ln in clip_lines)
             src: dict[str, Any]
             if vpath is not None and video is not None:
                 sm = normalize.SourceMedia(vpath, video.sha256, (video.meta or {}).get("probe", {}).get("has_audio"),
@@ -203,10 +211,27 @@ def load(
 
                     info = probe(vpath)
                     sm = normalize.SourceMedia(vpath, video.sha256, info.has_audio, info.duration_ms)
+                analysis = analyses.get(video.id) if c.engine == "ai_video" else None
+                mode = trim.mode_of(c.settings, c.trim_in_ms, c.trim_out_ms)
+                auto = trim.decide(analysis, desired_ms=c.duration_ms, mode=mode, has_grok=grok_keep,
+                                   has_voice=any(ln.source in ("tts", "upload") for ln in clip_lines),
+                                   next_continue=next_link.get(c.id) == "continue")
+                gain = trim.loudness_gain(analysis) if grok_keep else 0.0
                 cp = normalize.ClipParams(c.trim_in_ms, c.trim_out_ms, float(c.speed or 1.0),
-                                          "keep" if grok_keep else (c.grok_audio or "ambient"), None)
+                                          "keep" if grok_keep else (c.grok_audio or "ambient"), None, gain)
                 fit: dict[str, Any] = {"mode": "source"}
-                if c.engine == "ai_video" and sm.duration_ms:
+                if c.engine == "ai_video" and analysis is None and mode == "auto" and analyze:
+                    loaded.warnings.append({"code": "trim_not_analyzed", "clip_id": c.id,
+                                            "message": f"Không phân tích được video clip {c.key}; giữ cách khớp "
+                                                       "thời lượng cũ (không tự cắt)."})
+                if mode == "none":
+                    cp = replace(cp, trim_in_ms=0, trim_out_ms=0)  # nguyên take, không cắt/khớp
+                elif auto["applied"]:
+                    cp = replace(cp, trim_in_ms=auto["in_ms"], trim_out_ms=auto["out_ms"])
+                    fit = {"mode": "auto_trim", **auto}
+                    if auto["reason"] == "motion":
+                        cp, _ = normalize.fit_to_duration(sm.duration_ms or 0, cp, auto["dur_ms"])
+                elif c.engine == "ai_video" and sm.duration_ms:
                     # Theo clip.duration_ms (spec §11): video dài → cắt; ngắn → chậm ≤ 0,8× rồi giữ khung cuối.
                     fitted, fit = normalize.fit_to_duration(sm.duration_ms, cp, c.duration_ms)
                     if fit["mode"] == "trim" and next_link.get(c.id) == "continue":
@@ -232,7 +257,10 @@ def load(
                     dur = prof.frame_ms(c.duration_ms)
                 else:
                     dur = p["dur_ms"]
-                    src = {"kind": "video", "media": sm, "clip": cp, "fp": {"kind": "video", "seg": p["fingerprint"]}}
+                    src = {"kind": "video", "media": sm, "clip": cp, "fp": {"kind": "video", "seg": p["fingerprint"]},
+                           "trim": {"mode": mode, **auto}}
+                    if grok_keep and analysis is not None and mode != "none":
+                        src["speech"] = trim.local_spans(analysis, cp.trim_in_ms, dur, cp.speed)
             elif ipath is not None and image is not None:
                 if variant == "final" and c.engine == "ai_video":
                     loaded.missing.append({"clip_id": c.id, "key": c.key, "reason": "Chưa có video"})
@@ -264,8 +292,17 @@ def load(
         primary = (project.language or "vi") == lang
         lines_in: list[LineIn] = []
         clip_by_id = {c.id: c for c in clip_rows}
+        aligned = _align_grok_lines(clips_in, lines_by_clip, primary, lang)
         for ln in line_rows:
             text = ln.text if primary else str((ln.translations or {}).get(lang) or ln.text)
+            if ln.id in aligned:  # câu Grok tự nói: đặt theo đoạn nói dò được trong take (phụ đề khớp tiếng)
+                at = aligned[ln.id]
+                show = bool(ln.subtitle) and (clip_by_id[ln.clip_id].subtitle_mode or "auto") != "off"
+                lines_in.append(LineIn(ln.id, ln.clip_id, at["offset_ms"], at["duration_ms"], text=text,
+                                       subtitle=show, src={"path": None, "words": at["words"],
+                                                           "fp": {"sha": None, "source": ln.source,
+                                                                  "words": at["words"]}}))
+                continue
             audio: Media | None = None
             take: Take | None = None
             if ln.source in ("tts", "upload"):
@@ -320,6 +357,41 @@ def load(
             scene_max_ms=int((_setting(services, "render.scene_max_s") or 180) * 1000),
         )
     return loaded
+
+
+def _trim_analyses(services, sequence_id: int, *, compute: bool) -> dict[int, dict]:
+    """Phân tích tự cắt (media id → kết quả) cho video đang chọn của clip ai_video trong tập. Chạy ffmpeg NGOÀI
+    session; `compute=False` chỉ đọc cache."""
+    from sagareel.services import trimming
+
+    with services.db.session() as s:
+        ids = list(s.scalars(select(Take.media_id).join(Clip, Clip.video_take_id == Take.id).where(
+            Clip.sequence_id == sequence_id, Clip.deleted_at.is_(None), Clip.engine == "ai_video",
+            Take.media_id.is_not(None))))
+    if not ids:
+        return {}
+    return trimming.analyses(services, ids, compute=compute)
+
+
+def _align_grok_lines(clips_in: list[ClipIn], lines_by_clip: dict[int, list[DialogueLine]], primary: bool,
+                      lang: str) -> dict[int, dict[str, Any]]:
+    """Câu `source=grok` (offset chưa đặt tay) của clip có đoạn nói dò được → offset/độ dài/mốc từ theo tiếng thật."""
+    out: dict[int, dict[str, Any]] = {}
+    for c in clips_in:
+        spans = c.src.get("speech")
+        if not spans:
+            continue
+        lines = [ln for ln in lines_by_clip.get(c.id, []) if ln.source == "grok" and not ln.offset_ms]
+        if not lines:
+            continue
+        texts = [ln.text if primary else str((ln.translations or {}).get(lang) or ln.text) for ln in lines]
+        got = trim.grok_line_timings(texts, spans)
+        if got is None:
+            continue
+        for ln, at in zip(lines, got, strict=True):
+            if at["duration_ms"] > 0:
+                out[ln.id] = at
+    return out
 
 
 def _platform_safe_zone(s: Session, project_id: int, platform: str, prof: Profile) -> dict[str, int] | None:
@@ -666,7 +738,7 @@ def _prune(services, keep: set[Path]) -> dict:
 def estimate(services, sequence_id: int, variant: str = "draft", platform: str | None = None,
              lang: str | None = None, preview_seconds: float | None = None) -> dict[str, Any]:
     """Đồng bộ: số clip/khối, khối đã có, giây phim, thời gian chạy và dung lượng ước tính (spec §12.6)."""
-    loaded = load(services, sequence_id, variant, platform, lang)
+    loaded = load(services, sequence_id, variant, platform, lang, analyze=False)
     plan = make_plan(loaded, preview_seconds)
     cached_chunks = 0
     todo_ms = still_ms = 0

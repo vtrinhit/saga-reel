@@ -37,13 +37,26 @@ catalog op). Đọc `AGENTS.md` ở gốc repo nếu cần chi tiết cửa REST
 
 - **Agent làm hết (không dùng LLM của tool):** agent tự viết kết quả từng bước đúng `output_schema` (xem
   `sr_prompt_contracts`) rồi gửi thẳng: `sr_story_submit(task, data, …)` (bible, dàn ý, kịch bản, chia clip, prompt
-  ảnh/chuyển động, thoại, bộ nhớ), `sr_prompts_submit`, `sr_clip_update`, `sr_dialogue_bulk_set`, `sr_bible_create`,
+  ảnh/chuyển động, thoại, bộ nhớ, chuyển thể truyện `adapt_novel`), `sr_prompts_submit`, `sr_clip_update`, `sr_dialogue_bulk_set`, `sr_bible_create`,
   `sr_export_create(metadata=…)`. SagaReel chỉ tạo ảnh/video/giọng, dựng, xuất. Không cần prompt của dự án.
   Playbook: `playbooks/agent-only.md`.
 - **Agent điều khiển LLM của tool:** gọi `sr_story_write_bible`, `sr_story_split_clips`…, `sr_pipeline_run` — tool dùng prompt CỦA DỰ ÁN + tự nối khối
   định dạng đầu ra rồi kiểm schema. Thiếu prompt → bước dừng `waiting_input` (không hỏng quy trình): gửi kết quả bằng
   `sr_story_submit` hoặc viết prompt bằng `sr_prompt_set` rồi chạy tiếp. `sr_prompt_check(project_id)` cảnh báo trước
   (không LLM, không chặn).
+
+## Thời lượng clip + tự cắt ("quay dài, cắt gọn")
+
+- `clip.duration_ms` = độ dài **mong muốn trên màn hình**, số bất kỳ (vd. 2300) — bạn chọn theo nội dung (thoại +
+  hành động); không có mức cố định 6 s, thể loại chỉ là tham khảo (lệch chỉ cảnh báo).
+- Tạo video: app xin mức nhỏ nhất ≥ mong muốn + 0,3 s trong `capabilities.durations` của kết nối được chọn
+  (`sr_provider_list`/`provider.check`; sửa bằng `options.durations`). Take ghi `inputs.duration_s` + `desired_ms`.
+- Bản dựng tự cắt sát nội dung: clip có câu `source=grok` → từ 0,2 s trước tiếng đầu tới 0,3 s sau tiếng cuối; clip
+  không thoại → bỏ đầu/đuôi đứng yên, giữ thời lượng mong muốn; clip lồng tiếng TTS giữ khớp theo giọng. Xem trước:
+  `sr_clip_get`/`clip.list` → `auto_trim{in_ms, out_ms, dur_ms, reason}`; phân tích ngay: `clip.analyze_trim(ids)`
+  (job, không tốn tiền).
+- Ghi đè: `sr_clip_update(values={trim_in_ms, trim_out_ms})` (≠ 0 luôn thắng) hoặc `{trim_mode: auto|manual|none}`.
+  Âm gốc Grok có thoại được chuẩn hoá từng clip về −16 LUFS; phụ đề câu Grok bám đoạn nói dò được.
 
 ## Prompt là dữ liệu của dự án
 

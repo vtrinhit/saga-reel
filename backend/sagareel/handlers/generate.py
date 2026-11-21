@@ -371,10 +371,21 @@ async def generate_video(run) -> dict:
                           "image_media_id": image_id, "connection_id": adapter.conn.id,
                           "adapter": adapter.adapter_id, "job_id": run.job_id, "provider_meta": result.meta})
         ids = await pj._store(run, adapter, [result.path], kind="video", meta=meta, spend_kind="video")
+        await _analyze_trim(run, ids)
         elapsed = int((time.monotonic() - started) * 1000)
         return await anyio.to_thread.run_sync(
             _finish, run.services, run.job_id, p, "video", ids, {"provider_meta": pj._plain(result.meta)},
             _cost(est), elapsed)
+
+
+async def _analyze_trim(run, media_ids: list[int]) -> None:
+    """Phân tích tự cắt ngay sau khi có video (UI/agent thấy auto_trim không cần chờ dựng). Lỗi không làm hỏng job."""
+    from sagareel.services import trimming
+
+    try:
+        await anyio.to_thread.run_sync(lambda: trimming.analyses(run.services, list(media_ids)))
+    except Exception as e:  # noqa: BLE001
+        run.log("warning", f"Không phân tích được video để tự cắt: {e}")
 
 
 def _profile(clip: dict) -> dict[str, Any]:

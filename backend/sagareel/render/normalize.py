@@ -2,7 +2,9 @@
 
 Segment: W×H của hồ sơ, 30 fps CFR, yuv420p BT.709 tv, PCM 48 kHz stereo (`.mov`), độ dài đúng N khung (âm thanh
 đúng N × 1600 mẫu). Chọn `0:v:0` / `0:a:0` (bỏ stream ảnh bìa mjpeg của GrokTele); không có âm → `anullsrc`.
-Áp trim/tốc độ; âm gốc Grok `keep` / `mute` / `ambient` (−18 dB). Cache theo fingerprint ở `cache/segments/`.
+Áp trim/tốc độ; âm gốc Grok `keep` / `mute` / `ambient` (−18 dB). `keep` có thoại: `gain_db` (đo ở
+`render/trim.py`) đưa đoạn nói của từng clip về −16 LUFS như câu TTS, để các clip không câu to câu nhỏ.
+Cache theo fingerprint ở `cache/segments/`.
 """
 
 from __future__ import annotations
@@ -50,6 +52,7 @@ class ClipParams:
     speed: float = 1.0
     grok_audio: str = "ambient"
     dur_ms: int | None = None  # None = độ dài có sẵn sau trim/tốc độ
+    gain_db: float = 0.0  # âm gốc `keep` có thoại: gain đưa đoạn nói về −16 LUFS (render/trim.loudness_gain)
 
 
 def _get(obj: Any, name: str, default: Any = None) -> Any:
@@ -83,6 +86,7 @@ def coerce_clip(clip: ClipParams | Mapping[str, Any] | Any) -> ClipParams:
         speed=float(_get(clip, "speed", 1.0) or 1.0),
         grok_audio=mode if mode in GROK_MODES else "ambient",
         dur_ms=int(dur) if dur is not None else None,
+        gain_db=float(_get(clip, "gain_db", 0.0) or 0.0),
     )
 
 
@@ -127,13 +131,17 @@ def plan(src: SourceMedia, clip: ClipParams, prof: Profile) -> dict[str, Any]:
     dur = clip.dur_ms if clip.dur_ms else avail
     frames = prof.frames(dur)
     audio = "silent" if (not src.has_audio or clip.grok_audio == "mute") else clip.grok_audio
-    fp = cache.fingerprint({
+    gain = round(clip.gain_db, 2) if audio == "keep" else 0.0
+    fp_in = {
         "v": NORMALIZE_VERSION, "kind": "video", "sha": src.sha256, "trim_in": clip.trim_in_ms,
         "trim_out": clip.trim_out_ms, "speed": round(clip.speed, 6), "audio": audio, "frames": frames,
         "w": prof.width, "h": prof.height, "fps": prof.fps, "tier": prof.tier, "grade": prof.grade, "lut": prof.lut,
-    })
+    }
+    if gain:
+        fp_in["gain_db"] = gain  # chỉ khi khác 0: segment cũ (không gain) giữ nguyên fingerprint
+    fp = cache.fingerprint(fp_in)
     return {"frames": frames, "dur_ms": round(frames * 1000 / prof.fps), "avail_ms": avail, "audio": audio,
-            "pad_ms": max(0, dur - avail), "fingerprint": fp}
+            "pad_ms": max(0, dur - avail), "gain_db": gain, "fingerprint": fp}
 
 
 def build_args(src: SourceMedia, clip: ClipParams, prof: Profile, p: dict[str, Any], out: Path) -> list[str]:
@@ -165,6 +173,8 @@ def build_args(src: SourceMedia, clip: ClipParams, prof: Profile, p: dict[str, A
              "aformat=sample_fmts=s16:channel_layouts=stereo"]
         if p["audio"] == "ambient":
             a.append(f"volume={AMBIENT_DB}dB")
+        elif p.get("gain_db"):
+            a.append(f"volume={p['gain_db']:.2f}dB")  # thoại gốc: chuẩn hoá từng clip (tuyến tính) trước khi trộn
         a += ["apad", f"atrim=end_sample={s}", "asetpts=PTS-STARTPTS"]
         graph.append(f"[0:a:0]{','.join(a)}[a]")
     return [*args, "-filter_complex", ";".join(graph), "-map", "[v]", "-map", "[a]",

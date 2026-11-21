@@ -650,6 +650,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/clip.analyze_trim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Phân tích video đang chọn của clip (đoạn nói, chuyển động, độ to) để tự cắt sát nội dung → job; không tốn tiền provider. Kết quả: auto_trim{in_ms, out_ms, dur_ms, reason} mỗi clip (xem/chấp nhận hoặc đặt trim_in_ms/trim_out_ms/trim_mode bằng clip.update) */
+        post: operations["clip.analyze_trim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ops/clip.bulk_create": {
         parameters: {
             query?: never;
@@ -3447,7 +3464,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Gửi thẳng KẾT QUẢ một bước viết (bible, dàn ý, kịch bản, chia clip, prompt, thoại, bộ nhớ) — kiểm đúng schema như đường LLM rồi lưu; không gọi LLM của tool, quy trình đang chờ chạy tiếp */
+        /** Gửi thẳng KẾT QUẢ một bước viết (bible, dàn ý, kịch bản, chia clip, prompt, thoại, bộ nhớ, chuyển thể truyện thành tập) — kiểm đúng schema như đường LLM rồi lưu; không gọi LLM của tool, quy trình đang chờ chạy tiếp */
         post: operations["story.submit"];
         delete?: never;
         options?: never;
@@ -4613,6 +4630,14 @@ export interface components {
         CleanupPreviewParams: {
             filters?: components["schemas"]["CleanupFilters"];
         };
+        /** ClipAnalyzeTrimParams */
+        ClipAnalyzeTrimParams: {
+            /**
+             * Ids
+             * @description Clip cần phân tích video đang chọn
+             */
+            ids: number[];
+        };
         /** ClipBulkCreateParams */
         ClipBulkCreateParams: {
             /** Sequence Id */
@@ -4821,7 +4846,10 @@ export interface components {
         ClipUpdateParams: {
             /** Id */
             id: number;
-            /** Values */
+            /**
+             * Values
+             * @description Cột clip → giá trị. Thêm `trim_mode` (auto|manual|none): auto = tự cắt sát nội dung (mặc định), manual = theo trim_in_ms/trim_out_ms, none = nguyên take; trim_in_ms/trim_out_ms ≠ 0 luôn thắng tự cắt
+             */
             values: {
                 [key: string]: unknown;
             };
@@ -4886,7 +4914,7 @@ export interface components {
             transcript?: string | null;
             /**
              * Engine
-             * @description auto: cảnh 4.5-17 s -> ai_video (6/10/15 s), còn lại still_motion đúng thời lượng
+             * @description auto: cảnh 4.5-17 s -> ai_video, còn lại still_motion; clip giữ đúng độ dài cảnh
              * @default auto
              * @enum {string}
              */
@@ -7651,19 +7679,24 @@ export interface components {
         StorySubmitParams: {
             /**
              * Task
-             * @description Bước: write_bible, outline, write_script, split_clips, image_prompts, motion_prompts, dialogue, memory_summarize
+             * @description Bước: write_bible, outline, write_script, split_clips, image_prompts, motion_prompts, dialogue, memory_summarize, adapt_novel
              */
             task: string;
             /**
              * Data
-             * @description Kết quả bước, ĐÚNG schema đầu ra của bước (prompt.contracts → output_schema); write_script = chữ kịch bản
+             * @description Kết quả bước, ĐÚNG schema đầu ra của bước (prompt.contracts → output_schema); write_script = chữ kịch bản; adapt_novel = {episodes: [AdaptOut + script?, source_text?]} (mỗi phần tử một tập mới)
              */
             data: unknown;
             /**
              * Project Id
-             * @description write_bible / outline
+             * @description write_bible / outline / adapt_novel
              */
             project_id?: number | null;
+            /**
+             * Text
+             * @description adapt_novel: truyện gốc (tuỳ chọn) để định vị source_text từng tập và bằng chứng trích dẫn
+             */
+            text?: string | null;
             /**
              * Sequence Id
              * @description write_script / split_clips / *_prompts / dialogue / memory_summarize
@@ -10042,6 +10075,48 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": components["schemas"]["StudyListParams"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dữ liệu đầu vào không hợp lệ (`validation_failed`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+            /** @description Lỗi chuẩn `{ok: false, error_code, …}` */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorPayload"];
+                };
+            };
+        };
+    };
+    "clip.analyze_trim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClipAnalyzeTrimParams"];
             };
         };
         responses: {

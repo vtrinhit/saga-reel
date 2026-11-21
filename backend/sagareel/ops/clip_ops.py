@@ -82,7 +82,9 @@ class ClipListParams(BaseModel):
 
 class ClipUpdateParams(BaseModel):
     id: int
-    values: dict[str, Any]
+    values: dict[str, Any] = Field(description="Cột clip → giá trị. Thêm `trim_mode` (auto|manual|none): auto = tự cắt "
+                                   "sát nội dung (mặc định), manual = theo trim_in_ms/trim_out_ms, none = nguyên take; "
+                                   "trim_in_ms/trim_out_ms ≠ 0 luôn thắng tự cắt")
     expected_updated_at: datetime | None = Field(
         default=None, description="`updated_at` lúc đọc; lệch (người khác đã sửa) → lỗi stale_write 409")
 
@@ -285,3 +287,23 @@ def review_queue(ctx: OpContext, p: ReviewQueueParams) -> dict:
     if p.sequence_id is None:
         raise ValidationFailed("Cần sequence_id hoặc sequence_ids.")
     return takes.review_queue(ctx, p.sequence_id, flt, p.cursor, p.limit)
+
+
+class ClipAnalyzeTrimParams(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=clips.MAX_BULK, description="Clip cần phân tích video đang chọn")
+
+
+@op("clip.analyze_trim", summary="Phân tích video đang chọn của clip (đoạn nói, chuyển động, độ to) để tự cắt sát nội "
+    "dung → job; không tốn tiền provider. Kết quả: auto_trim{in_ms, out_ms, dur_ms, reason} mỗi clip (xem/chấp nhận "
+    "hoặc đặt trim_in_ms/trim_out_ms/trim_mode bằng clip.update)", params=ClipAnalyzeTrimParams, long_running=True,
+    mcp="tool")
+def clip_analyze_trim(ctx: OpContext, p: ClipAnalyzeTrimParams) -> dict:
+    from sagareel.services import jobs, trimming
+
+    ids = list(dict.fromkeys(p.ids))
+    with ctx.services.db.session() as s:
+        rows = [clips.get_clip(s, i) for i in ids]
+        project_id = entities.project_id_of(s, rows[0])
+        seq_id = rows[0].sequence_id if len({c.sequence_id for c in rows}) == 1 else None
+    return jobs.submit(ctx.services, trimming.JOB_TYPE, {"clip_ids": ids}, lane=trimming.LANE, project_id=project_id,
+                       sequence_id=seq_id, max_attempts=1)
