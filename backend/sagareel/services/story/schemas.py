@@ -165,6 +165,17 @@ class AdaptOut(_M):
     facts: list[FactOut] = Field(default_factory=list)
 
 
+class AdaptEpisodeIn(AdaptOut):
+    """Một tập do agent gửi thẳng (`story.submit` task=adapt_novel): như AdaptOut + kịch bản/đoạn truyện gốc tuỳ chọn."""
+
+    script: str = Field(default="", description="Kịch bản tập (tuỳ chọn; trống = viết sau bằng write_script)")
+    source_text: str = Field(default="", description="Đoạn truyện gốc của tập (tuỳ chọn; lưu làm nguồn của tập)")
+
+
+class AdaptSubmit(_M):
+    episodes: list[AdaptEpisodeIn] = Field(min_length=1, max_length=200)
+
+
 # --- memory_summarize ------------------------------------------------------------------------------------------------
 
 

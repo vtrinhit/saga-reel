@@ -209,7 +209,8 @@ STEP_PROMPTS = {
 
 def check_session(s: Session, project_id: int) -> dict[str, Any]:
     """Kiểm bộ prompt của dự án: cú pháp Jinja, khoá thiếu so với hợp đồng, biến lạ/chưa dùng, bước sẽ thiếu prompt
-    khi chạy bằng LLM của tool. Chỉ cảnh báo — không bao giờ chặn chạy (bước thiếu prompt sẽ chờ nhập)."""
+    khi chạy bằng LLM của tool. Chỉ cảnh báo — không bao giờ chặn chạy (bước thiếu prompt sẽ chờ nhập). `ok` = false
+    chỉ khi thiếu khoá hoặc có template sai cú pháp; chỉ có cảnh báo khác → `ok` = true."""
     have = bodies(s, project_id)
     warnings: list[dict[str, Any]] = []
     for key, text in sorted(have.items()):
@@ -229,7 +230,9 @@ def check_session(s: Session, project_id: int) -> dict[str, Any]:
         warnings.append({"key": ks[0], "code": "prompt_missing",
                          "message": f"Bước {step} chạy bằng LLM/compiler của tool sẽ thiếu prompt '{ks[0]}' → bước dừng "
                                     "chờ nhập (agent/người gửi kết quả bằng story.submit/prompts.submit, hoặc viết prompt)."})
-    return {"project_id": project_id, "ok": not warnings, "missing": missing,
+    # ok = bộ prompt dùng được: đủ khoá và không lỗi cú pháp; cảnh báo biến lạ/chưa dùng không làm hỏng (ok vẫn true).
+    syntax = [w for w in warnings if w["code"] == "template_syntax_error"]
+    return {"project_id": project_id, "ok": not missing and not syntax, "missing": missing,
             "steps_without_prompt": steps_without_prompt, "warnings": warnings}
 
 

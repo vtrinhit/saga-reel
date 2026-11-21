@@ -177,14 +177,17 @@ def story_memory_summarize(ctx: OpContext, p: SequenceTaskParams) -> dict:
 
 
 SUBMIT_TASKS = ("write_bible", "outline", "write_script", "split_clips", "image_prompts", "motion_prompts", "dialogue",
-                "memory_summarize")
+                "memory_summarize", "adapt_novel")
 
 
 class StorySubmitParams(BaseModel):
     task: str = Field(description="Bước: " + ", ".join(SUBMIT_TASKS))
     data: Any = Field(description="Kết quả bước, ĐÚNG schema đầu ra của bước (prompt.contracts → output_schema); "
-                      "write_script = chữ kịch bản")
-    project_id: int | None = Field(default=None, description="write_bible / outline")
+                      "write_script = chữ kịch bản; adapt_novel = {episodes: [AdaptOut + script?, source_text?]} "
+                      "(mỗi phần tử một tập mới)")
+    project_id: int | None = Field(default=None, description="write_bible / outline / adapt_novel")
+    text: str | None = Field(default=None, description="adapt_novel: truyện gốc (tuỳ chọn) để định vị source_text "
+                             "từng tập và bằng chứng trích dẫn")
     sequence_id: int | None = Field(default=None, description="write_script / split_clips / *_prompts / dialogue / "
                                     "memory_summarize")
     clip_ids: list[int] | None = Field(default=None, max_length=1000, description="*_prompts / dialogue: chỉ các clip này")
@@ -194,7 +197,8 @@ class StorySubmitParams(BaseModel):
     replace: bool = Field(default=True, description="split_clips: thay clip cũ của tập")
 
 
-@op("story.submit", summary="Gửi thẳng KẾT QUẢ một bước viết (bible, dàn ý, kịch bản, chia clip, prompt, thoại, bộ nhớ) "
+@op("story.submit", summary="Gửi thẳng KẾT QUẢ một bước viết (bible, dàn ý, kịch bản, chia clip, prompt, thoại, bộ nhớ, "
+    "chuyển thể truyện thành tập) "
     "— kiểm đúng schema như đường LLM rồi lưu; không gọi LLM của tool, quy trình đang chờ chạy tiếp",
     params=StorySubmitParams, mcp="tool")
 async def story_submit(ctx: OpContext, p: StorySubmitParams) -> dict:
@@ -206,7 +210,7 @@ async def story_submit(ctx: OpContext, p: StorySubmitParams) -> dict:
     need_seq = p.task in ("write_script", "split_clips", "memory_summarize")
     if need_seq and p.sequence_id is None:
         raise ValidationFailed(f"Bước {p.task} cần sequence_id.")
-    if p.task in ("write_bible", "outline") and p.project_id is None:
+    if p.task in ("write_bible", "outline", "adapt_novel") and p.project_id is None:
         raise ValidationFailed(f"Bước {p.task} cần project_id.")
     if p.task == "write_bible":
         kw: dict[str, Any] = {"project_id": p.project_id, "idea": p.idea}
@@ -218,6 +222,8 @@ async def story_submit(ctx: OpContext, p: StorySubmitParams) -> dict:
         kw = {"sequence_id": p.sequence_id, "clip_ids": p.clip_ids, "overwrite": True}
     elif p.task == "split_clips":
         kw = {"sequence_id": p.sequence_id, "replace": p.replace}
+    elif p.task == "adapt_novel":
+        kw = {"project_id": p.project_id, "text": p.text}
     else:
         kw = {"sequence_id": p.sequence_id}
     token = llmio.GIVEN.set({TASK_KEYS[p.task]: p.data})

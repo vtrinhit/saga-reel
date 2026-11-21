@@ -18,6 +18,10 @@ from sagareel.db.models import BibleItem, Clip, Sequence
 from sagareel.services import entities, prompts
 
 STEPS: tuple[dict[str, Any], ...] = (
+    {"step": "adapt_novel", "purpose": "Chuyển thể truyện dài thành các tập (synopsis, điểm treo, nhân vật, sự thật)",
+     "inputs": ["truyện gốc"], "outputs": "sequence + bible_item + asset", "tool_op": "story.adapt_novel",
+     "agent_op": ["story.submit task=adapt_novel data={episodes: [AdaptOut + script?, source_text?]}"],
+     "prompt_keys": ["story_adapt_novel"]},
     {"step": "write_bible", "purpose": "Story Bible: nhân vật (nhãn nhân thiết), bối cảnh, đạo cụ, quan hệ, luật, câu hỏi mở "
      "+ tài sản Library", "inputs": ["ý tưởng", "project.genre"], "outputs": "bible_item + asset",
      "tool_op": "story.write_bible", "agent_op": ["story.submit task=write_bible", "bible.create", "asset.create"],
@@ -33,7 +37,8 @@ STEPS: tuple[dict[str, Any], ...] = (
      "inputs": ["kịch bản tập"], "outputs": "bible_item (pending)", "tool_op": "story.memory_summarize",
      "agent_op": ["story.submit task=memory_summarize", "bible.create", "bible.evidence_add"],
      "prompt_keys": ["story_memory_summarize"]},
-    {"step": "split_clips", "purpose": "Chia kịch bản thành cảnh + clip (trường shot, thoại, mã tài sản)",
+    {"step": "split_clips", "purpose": "Chia kịch bản thành cảnh + clip (trường shot, thoại, mã tài sản, thời lượng "
+     "mong muốn từng clip — số tự do theo nội dung)",
      "inputs": ["kịch bản", "Library"], "outputs": "scene + clip + dialogue_line", "tool_op": "story.split_clips",
      "agent_op": ["story.submit task=split_clips", "prompts.submit field=clips", "clip.bulk_create"],
      "prompt_keys": ["story_split_clips"]},
@@ -66,6 +71,21 @@ STEPS: tuple[dict[str, Any], ...] = (
      "outputs": "export_package", "tool_op": "export.create (caption bằng LLM của tool nếu có)",
      "agent_op": ["export.create metadata={title, description, hashtags…} (agent tự viết)"], "prompt_keys": ["caption"]},
 )
+
+
+DURATIONS = {
+    "clip": "clip.duration_ms = độ dài MONG MUỐN trên màn hình, số bất kỳ (vd. 2300) do người viết/agent chọn theo nội "
+            "dung; thể loại chỉ cho giá trị mặc định/khoảng tham khảo (lệch chỉ cảnh báo, không kẹp).",
+    "provider": "Tạo video xin mức nhỏ nhất ≥ mong muốn + 0,3 s trong capabilities.durations của kết nối được chọn "
+                "(sửa ở Cài đặt › Provider, options.durations); take ghi inputs.duration_s (xin) + desired_ms.",
+    "auto_trim": "Bản dựng tự cắt sát nội dung: clip có câu source=grok → [đầu tiếng − 0,2 s, cuối tiếng + 0,3 s]; clip "
+                 "không thoại → bỏ đầu/đuôi đứng yên, giữ đúng thời lượng mong muốn; clip TTS giữ khớp theo giọng. "
+                 "Xem trước: clip.get/list → auto_trim{in_ms, out_ms, dur_ms, reason}; phân tích ngay: "
+                 "clip.analyze_trim(ids) (job, không tốn tiền).",
+    "override": "clip.update {trim_in_ms, trim_out_ms} (≠ 0 luôn thắng tự cắt) hoặc {trim_mode: auto|manual|none}; "
+                "quay lại tự cắt: {trim_mode: 'auto', trim_in_ms: 0, trim_out_ms: 0}.",
+    "audio": "Âm gốc Grok có thoại được chuẩn hoá từng clip về −16 LUFS; phụ đề câu source=grok bám đoạn nói dò được.",
+}
 
 
 def _contract(key: str) -> dict[str, Any] | None:
@@ -109,6 +129,7 @@ def guide(ctx: OpContext, project_id: int | None = None) -> dict[str, Any]:
         "steps": steps,
         "gates": "Quy trình dừng ở gate (waiting_review): tóm tắt cho người dùng, chờ gate.approve/gate.reject.",
         "prompts": "prompt.contracts (hợp đồng biến/đầu ra) · prompt.set · prompt.preview · prompt.check (chỉ cảnh báo).",
+        "durations": DURATIONS,
     }
     if project_id is not None:
         out["state"] = _state(ctx, project_id)

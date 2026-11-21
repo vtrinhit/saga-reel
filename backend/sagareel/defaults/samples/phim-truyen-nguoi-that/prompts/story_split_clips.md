@@ -19,6 +19,9 @@ Mã tài sản dùng được (CHỈ dùng các mã này cho `characters`, `look
 Trường shot CHỈ được dùng đúng các giá trị sau (để trống "" nếu không chắc; không thêm trạng từ như "slow_"):
 {{ enums }}
 
+`duration_s` của từng clip: chọn tự nhiên theo nội dung — lời thoại và hành động của clip cần bao lâu thì đặt bấy nhiêu
+(số bất kỳ, vd. 2.5, 3.8, 7); KHÔNG đặt cố định 6 s cho mọi clip. Video được tạo dài hơn một chút rồi bản dựng tự cắt
+sát đoạn có tiếng nói/chuyển động.
 Không bỏ hay viết lại câu thoại nào của kịch bản; mọi câu thoại thuộc đúng một clip theo thứ tự. Câu thoại của clip
 phải đọc vừa: số âm tiết (từ) ≤ (giây − 2) × 4,5. `speaker` = mã nhân vật, hoặc "narrator" cho lời dẫn.
 `action` viết tiếng Việt; `first_frame_desc`/`last_frame_desc`/`sfx_desc` ngắn, tiếng Anh.

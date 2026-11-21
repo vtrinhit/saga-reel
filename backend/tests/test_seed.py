@@ -148,10 +148,11 @@ def test_seed_from_env_skips_invalid_setting_values(tmp_db, tmp_path, caplog):
     assert "mk-123456" not in caplog.text
 
 
-def test_seed_from_env_duration_not_in_choices_is_skipped(tmp_db, tmp_path):
+def test_seed_from_env_any_whole_second_duration(tmp_db, tmp_path):
+    # thời lượng là số tự do (mức provider lấy từ caps của kết nối), không còn danh sách cố định
     env = _write_env(tmp_path, FULL_ENV + "MULTIKIT_DURATION=7\n")
     seed_from_env(tmp_db, env)
-    assert "video.duration" not in _global(tmp_db)
+    assert _global(tmp_db)["video.duration"] == 7
 
 
 def test_seed_from_env_partial_env_creates_only_configured(tmp_db, tmp_path):

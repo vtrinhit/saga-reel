@@ -187,7 +187,9 @@ async def test_part_all_chains_image_video_and_continue(client, conns, compiler,
     assert (img_a.part, vid_a.part, vid_b.part) == ("image", "video", "video")
     assert vid_a.inputs["image_media_id"] == img_a.media_id and vid_a.inputs["image_source"] == f"take#{img_a.id}"
     assert vid_b.inputs["image_source"] == f"last_frame:take#{vid_a.id}"
-    assert vid_b.inputs["duration_s"] == 10 and vid_a.inputs["duration_s"] == 6
+    # fake-vid không khai báo mức giây → xin đúng mong muốn + 0,3 s, làm tròn lên giây; ghi cả độ dài mong muốn
+    assert vid_b.inputs["duration_s"] == 8 and vid_a.inputs["duration_s"] == 7
+    assert vid_b.inputs["desired_ms"] == 7000 and vid_a.inputs["desired_ms"] == 6000
     assert vid_b.inputs["prompt"] == "MOT[c0002] chạy"
     db = _db(client)
     with db.session() as s:

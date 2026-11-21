@@ -120,6 +120,7 @@ function ConnectionRow({
           {conn.base_url ? <> · <span className="font-mono">{conn.base_url}</span></> : null}
           {conn.has_api_key ? <> · khoá <span className="font-mono">{conn.api_key}</span></> : null}
         </p>
+        {conn.kind === 'video' ? <VideoDurations conn={conn} adapter={adapter} /> : null}
         {conn.health?.detail && conn.health.status !== 'alive' ? (
           <p className="text-xs text-fg-2">{conn.health.detail}</p>
         ) : null}
@@ -311,5 +312,22 @@ export function SettingsProviders() {
         />
       ) : null}
     </>
+  );
+}
+
+/** Mức giây kết nối video tạo được (caps: options.durations, không thì mặc định của adapter). */
+function VideoDurations({ conn, adapter }: { conn: Connection; adapter?: Adapter }) {
+  const raw = 'durations' in conn.options ? conn.options.durations : adapter?.default_capabilities?.durations;
+  const list = Array.isArray(raw) ? raw.map(Number).filter((n) => n > 0) : [];
+  return (
+    <p className="text-xs text-fg-2">
+      {list.length ? (
+        <>
+          Thời lượng tạo được: <span className="tabular-nums">{list.join(', ')}</span> giây
+        </>
+      ) : (
+        'Thời lượng tạo được: số giây bất kỳ'
+      )}
+    </p>
   );
 }

@@ -7,7 +7,7 @@ import { AudioLines, Music, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { cn } from '../../lib/cn';
-import type { SoundRow } from '../../lib/studioData';
+import { TRIM_REASON, type SoundRow } from '../../lib/studioData';
 import {
   clipSeconds,
   shortTime,
@@ -17,6 +17,7 @@ import {
   type Placed,
   type TimelineItemRow,
   type TransitionTable,
+  type TrimMode,
 } from '../../lib/timeline';
 import { Button } from '../ui/Button';
 import { Checkbox } from '../ui/Checkbox';
@@ -85,6 +86,65 @@ function SecondsField({ id, label, ms, onCommit, hint, min = 0.1, disabled }: {
   );
 }
 
+const TRIM_MODES: { value: TrimMode; label: string }[] = [
+  { value: 'auto', label: 'Tự cắt' },
+  { value: 'manual', label: 'Thủ công' },
+  { value: 'none', label: 'Nguyên take' },
+];
+
+/** Cắt video của clip: tự cắt sát nội dung (đề xuất + lý do), trim tay đầu/cuối, hoặc nguyên take. */
+function TrimSection({ clip, sourceMs, readOnly, onUpdate, onAnalyze, analyzing }: {
+  clip: ClipRow;
+  sourceMs: number | null;
+  readOnly?: boolean;
+  onUpdate: (values: Record<string, unknown>, label: string) => void;
+  onAnalyze?: () => void;
+  analyzing?: boolean;
+}) {
+  const mode: TrimMode = clip.trim_mode ?? 'auto';
+  const at = clip.auto_trim ?? null;
+  const take = at?.take_ms ?? sourceMs;
+  const setMode = (m: TrimMode) => {
+    if (m === mode) return;
+    if (m === 'auto') onUpdate({ trim_mode: 'auto', trim_in_ms: 0, trim_out_ms: 0 }, 'tự cắt');
+    else if (m === 'manual') {
+      // Bắt đầu từ đề xuất tự cắt (nếu có) để chỉnh tiếp.
+      const base = at?.applied ? { trim_in_ms: at.in_ms, trim_out_ms: at.out_ms } : {};
+      onUpdate({ trim_mode: 'manual', ...base }, 'cắt thủ công');
+    } else onUpdate({ trim_mode: 'none' }, 'dùng nguyên take');
+  };
+  const range = at?.applied && take ? `${clipSeconds(at.in_ms)}–${clipSeconds(take - at.out_ms)} của ${clipSeconds(take)}` : null;
+  return (
+    <InspectorSection title="Cắt video">
+      <SegmentedControl label="Cách cắt video" options={TRIM_MODES.map((o) => ({ ...o, disabled: readOnly }))} value={mode} onChange={setMode} />
+      {mode === 'auto' ? (
+        <div className="grid gap-1.5 text-sm">
+          {range ? (
+            <p>
+              Dùng <span className="font-mono tabular-nums">{range}</span>
+            </p>
+          ) : null}
+          <p className="text-xs text-fg-2">{TRIM_REASON[at?.reason ?? 'not_analyzed'] ?? at?.reason}</p>
+          {(!at || at.reason === 'not_analyzed') && onAnalyze && !readOnly ? (
+            <Button variant="secondary" className="justify-self-start" onClick={onAnalyze} loading={analyzing} disabled={analyzing}>
+              Phân tích video
+            </Button>
+          ) : null}
+        </div>
+      ) : mode === 'manual' ? (
+        <fieldset className="grid grid-cols-2 gap-2" disabled={readOnly}>
+          <legend className="sr-only">Trim tay</legend>
+          <SecondsField id={`tin-${clip.id}`} label="Cắt đầu" ms={clip.trim_in_ms ?? 0} min={0} onCommit={(ms) => onUpdate({ trim_in_ms: ms ?? 0 }, 'điểm vào (trim)')} />
+          <SecondsField id={`tout-${clip.id}`} label="Cắt cuối" ms={clip.trim_out_ms ?? 0} min={0} onCommit={(ms) => onUpdate({ trim_out_ms: ms ?? 0 }, 'điểm ra (trim)')} />
+          {take ? <p className="col-span-2 text-xs text-fg-2">Take dài {clipSeconds(take)}. Kéo mép phải trên timeline cũng đổi điểm ra.</p> : null}
+        </fieldset>
+      ) : (
+        <p className="text-xs text-fg-2">Dùng cả take{take ? ` (${clipSeconds(take)})` : ''}, không cắt và không khớp độ dài mong muốn.</p>
+      )}
+    </InspectorSection>
+  );
+}
+
 /** Ô chữ dài lưu khi rời ô. */
 function CommitTextarea({ id, label, value, onCommit, hint, disabled }: {
   id: string;
@@ -135,9 +195,14 @@ export interface ClipInspectorProps {
   regenerating?: boolean;
   /** Mất kết nối: khoá nút tốn phí (DESIGN §5.5 OfflineBanner). */
   offline?: boolean;
+  /** Độ dài video nguồn đang chọn (ms) — giới hạn trim tay. */
+  sourceMs?: number | null;
+  /** Phân tích video để tự cắt (job `clip.analyze_trim`, không tốn tiền). */
+  onAnalyzeTrim?: () => void;
+  analyzing?: boolean;
 }
 
-export function ClipInspector({ clip, slot, prevKey, lines, transitions, readOnly, audioHref, onUpdate, onRegenerate, regenerating, offline }: ClipInspectorProps) {
+export function ClipInspector({ clip, slot, prevKey, lines, transitions, readOnly, audioHref, onUpdate, onRegenerate, regenerating, offline, sourceMs, onAnalyzeTrim, analyzing }: ClipInspectorProps) {
   const st = clipStatus(clip);
   const tr = (clip.transition ?? {}) as { name?: string; duration_ms?: number | null };
   const trName = tr.name || (clip.link === 'fade' ? 'fade' : 'cut');
@@ -161,18 +226,21 @@ export function ClipInspector({ clip, slot, prevKey, lines, transitions, readOnl
         <InspectorSection title="Thời lượng">
           <SecondsField
             id={`dur-${clip.id}`}
-            label="Độ dài clip"
-            ms={slot?.dur_ms ?? clip.duration_ms}
-            min={0.5}
+            label="Độ dài mong muốn"
+            ms={clip.duration_ms}
+            min={0.1}
             disabled={readOnly}
             hint={
               clip.video_take_id != null
-                ? 'Clip có video: dài theo video nguồn sau trim — đổi ở đây là đổi điểm ra. Phím , . trim từng khung.'
-                : 'Kéo mép phải trên timeline hoặc phím , . để trim từng khung.'
+                ? `Số bất kỳ. Tạo video xin mức ≥ độ dài này + 0,3 s; bản dựng${slot ? ` đang dài ${clipSeconds(slot.dur_ms)}` : ''} theo cách cắt bên dưới.`
+                : 'Số bất kỳ. Kéo mép phải trên timeline hoặc phím , . để trim từng khung.'
             }
             onCommit={(ms) => ms != null && onUpdate({ duration_ms: ms }, 'thời lượng')}
           />
         </InspectorSection>
+        {clip.video_take_id != null && clip.engine === 'ai_video' ? (
+          <TrimSection clip={clip} sourceMs={sourceMs ?? null} readOnly={readOnly} onUpdate={onUpdate} onAnalyze={onAnalyzeTrim} analyzing={analyzing} />
+        ) : null}
         <InspectorSection title={prevKey ? `Chuyển cảnh từ ${prevKey}` : 'Chuyển cảnh vào'}>
           {prevKey ? (
             <>

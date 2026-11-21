@@ -20,6 +20,7 @@ import anyio
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from sagareel.core import durations as dur_svc
 from sagareel.core.context import OpContext
 from sagareel.core.errors import AppError, NotFound, ValidationFailed
 from sagareel.db.models import Clip, DialogueLine, Media, Project, Sequence, Take
@@ -359,20 +360,6 @@ def _plan(s: Session, rows: list[Clip], part: str, n: int) -> tuple[list[dict], 
     return steps, skipped
 
 
-def _pick_duration(duration_s: int, allowed: list | None) -> tuple[int, str | None]:
-    if not allowed:
-        return duration_s, None
-    opts = sorted(int(a) for a in allowed)
-    for a in opts:
-        if a >= duration_s:
-            return a, None
-    return opts[-1], f"Thời lượng {duration_s} s vượt mức tối đa {opts[-1]} s của kết nối; dùng {opts[-1]} s."
-
-
-def _ceil_s(ms: int) -> int:
-    return max(1, -(-int(ms) // 1000))
-
-
 async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: dict[str, Any] | None = None,
                      part: str = "image", overrides: dict[str, Any] | None = None, dry_run: bool = False,
                      parent_take_id: int | None = None) -> dict[str, Any]:
@@ -476,8 +463,10 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
                 req: Any = ImageRequest(prompt="", refs=[], aspect=ci["aspect"], resolution=resolution, model=model,
                                         quality=None, out_dir=po._DRY_DIR)
             else:
-                want = int(ov["duration"]) if ov.get("duration") else _ceil_s(ci["duration_ms"])
-                durations[st["clip_id"]] = _pick_duration(want, adapter.capabilities().get("durations"))
+                caps = adapter.capabilities().get("durations")
+                # overrides.duration = đúng số giây (agent/"giống take này"); không thì mức nhỏ nhất ≥ mong muốn + 0,3 s.
+                durations[st["clip_id"]] = (dur_svc.exact(ov["duration"], caps) if ov.get("duration")
+                                            else dur_svc.pick(ci["duration_ms"], caps))
                 req = VideoRequest(image=po._DRY_DIR / "image", prompt="", duration_s=durations[st["clip_id"]][0],
                                    resolution=resolution, aspect=ci["aspect"], out_path=po._DRY_DIR / "video.mp4")
             est = await adapter.estimate(req)
@@ -525,7 +514,8 @@ async def regenerate(ctx: OpContext, *, ids: list[int] | None = None, selector: 
                           "engine": "still_motion" if st["type"] == GEN_STILL else "ai_video" if st["part"] == "video"
                           else ""}
                 if st["type"] == GEN_VIDEO:
-                    inputs["duration_s"] = durations[st["clip_id"]][0]
+                    inputs["duration_s"] = durations[st["clip_id"]][0]  # giây xin provider
+                    inputs["desired_ms"] = ci["duration_ms"]  # độ dài mong muốn trên màn hình lúc tạo
                 t = Take(owner_type="clip", owner_id=st["clip_id"], part=st["part"], status="queued", inputs=inputs,
                          parent_take_id=parent_take_id, seed=ci["seed"] + st["variant"])
                 s.add(t)

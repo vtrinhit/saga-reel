@@ -3,7 +3,7 @@
 - `word_timings_or_estimate(text, duration_ms, words?)`: có word-boundary của provider → căn theo từ của câu (NFC,
   bỏ dấu câu, không phân biệt hoa thường; từ không khớp được thì nội suy); không có → chia thời gian câu theo số âm
   tiết (tiếng Việt: mỗi từ một âm tiết), `estimated=True` để UI cảnh báo.
-- `choose_ai_duration(need_ms, durations)`: thời lượng ai_video nhỏ nhất trong caps (6/10/15) ≥ giọng.
+- `choose_ai_duration(need_ms, durations)`: thời lượng ai_video nhỏ nhất trong caps của kết nối ≥ giọng (+ đệm cắt).
 - `plan_clip(...)`: đề xuất cho một clip theo `audio.duration_sync` (voice_drives / clip_drives / none).
 """
 
@@ -19,7 +19,6 @@ Word = tuple[str, int, int]  # (từ, bắt đầu ms, kết thúc ms)
 
 MAX_ATEMPO = 1.25
 MIN_SLOWDOWN = 0.8  # voice_drives + ai_video: làm chậm hình tối đa còn 0,8×
-DEFAULT_AI_DURATIONS = (6, 10, 15)
 TAIL_MS = 250  # khoảng thở sau câu cuối trước khi cắt clip
 MODES = ("voice_drives", "clip_drives", "none")
 
@@ -136,12 +135,12 @@ def atempo_filter(tempo: float) -> str:
 
 
 def choose_ai_duration(need_ms: int, durations: Sequence[int] | None = None) -> tuple[int, bool]:
-    """(giây, vừa) — thời lượng nhỏ nhất trong `durations` ≥ `need_ms`; không có → lớn nhất, `vừa=False`."""
-    opts = sorted({int(d) for d in (durations or DEFAULT_AI_DURATIONS) if int(d) > 0}) or list(DEFAULT_AI_DURATIONS)
-    for d in opts:
-        if d * 1000 >= need_ms:
-            return d, True
-    return opts[-1], False
+    """(giây, vừa) — mức nhỏ nhất trong caps `durations` ≥ `need_ms` + đệm 0,3 s (`core.durations.pick`); không có mức
+    nào đủ → dài nhất, `vừa=False`. Caps rỗng (kết nối không khai báo) → làm tròn lên giây."""
+    from sagareel.core import durations as dur
+
+    sec, warn = dur.pick(need_ms, durations)
+    return sec, warn is None
 
 
 def voice_need_ms(lines: Sequence[dict]) -> int:
