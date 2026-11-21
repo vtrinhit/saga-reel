@@ -214,7 +214,7 @@ def test_analyze_trim_op_runs_job(client, world):
     r = client.post("/api/ops/clip.analyze_trim", json={"ids": [a]})
     assert r.status_code == 200, r.text
     job_id = r.json()["id"]
-    r = client.post("/api/ops/job.wait", json={"ids": [job_id], "timeout": 60})
+    r = client.post("/api/ops/job.wait", json={"ids": [job_id], "timeout_s": 60})
     assert r.status_code == 200, r.text
     job = r.json()["items"][0]
     assert job["status"] == "succeeded", job

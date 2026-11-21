@@ -54,6 +54,27 @@ export interface SubmitResult {
   update?: UpdateParams;
 }
 
+/**
+ * Trường danh sách giây (`durations`, kiểu json danh sách số): hiện và nhập dạng "3, 5, 6" thay vì JSON.
+ * Để trống = mức mặc định của adapter (`default` rỗng = mọi số giây).
+ */
+export function isSecondsList(f: ConfigField): boolean {
+  return f.type === 'json' && f.name === 'durations' && Array.isArray(f.default ?? []);
+}
+
+export const secondsListText = (v: unknown): string => (Array.isArray(v) ? v.join(', ') : '');
+
+/** "3, 5 6;8" → [3, 5, 6, 8] (số nguyên dương, tăng dần, không trùng); sai → lỗi. */
+export function parseSecondsList(text: string): number[] | null {
+  const parts = text.split(/[\s,;]+/).filter(Boolean);
+  const out = new Set<number>();
+  for (const p of parts) {
+    if (!/^\d+$/.test(p) || Number(p) <= 0) return null;
+    out.add(Number(p));
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
 const show = (v: unknown): string => {
   if (v == null) return '';
   if (typeof v === 'object') return JSON.stringify(v, null, 2);
@@ -71,7 +92,7 @@ function initialField(f: ConfigField, conn?: Connection): FieldValue {
     // thêm mới: địa chỉ máy chủ điền sẵn mặc định (thường là bắt buộc); model để trống = mặc định của adapter
     return f.name === 'base_url' ? show(f.default) : '';
   }
-  if (conn && f.name in conn.options) return show(conn.options[f.name]);
+  if (conn && f.name in conn.options) return isSecondsList(f) ? secondsListText(conn.options[f.name]) : show(conn.options[f.name]);
   return '';
 }
 
@@ -91,6 +112,10 @@ export function fieldPlaceholder(f: ConfigField, conn?: Connection): string | un
     return f.required ? undefined : 'Để trống nếu không cần khoá';
   }
   if (f.type === 'bool' || f.type === 'enum') return undefined;
+  if (isSecondsList(f)) {
+    const d = secondsListText(f.default);
+    return d ? `Mặc định: ${d}` : 'Để trống = mọi số giây';
+  }
   if (f.default == null || f.default === '') return undefined;
   if (f.type === 'json') {
     const d = JSON.stringify(f.default);
@@ -117,6 +142,11 @@ function parseField(f: ConfigField, raw: FieldValue): Parsed {
       if (!/^https?:\/\/\S+$/i.test(t)) return { ok: false, error: 'Địa chỉ phải bắt đầu bằng http:// hoặc https://.' };
       return { ok: true, value: t, empty: false };
     case 'json': {
+      if (isSecondsList(f)) {
+        const list = parseSecondsList(t);
+        if (!list) return { ok: false, error: `${f.label}: nhập các số giây nguyên dương, cách nhau bằng dấu phẩy.` };
+        return { ok: true, value: list, empty: false };
+      }
       let v: unknown;
       try {
         v = JSON.parse(t);

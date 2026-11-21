@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Adapter, Connection } from '../api/types';
-import { buildSubmit, initialValues, fieldPlaceholder } from './providerForm';
+import { buildSubmit, initialValues, fieldPlaceholder, parseSecondsList } from './providerForm';
 
 const MAIVIDEO: Adapter = {
   id: 'maivideo',
@@ -168,5 +168,13 @@ describe('buildSubmit — sửa', () => {
     const c = conn({ api_key: '', has_api_key: false });
     const v = initialValues(MAIVIDEO, c);
     expect(buildSubmit(MAIVIDEO, v, c).errors.api_key).toBe('Nhập Khoá API.');
+  });
+});
+
+describe('durations — danh sách giây', () => {
+  it('nhập "3, 5 6" thành [3, 5, 6]; sai → null', () => {
+    expect(parseSecondsList('6, 3 5;5')).toEqual([3, 5, 6]);
+    expect(parseSecondsList('3, 2.5')).toBeNull();
+    expect(parseSecondsList('0')).toBeNull();
   });
 });

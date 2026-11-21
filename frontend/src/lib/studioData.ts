@@ -380,10 +380,46 @@ export function renderSourceMs(clips: ClipRow[], sources: Map<number, number>): 
     const src = sources.get(c.id);
     if (src == null) return;
     const nextContinue = clips[i + 1]?.link === 'continue';
-    if (c.engine !== 'ai_video' || (nextContinue && src > (c.duration_ms ?? 0))) out.set(c.id, src);
+    if (c.engine !== 'ai_video' || autoTrimActive(c) || c.trim_mode === 'none' || (nextContinue && src > (c.duration_ms ?? 0)))
+      out.set(c.id, src);
   });
   return out;
 }
+
+/** Bản dựng đang tự cắt clip này (chế độ auto + có đề xuất áp dụng được) — `render/pipeline.py`. */
+export function autoTrimActive(c: Pick<ClipRow, 'trim_mode' | 'auto_trim'>): boolean {
+  return (c.trim_mode ?? 'auto') === 'auto' && !!c.auto_trim?.applied;
+}
+
+/**
+ * Clip với trim hiệu lực như bản dựng: auto → trim theo `auto_trim`; none → nguyên take. Dùng để dựng timeline
+ * (độ dài = nguồn − trim) cho khớp bản dựng. Hàm thuần.
+ */
+export function effectiveClips(clips: ClipRow[]): ClipRow[] {
+  return clips.map((c) => {
+    if (autoTrimActive(c)) return { ...c, trim_in_ms: c.auto_trim!.in_ms, trim_out_ms: c.auto_trim!.out_ms };
+    if (c.trim_mode === 'none') return { ...c, trim_in_ms: 0, trim_out_ms: 0 };
+    return c;
+  });
+}
+
+/** Sửa trim tay trên clip đang tự cắt → chuyển sang thủ công, giữ điểm vào của đề xuất. */
+export function manualTrimPatch(c: ClipRow, values: Record<string, unknown>): Record<string, unknown> {
+  if (!autoTrimActive(c) || !('trim_out_ms' in values || 'trim_in_ms' in values)) return values;
+  return { trim_mode: 'manual', trim_in_ms: c.auto_trim!.in_ms, trim_out_ms: c.auto_trim!.out_ms, ...values };
+}
+
+export const TRIM_REASON: Record<string, string> = {
+  speech: 'theo đoạn nói (0,2 s trước tiếng đầu → 0,3 s sau tiếng cuối)',
+  motion: 'bỏ đầu/đuôi đứng yên, giữ độ dài mong muốn',
+  static: 'video đứng yên: cắt đuôi theo độ dài mong muốn',
+  voice: 'clip lồng tiếng: độ dài theo giọng đọc',
+  continue: 'clip sau nối tiếp từ khung cuối: không cắt đuôi',
+  short: 'video không dài hơn độ dài mong muốn',
+  not_analyzed: 'chưa phân tích video',
+  manual: 'trim tay',
+  none: 'nguyên take',
+};
 
 /** Bản dựng xem được mới nhất (ưu tiên đủ tập hơn bản xem trước N giây cùng lúc). */
 export function latestPlayable(renders: RenderRow[] | undefined): RenderRow | null {

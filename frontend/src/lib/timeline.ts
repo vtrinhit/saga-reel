@@ -380,6 +380,24 @@ export interface ClipRow {
   thumb_media_id?: number | null;
   /** Độ dài video provider đang chọn (ms). */
   source_duration_ms?: number | null;
+  /** Chế độ cắt hiệu lực (`clip.get/list`): auto = tự cắt sát nội dung, manual = theo trim tay, none = nguyên take. */
+  trim_mode?: TrimMode;
+  /** Đề xuất tự cắt của take đang chọn (`services/trimming.py::info_for`); null khi chưa có video. */
+  auto_trim?: AutoTrim | null;
+}
+
+export type TrimMode = 'auto' | 'manual' | 'none';
+
+export interface AutoTrim {
+  applied: boolean;
+  /** Cắt ở đầu / ở cuối take (cùng nghĩa trim_in_ms / trim_out_ms). */
+  in_ms: number;
+  out_ms: number;
+  /** Độ dài còn lại sau khi cắt (null = không tự cắt). */
+  dur_ms: number | null;
+  reason: string;
+  take_ms?: number | null;
+  gain_db?: number;
 }
 
 export interface DialogueRow {
