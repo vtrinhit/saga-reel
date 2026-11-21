@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  CircleCheck, Download, Filter, Pencil, Plus, RotateCcw, Rows3, Trash2, TriangleAlert, Upload,
+  CircleCheck, Download, Filter, ImagePlus, Pencil, Plus, RotateCcw, Rows3, Trash2, TriangleAlert, Upload,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
@@ -581,10 +581,24 @@ export function Episode() {
         />
         <span className="text-xs text-fg-2 tnum">
           {clipsQ.data ? `${clips.length.toLocaleString('vi-VN')} clip · ${formatTotalDuration(totalLength(clips))}` : ''}
-          {clipsQ.data && filter === 'all' && noImage ? ` · ${noImage.toLocaleString('vi-VN')} chưa có ảnh` : ''}
           <span ref={rangeRef} hidden={clips.length <= 40} />
         </span>
         <div className="ml-auto flex items-center gap-2">
+          {noImage ? (
+            <Button
+              variant="primary"
+              icon={ImagePlus}
+              title="Xem báo giá rồi mới chạy"
+              onClick={() => {
+                const ids = all.filter((c) => !hasImage(c) && c.image_prompt.trim()).map((c) => c.id);
+                if (!ids.length) toast({ message: 'Các clip chưa có ảnh đều chưa có prompt. Viết prompt trên card trước.' });
+                else void regen({ ids, part: 'image', label: `ảnh ${ids.length} clip` });
+              }}
+            >
+              <span className="hidden md:inline">Tạo ảnh cho {noImage.toLocaleString('vi-VN')} clip chưa có</span>
+              <span className="md:hidden">Tạo {noImage.toLocaleString('vi-VN')} ảnh</span>
+            </Button>
+          ) : null}
           <Menu
             label="Nhập và xuất"
             align="right"

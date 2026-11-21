@@ -134,6 +134,73 @@ export function cardColumns(width: number, aspect: string): number {
   return Math.max(2, Math.min(max, Math.floor((width + CARD_GAP) / (min + CARD_GAP))));
 }
 
+/** Dải tiêu đề cảnh trên mỗi đoạn của hàng. */
+export const SEG_HEAD_H = 32;
+
+/** Một đoạn liền của một cảnh trong một hàng lưới. */
+export interface RowSegment {
+  key: string;
+  sceneId: number | null;
+  title: string;
+  /** Số clip của cả cảnh / tổng độ dài hiệu lực của cả cảnh. */
+  count: number;
+  durationMs: number;
+  /** Chỉ số (trong danh sách đầy đủ) của clip đầu đoạn. */
+  firstIndex: number;
+  /** Đoạn bắt đầu cảnh (đích thả "đầu cảnh"); đoạn sau là phần tiếp của cảnh ở hàng dưới. */
+  sceneStart: boolean;
+  clips: Clip[];
+}
+
+export interface PackedRow {
+  key: string;
+  segments: RowSegment[];
+}
+
+/**
+ * Xếp clip vào hàng `cols` cột, cảnh ngắn nằm chung một hàng (mỗi đoạn có tiêu đề cảnh riêng) thay vì mỗi cảnh một
+ * hàng — tập có cảnh 3 clip không còn bỏ trống nửa màn hình rộng. Cảnh dài hơn chỗ còn lại thì sang hàng kế (cảnh mới
+ * không bắt đầu bằng mẩu một cột nếu còn ít hơn 2 cột trống, trừ khi cả cảnh chỉ có một clip).
+ */
+export function packRows(clips: Clip[], scenes: Map<number, { title: string; key: string }>, cols: number): PackedRow[] {
+  const n = Math.max(1, Math.floor(cols));
+  const rows: PackedRow[] = [];
+  let cur: RowSegment[] = [];
+  let used = 0;
+  const flush = () => {
+    if (cur.length) rows.push({ key: `r${cur[0].clips[0].id}`, segments: cur });
+    cur = [];
+    used = 0;
+  };
+  let i = 0;
+  let group = 0;
+  while (i < clips.length) {
+    const sid = clips[i].scene_id;
+    let j = i;
+    while (j < clips.length && clips[j].scene_id === sid) j += 1;
+    group += 1;
+    const sc = sid != null ? scenes.get(sid) : undefined;
+    const title = sc ? sc.title || `Cảnh ${sc.key}` : sid == null ? 'Chưa thuộc cảnh' : `Cảnh #${sid}`;
+    const all = clips.slice(i, j);
+    const dur = totalLength(all);
+    if (used > 0 && n - used < Math.min(2, all.length)) flush();
+    let k = 0;
+    while (k < all.length) {
+      if (used >= n) flush();
+      const take = Math.min(n - used, all.length - k);
+      cur.push({
+        key: `g${group}:${k}`, sceneId: sid, title, count: all.length, durationMs: dur, firstIndex: i + k,
+        sceneStart: k === 0, clips: all.slice(k, k + take),
+      });
+      used += take;
+      k += take;
+    }
+    i = j;
+  }
+  flush();
+  return rows;
+}
+
 export function cardGap(width: number): number {
   return width < 480 ? CARD_GAP_PHONE : CARD_GAP;
 }

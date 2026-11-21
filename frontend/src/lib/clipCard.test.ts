@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardColumns, cardRowHeight, cardState, defaultPart, effectiveLength, totalLength } from './clipCard';
+import { cardColumns, cardRowHeight, cardState, defaultPart, effectiveLength, packRows, totalLength } from './clipCard';
 import type { Clip } from './episodeTypes';
 import { shotOption, shotOptions, shotOptionText, shotText } from './shotLabels';
 import { stepIndex, swipeAction, viewerKeyAction } from './viewerNav';
@@ -93,6 +93,30 @@ describe('độ dài hiệu lực (tự cắt)', () => {
   it('nguyên take → độ dài take; tổng tập cộng theo độ dài hiệu lực', () => {
     expect(effectiveLength(clip({ ...vid, auto_trim: at, trim_mode: 'none' }))).toEqual({ ms: 6000, note: 'nguyên take' });
     expect(totalLength([clip({ ...vid, auto_trim: at }), clip()])).toBe(9400);
+  });
+});
+
+describe('xếp cảnh vào hàng', () => {
+  const sc = new Map([[1, { title: 'Bến', key: 's1' }], [2, { title: 'Chợ', key: 's2' }], [3, { title: 'Nhà', key: 's3' }]]);
+  const mk = (id: number, scene: number) => clip({ id, scene_id: scene });
+  it('cảnh ngắn nằm chung hàng, mỗi đoạn có tiêu đề + chỉ số đúng', () => {
+    const cs = [mk(1, 1), mk(2, 1), mk(3, 1), mk(4, 2), mk(5, 2), mk(6, 2)];
+    const rows = packRows(cs, sc, 6);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].segments.map((s) => [s.title, s.firstIndex, s.clips.length, s.sceneStart])).toEqual([
+      ['Bến', 0, 3, true],
+      ['Chợ', 3, 3, true],
+    ]);
+  });
+  it('cảnh dài tràn sang hàng sau thành đoạn "tiếp"; không mở cảnh mới bằng mẩu 1 cột', () => {
+    const cs = [mk(1, 1), mk(2, 1), mk(3, 1), mk(4, 1), mk(5, 1), mk(6, 2), mk(7, 2), mk(8, 3)];
+    const rows = packRows(cs, sc, 3);
+    expect(rows.map((r) => r.segments.map((s) => `${s.title}:${s.clips.length}${s.sceneStart ? '' : '+'}`))).toEqual([
+      ['Bến:3'],
+      ['Bến:2+'],
+      ['Chợ:2', 'Nhà:1'],
+    ]);
+    expect(rows[1].segments[0].durationMs).toBe(30000);
   });
 });
 

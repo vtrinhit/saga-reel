@@ -186,7 +186,7 @@ export const ClipCard = memo(function ClipCard({
                 data-card-focus={index}
                 onClick={() => setEditing(true)}
                 aria-label={`${title}: sửa prompt ảnh${c.image_prompt ? ` — ${c.image_prompt.slice(0, 80)}` : ''}`}
-                className={cn('min-h-0 overflow-hidden rounded-sm text-left hover:bg-bg-2', focusRing)}
+                className={cn('flex min-h-0 items-start overflow-hidden rounded-sm p-1 text-left hover:bg-bg-2', focusRing)}
               >
                 {c.image_prompt ? (
                   <span className="line-clamp-[8] text-xs text-fg-2">{c.image_prompt}</span>
@@ -198,7 +198,7 @@ export const ClipCard = memo(function ClipCard({
             {!editing && primary ? (
               <div className="grid gap-1">
                 <Button
-                  variant="primary"
+                  variant="secondary"
                   tabIndex={tab}
                   icon={primary.label === 'Thử lại' ? RotateCcw : ImagePlus}
                   disabled={!c.image_prompt.trim()}
@@ -271,7 +271,7 @@ export const ClipCard = memo(function ClipCard({
         {state.kind !== 'empty' || selecting ? (
           <label
             className={cn(
-              'absolute left-0 top-0 grid h-10 w-10 cursor-pointer place-items-center',
+              'absolute left-0 top-0 grid h-10 w-10 cursor-pointer place-items-center [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
               'opacity-0 transition-opacity duration-fast group-hover:opacity-100 focus-within:opacity-100',
               showCheck && 'opacity-100',
             )}
@@ -300,7 +300,7 @@ export const ClipCard = memo(function ClipCard({
                 tabIndex={tab}
                 onClick={() => actions.setPart(c, p)}
                 className={cn(
-                  'min-h-6 rounded-xs px-1.5 [@media(pointer:coarse)]:min-h-8 [@media(pointer:coarse)]:px-2.5',
+                  'min-h-6 rounded-xs px-1.5 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3',
                   state.part === p ? 'bg-bg-4 text-fg-1' : 'text-fg-2 hover:text-fg-1',
                   focusRing,
                 )}
@@ -336,11 +336,11 @@ export const ClipCard = memo(function ClipCard({
                   tabIndex={tab}
                   aria-label={`Take trước của ${title}`}
                   onClick={() => actions.flip(c, -1)}
-                  className={cn('grid h-6 w-5 place-items-center text-fg-2 hover:text-fg-1 [@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:w-7', focusRing)}
+                  className={cn('grid h-6 w-5 place-items-center text-fg-2 hover:text-fg-1 [@media(pointer:coarse)]:hidden', focusRing)}
                 >
                   <ChevronLeft className="h-3 w-3" aria-hidden />
                 </button>
-                <span className={cn('font-mono tnum', flip && !flip.selected ? 'text-fg-1' : 'text-fg-2')} aria-live="polite">
+                <span className={cn('font-mono tnum [@media(pointer:coarse)]:px-1.5', flip && !flip.selected ? 'text-fg-1' : 'text-fg-2')}>
                   {flip ? `${flip.no}/${flip.count}` : `${v.takeCount} take`}
                 </span>
                 <button
@@ -348,7 +348,7 @@ export const ClipCard = memo(function ClipCard({
                   tabIndex={tab}
                   aria-label={`Take kế của ${title}`}
                   onClick={() => actions.flip(c, 1)}
-                  className={cn('grid h-6 w-5 place-items-center text-fg-2 hover:text-fg-1 [@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:w-7', focusRing)}
+                  className={cn('grid h-6 w-5 place-items-center text-fg-2 hover:text-fg-1 [@media(pointer:coarse)]:hidden', focusRing)}
                 >
                   <ChevronRight className="h-3 w-3" aria-hidden />
                 </button>
@@ -361,7 +361,7 @@ export const ClipCard = memo(function ClipCard({
               aria-label={`Prompt của ${title}`}
               onClick={() => setPromptOpen((o) => !o)}
               className={cn(
-                'grid h-6 w-6 place-items-center rounded-sm bg-bg-0/85 hover:text-fg-1 [@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:w-8',
+                'grid h-6 w-6 place-items-center rounded-sm bg-bg-0/85 hover:text-fg-1 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11',
                 promptOpen ? 'text-accent' : 'text-fg-2',
                 focusRing,
               )}
