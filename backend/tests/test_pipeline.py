@@ -40,9 +40,12 @@ def fake_llm(monkeypatch) -> _fixtures_j.FakeLLM:
 
 @pytest.fixture
 def proj(owner_ctx) -> int:
+    from sagareel.services import samples
+
     pid = projects.create(owner_ctx, name="Phim", key="phim", genre_key="serial")["id"]
     with owner_ctx.services.db.session() as s:
         s.get(Project, pid).settings = {"pipeline.poll_s": 0.02}
+        samples.install_prompts(s, pid, samples.DEFAULT_SAMPLE)
     return pid
 
 
@@ -52,7 +55,9 @@ def make_seq(ctx, pid, n=1) -> int:
 
 def workflow(ctx, pid, key, steps, batch=None) -> str:
     data = {"label": key, "steps": steps, "batch": batch or {"mode": "parallel", "release_after": steps[0]["step"]}}
-    presets.create(ctx, "workflow", key, key, data, project_id=pid)
+    with ctx.services.db.session() as s:  # quy trình là dữ liệu của dự án
+        p = s.get(Project, pid)
+        p.workflows = {**(p.workflows or {}), key: {"name": key, **data}}
     return key
 
 
@@ -106,7 +111,7 @@ def status_is(services, sid, *want):
 
 
 def test_builtin_workflows_valid_and_animatic_before_videos():
-    defs = {d["key"]: d["data"] for d in presets.builtin_definitions() if d["kind"] == "workflow"}
+    defs = W.defaults()
     assert set(defs) == {"full_auto", "storyboard_first", "serial_batch"}
     for key, data in defs.items():
         wf = W.validate(data)

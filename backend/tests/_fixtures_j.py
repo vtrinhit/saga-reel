@@ -34,10 +34,14 @@ class FakeLLM:
         return [c for c in self.calls if c["task"] == task]
 
     async def run_task(self, services, task_key, variables, *, images=(), override=None, on_delta=None,
-                       on_attempt=None, log=None) -> LLMOutcome:
+                       on_attempt=None, log=None, project_id=None) -> LLMOutcome:
+        from sagareel.services import prompts
+
         template_key = next(t["template_key"] for t in llm.default_tasks() if t["key"] == task_key)
-        body = llm.builtin_template(template_key)
-        messages = templating.render_messages(body, variables)  # template thật phải render được với biến đã truyền
+        with services.db.session() as s:  # prompt thật của dự án (thiếu → prompt_missing như run_task thật)
+            body = prompts.body(s, template_key, project_id)
+        # template thật phải render được với biến đã truyền; tool tự nối khối định dạng đầu ra
+        messages = llm.with_output_format(templating.render_messages(body, variables), template_key)
         n = len(self.calls_of(task_key))
         self.calls.append({"task": task_key, "variables": dict(variables), "messages": messages})
         spec = self.replies.get(task_key)

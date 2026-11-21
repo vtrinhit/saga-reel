@@ -316,10 +316,7 @@ def test_render_messages_splits_roles_before_rendering():
 
 
 EXPECTED_TASKS = {
-    "analyze_channel": (True, True), "write_bible": (False, True), "outline": (False, True),
-    "write_script": (False, False), "split_clips": (False, True), "image_prompts": (False, True),
-    "motion_prompts": (False, True), "dialogue": (False, True), "drift_check": (True, True),
-    "memory_summarize": (False, True), "caption": (False, True), "translate": (False, True),
+    "analyze_channel": (True, True), "drift_check": (True, True), "caption": (False, True), "translate": (False, True),
     "rewrite_prompt": (False, False), "score_take": (True, True),
     "describe_asset": (True, True),  # Task A
     "clone_scene": (True, True),  # Task K
@@ -338,15 +335,18 @@ def test_default_tasks_yaml_has_14_tasks_with_flags():
         assert t["label"] and t["description"] and t["template_key"] == t["key"]
 
 
-def test_default_templates_render_with_input_only():
-    from sagareel.services import llm
+@pytest.mark.parametrize("slug", ["phim-truyen-nguoi-that", "phim-thoai-hoat-hinh", "ke-chuyen-xua"])
+def test_default_templates_render_with_input_only(slug):
+    """Prompt của dự án mẫu (dữ liệu seed) + khối định dạng tool tự nối (llm.with_output_format)."""
+    from sagareel.services import llm, samples
 
+    bodies = samples.definition(slug)["prompts"]
     for t in llm.default_tasks():
         if t["key"].startswith("story_"):  # Task J: biến có cấu trúc — test_story_writer.py
             continue
-        body = llm.builtin_template(t["template_key"])
+        body = bodies.get(t["template_key"])
         assert body is not None, t["key"]
-        msgs = templating.render_messages(body, {"input": "NỘI DUNG"})
+        msgs = llm.with_output_format(templating.render_messages(body, {"input": "NỘI DUNG"}), t["template_key"])
         assert [m["role"] for m in msgs] == ["system", "user"], t["key"]
         assert msgs[1]["content"] == "NỘI DUNG"
         assert msgs[0]["content"].isascii(), t["key"]  # system prompt tiếng Anh

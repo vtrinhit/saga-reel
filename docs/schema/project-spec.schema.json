@@ -761,10 +761,22 @@
           "title": "Fps",
           "type": "integer"
         },
+        "genre": {
+          "additionalProperties": true,
+          "description": "Số liệu thể loại của dự án",
+          "title": "Genre",
+          "type": "object"
+        },
         "genre_key": {
           "default": "series",
           "title": "Genre Key",
           "type": "string"
+        },
+        "is_sample": {
+          "default": false,
+          "description": "Dự án mẫu (nhân bản ra dự án mới)",
+          "title": "Is Sample",
+          "type": "boolean"
         },
         "key": {
           "description": "Mã project (khoá ổn định)",
@@ -791,6 +803,11 @@
           "title": "Name",
           "type": "string"
         },
+        "narrator_voice": {
+          "default": "",
+          "title": "Narrator Voice",
+          "type": "string"
+        },
         "negative_block": {
           "default": "",
           "title": "Negative Block",
@@ -812,25 +829,18 @@
           "title": "Style Block",
           "type": "string"
         },
-        "style_pack": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Key preset style_pack (của project hoặc toàn cục)",
-          "title": "Style Pack"
-        },
         "target_platforms": {
           "items": {
             "type": "string"
           },
           "title": "Target Platforms",
           "type": "array"
+        },
+        "workflows": {
+          "additionalProperties": true,
+          "description": "Quy trình của dự án {key: {steps…}}",
+          "title": "Workflows",
+          "type": "object"
         }
       },
       "required": [
@@ -1268,11 +1278,27 @@
         }
       ],
       "default": null,
-      "description": "Preset riêng của project; null = không đụng",
+      "description": "Preset kỹ thuật riêng của project; null = không đụng",
       "title": "Presets"
     },
     "project": {
       "$ref": "#/$defs/ProjectBlock"
+    },
+    "prompts": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Prompt của dự án {khoá: thân Jinja} (hợp đồng: op prompt.contracts); null = không đụng",
+      "title": "Prompts"
     },
     "providers": {
       "additionalProperties": {

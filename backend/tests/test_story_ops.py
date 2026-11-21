@@ -37,6 +37,10 @@ async def wait_job(services, job_id: int, timeout: float = 15.0) -> Job:
 async def test_story_write_bible_job_with_real_routing(services, owner_ctx):
     seed_defaults(services.db)
     pid = projects.create(owner_ctx, name="P", key="p", genre_key="serial")["id"]
+    from sagareel.services import samples
+
+    with owner_ctx.services.db.session() as s:
+        samples.install_prompts(s, pid, samples.DEFAULT_SAMPLE)
     with pytest.raises(AppError) as e:
         await invoke("story.write_bible", {"project_id": pid, "idea": "x"}, owner_ctx)
     assert e.value.code == "llm_not_configured" and "agent" in e.value.extra["alternatives"]

@@ -194,7 +194,7 @@ def test_seed_defaults_inserts_tasks_idempotently(tmp_db):
     with tmp_db.session() as s:
         tasks = {t.key: t for t in s.scalars(select(LlmTask)).all()}
         assert set(tasks) == {t["key"] for t in llm.default_tasks()}
-        assert not {"story_outline", "write_script", "split_clips", "dialogue"} & set(tasks)  # việc cũ đã bỏ
+        assert not {"outline", "write_script", "split_clips", "dialogue"} & set(tasks)  # việc cũ đã bỏ
         assert tasks["analyze_channel"].needs_vision and tasks["analyze_channel"].json_mode
         assert llm.normalize_route(tasks["story_outline"].route)["connection"] is None
     sets = _change_sets(tmp_db)

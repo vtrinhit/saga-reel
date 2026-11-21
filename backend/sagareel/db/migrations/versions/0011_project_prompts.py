@@ -59,12 +59,13 @@ def upgrade() -> None:
         batch_op.create_index('ux_project_prompt_key', ['project_id', 'key'], unique=True,
                               sqlite_where=sa.text('deleted_at IS NULL'))
 
-    with op.batch_alter_table('project', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('genre', sa.Text(), nullable=False, server_default='{}'))
-        batch_op.add_column(sa.Column('workflows', sa.Text(), nullable=False, server_default='{}'))
-        batch_op.add_column(sa.Column('narrator_voice', sa.Text(), nullable=False, server_default=''))
-        batch_op.add_column(sa.Column('is_sample', sa.Boolean(), nullable=False, server_default=sa.false()))
-        batch_op.drop_column('style_pack_id')
+    # ADD/DROP COLUMN trực tiếp (SQLite ≥ 3.35), KHÔNG batch: dựng lại bảng project làm mất collation NOCASE của `key`
+    # và index duy nhất một phần ux_project_key.
+    op.add_column('project', sa.Column('genre', sa.Text(), nullable=False, server_default='{}'))
+    op.add_column('project', sa.Column('workflows', sa.Text(), nullable=False, server_default='{}'))
+    op.add_column('project', sa.Column('narrator_voice', sa.Text(), nullable=False, server_default=''))
+    op.add_column('project', sa.Column('is_sample', sa.Boolean(), nullable=False, server_default=sa.false()))
+    op.execute("ALTER TABLE project DROP COLUMN style_pack_id")
 
     conn = op.get_bind()
     presets = conn.execute(sa.text(
@@ -106,12 +107,9 @@ def downgrade() -> None:
     sa.PrimaryKeyConstraint('id', name=op.f('pk_template')),
     sa.UniqueConstraint('key', name=op.f('uq_template_key'))
     )
-    with op.batch_alter_table('project', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('style_pack_id', sa.Integer(), nullable=True))
-        batch_op.drop_column('is_sample')
-        batch_op.drop_column('narrator_voice')
-        batch_op.drop_column('workflows')
-        batch_op.drop_column('genre')
+    op.add_column('project', sa.Column('style_pack_id', sa.Integer(), nullable=True))
+    for col in ('is_sample', 'narrator_voice', 'workflows', 'genre'):
+        op.execute(f"ALTER TABLE project DROP COLUMN {col}")
     with op.batch_alter_table('project_prompt', schema=None) as batch_op:
         batch_op.drop_index('ux_project_prompt_key', sqlite_where=sa.text('deleted_at IS NULL'))
         batch_op.drop_index(batch_op.f('ix_project_prompt_project_id'))

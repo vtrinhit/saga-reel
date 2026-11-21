@@ -64,7 +64,13 @@ def fake_llm(monkeypatch) -> _fixtures_j.FakeLLM:
 
 @pytest.fixture
 def proj(owner_ctx) -> int:
-    return projects.create(owner_ctx, name="Phim", key="phim", genre_key="serial")["id"]
+    """Dự án có bộ prompt của dữ liệu mẫu (prompt là dữ liệu của dự án)."""
+    from sagareel.services import samples
+
+    pid = projects.create(owner_ctx, name="Phim", key="phim", genre_key="serial")["id"]
+    with owner_ctx.services.db.session() as s:
+        samples.install_prompts(s, pid, samples.DEFAULT_SAMPLE)
+    return pid
 
 
 @pytest.fixture
@@ -80,38 +86,41 @@ async def _bible(owner_ctx, proj, fake_llm):
 # --- llmio ------------------------------------------------------------------------------------------------------------
 
 
-async def test_llmio_retries_once_with_error_then_succeeds(owner_ctx, fake_llm):
+async def test_llmio_retries_once_with_error_then_succeeds(owner_ctx, fake_llm, proj):
     fake_llm.on("story_outline", {"episodes": []}, {"episodes": [{"number": 1, "title": "A", "synopsis": "B"}]})
     out = await llmio.run(owner_ctx.services, "story_outline", {"genre": "", "context": "", "arc": "",
-                                                                "episodes": "1"}, S.OutlineOut)
+                                                                "episodes": "1"}, S.OutlineOut, project_id=proj)
     assert out.attempts == 2 and out.data.episodes[0].title == "A"
     calls = fake_llm.calls_of("story_outline")
     assert calls[0]["variables"]["fix_error"] == "" and "episodes" in calls[1]["variables"]["fix_error"]
     assert "sai định dạng" in calls[1]["messages"][-1]["content"]
 
 
-async def test_llmio_invalid_json_then_bad_output(owner_ctx, fake_llm):
+async def test_llmio_invalid_json_then_bad_output(owner_ctx, fake_llm, proj):
     fake_llm.on("story_outline", "không phải json", {"episodes": "x"})
     with pytest.raises(AppError) as e:
         await llmio.run(owner_ctx.services, "story_outline", {"genre": "", "context": "", "arc": "", "episodes": "1"},
-                        S.OutlineOut)
+                        S.OutlineOut, project_id=proj)
     assert e.value.code == "llm_bad_output" and len(fake_llm.calls) == 2
     assert "JSON" in fake_llm.calls[1]["variables"]["fix_error"]
 
 
-async def test_llmio_text_task_retries_on_empty(owner_ctx, fake_llm):
+async def test_llmio_text_task_retries_on_empty(owner_ctx, fake_llm, proj):
     fake_llm.on("story_write_script", "", "CẢNH 1 — biệt thự — đêm\nLinh bước vào. " * 3)
     out = await llmio.run(owner_ctx.services, "story_write_script",
-                          {"genre": "", "context": "", "episode": "", "source": "", "cast": ""}, None, min_chars=20)
+                          {"genre": "", "context": "", "episode": "", "source": "", "cast": ""}, None, min_chars=20,
+                          project_id=proj)
     assert out.attempts == 2 and out.data.startswith("CẢNH 1")
 
 
 def test_story_templates_render_and_tasks_registered():
+    from sagareel.services import samples
+
     tasks = {t["key"]: t for t in llm.default_tasks()}
     for key in ("story_write_bible", "story_outline", "story_write_script", "story_split_clips",
                 "story_image_prompts", "story_motion_prompts", "story_dialogue", "story_adapt_novel",
                 "story_memory_summarize"):
-        body = llm.builtin_template(tasks[key]["template_key"])
+        body = samples.definition(samples.DEFAULT_SAMPLE)["prompts"][tasks[key]["template_key"]]
         names = set(templating.variables_of(body))
         assert {"feedback", "fix_error"} <= names, key
         msgs = templating.render_messages(body, {n: f"<{n}>" for n in names})
@@ -429,11 +438,12 @@ def test_pack_respects_priority(owner_ctx):
     assert p.sections == {"a": 2} and p.dropped == {"b": 1} and len(p.text) <= 120
 
 
-def test_job_failed_is_not_swallowed(owner_ctx, fake_llm):
+def test_job_failed_is_not_swallowed(owner_ctx, fake_llm, proj):
     fake_llm.on("story_outline", jobs.JobFailed("llm_all_routes_failed", "hỏng"))
     import anyio
 
     with pytest.raises(jobs.JobFailed):
         anyio.run(lambda: llmio.run(owner_ctx.services, "story_outline",
-                                    {"genre": "", "context": "", "arc": "", "episodes": "1"}, S.OutlineOut))
+                                    {"genre": "", "context": "", "arc": "", "episodes": "1"}, S.OutlineOut,
+                                    project_id=proj))
     assert json.dumps(S.OutlineOut.model_json_schema())

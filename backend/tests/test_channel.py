@@ -165,28 +165,26 @@ def test_analyze_and_apply(client, svc, project, tmp_path):
         assert sheet.origin == "derived" and sheet.kind == "image"
 
     out = ok(client, "channel.apply", {"study_id": st["id"], "make": {"library_suggestions": True}})
-    assert out["genre_preset"]["kind"] == "genre" and out["genre_preset"]["builtin"] is False
-    assert out["style_pack"]["kind"] == "style_pack"
+    assert out["project_id"] == project and out["created_project"] is False  # ghi vào DỰ ÁN, không tạo preset
+    assert set(out["applied"]) == {"genre", "style_block", "negative_block"}
     assert {x["kind"] for x in out["library_suggestions"]} == {"character", "location"}
     with svc.db.session() as s:
-        g = s.get(Preset, out["genre_preset"]["id"])
-        assert g.project_id == project and g.data["clips"][0] >= 1
-        sp = s.get(Preset, out["style_pack"]["id"])
-        assert sp.data["style_block"].startswith("cinematic")
-    only = ok(client, "channel.apply", {"study_id": st["id"], "make": {"genre_preset": False, "style_pack": False,
+        from sagareel.db.models import Project
+
+        p = s.get(Project, project)
+        assert p.genre["clips"][0] >= 1 and p.style_block.startswith("cinematic")
+        assert not s.scalars(select(Preset).where(Preset.kind.in_(["genre", "style_pack"]))).all()
+    only = ok(client, "channel.apply", {"study_id": st["id"], "make": {"genre": False, "style": False,
                                                                        "library_suggestions": False}})
-    assert only["genre_preset"] is None and only["library_suggestions"] == []
-    again = ok(client, "channel.apply", {"study_id": st["id"], "make": {"style_pack": False,
-                                                                        "library_suggestions": False}})
-    assert again["genre_preset"]["key"] != out["genre_preset"]["key"]  # key trùng -> tự đánh số
+    assert only["applied"] == [] and only["library_suggestions"] == []
     with svc.db.session() as s:
         assert s.scalars(select(Media).where(Media.id.in_([a["media_id"], b["media_id"]]))).all()
 
 
-def test_analyze_invalid_json_marks_failed(client, svc, tmp_path):
-    v = _upload(svc, make_three_colors(tmp_path / "a.mp4"))
+def test_analyze_invalid_json_marks_failed(client, svc, project, tmp_path):
+    v = _upload(svc, make_three_colors(tmp_path / "a.mp4"), project)
     _llm(svc, {"analyze_channel": "[1, 2]"})
-    st = ok(client, "channel.study_create", {"title": "Hỏng", "media_ids": [v]})
+    st = ok(client, "channel.study_create", {"title": "Hỏng", "media_ids": [v], "project_id": project})
     job = wait(client, ok(client, "channel.analyze", {"study_id": st["id"]})["id"])
     assert job["status"] == "failed" and job["error_code"] == "llm_invalid_json"
     assert ok(client, "channel.study_get", {"id": st["id"]})["status"] == "failed"

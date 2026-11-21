@@ -170,7 +170,7 @@ def test_uow_records_change_set_and_create_revision(ctx):
         u.change_set_id, "test.create", "user:owner", None, "Tạo một template")
     (rev,) = all_revisions(ctx)
     assert rev.change_set_id == cs.id and rev.entity_type == "skill_file" and rev.entity_id == t.id
-    assert rev.before_json is None and rev.after_json["body"] == "xin chào" and rev.after_json["key"] == "k.create"
+    assert rev.before_json is None and rev.after_json["body"] == "xin chào" and rev.after_json["path"] == "k.create"
 
 
 def test_uow_without_changes_writes_nothing(ctx):
