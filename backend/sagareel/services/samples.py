@@ -34,6 +34,9 @@ SEED_ACTOR = "system:seed"
 BACKFILL_FLAG = "prompts_backfilled_at"
 GENRE_SAMPLE = {"narration": "ke-chuyen-xua", "series": "phim-thoai-hoat-hinh"}
 DEFAULT_SAMPLE = "phim-truyen-nguoi-that"
+# Giọng người kể mà compiler cũ chèn ngầm khi dự án chưa đặt — chép vào dự án cũ một lần để video không đổi giọng.
+LEGACY_NARRATOR_VOICE = ("a calm, warm adult Vietnamese man's voice with a northern accent, speaking slowly and gently "
+                         "like recalling a childhood memory")
 _FIELDS = ("name", "description", "genre_key", "aspect", "language", "style_block", "negative_block",
            "narrator_voice")
 
@@ -145,7 +148,10 @@ def backfill_once(db: Database) -> int:
         for p in rows:
             if s.scalar(select(exists().where(ProjectPrompt.project_id == p.id))):
                 continue
-            install_prompts(s, p.id, slug_for_genre(p.genre_key))
+            slug = slug_for_genre(p.genre_key)
+            install_prompts(s, p.id, slug)
+            if not (p.narrator_voice or "").strip():  # giữ đúng giọng người kể cũ (trước đây là mặc định ẩn của tool)
+                p.narrator_voice = LEGACY_NARRATOR_VOICE
             n += 1
     from sagareel.db.base import utcnow
 

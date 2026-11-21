@@ -243,6 +243,7 @@ def test_backfill_once(owner_ctx):
         ids = {p.key: p.id for p in s.scalars(select(Project)).all()}
         assert "first half second" in prompts.body(s, "motion.synced", ids["s"])
         assert "no lip movement" in prompts.body(s, "motion.synced", ids["n"])
+        assert s.get(Project, ids["n"]).narrator_voice == samples.LEGACY_NARRATOR_VOICE  # giữ giọng cũ
         s.add(Project(key="moi", name="Mới"))
     assert samples.backfill_once(db) == 0  # chỉ một lần: dự án trống về sau không bị tự điền
     with db.session() as s:
